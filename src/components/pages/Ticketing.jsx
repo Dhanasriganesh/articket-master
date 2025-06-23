@@ -244,12 +244,25 @@ function Client() {
       // Get the next ticket number based on category
       const ticketNumber = await getNextTicketNumber(formData.category);
      
+      // Fetch the projectId for the selected project name
+      let projectId = null;
+      try {
+        const projectsQuery = query(collection(db, 'projects'), where('name', '==', formData.project));
+        const projectsSnapshot = await getDocs(projectsQuery);
+        if (!projectsSnapshot.empty) {
+          projectId = projectsSnapshot.docs[0].id;
+        }
+      } catch (err) {
+        console.error('Error fetching projectId for ticket:', err);
+      }
+     
       // Create the ticket document in Firestore
       const ticketData = {
         subject: formData.subject,
         customer: formData.name,
         email: formData.email,
         project: formData.project,
+        projectId: projectId || '',
         category: formData.category === 'Others' ? (formData.otherIssue || 'Others') : formData.category,
         priority: formData.priority,
         description: formData.description,

@@ -18,7 +18,7 @@ function formatTimestamp(ts) {
   return '';
 }
 
-const ProjectManagerTickets = ({ setActiveTab }) => {
+const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => {
   const [ticketsData, setTicketsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -34,151 +34,77 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
   const [currentUserData, setCurrentUserData] = useState(null);
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged(async user => {
-      if (user) {
-        setLoading(true);
-        setCurrentUserEmail(user.email);
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        if (userDocSnap.exists()) {
-          setCurrentUserData(userDocSnap.data());
+    if (!selectedProjectId || (selectedProjectId === 'all' && (!allProjectIds || allProjectIds.length === 0))) {
+      setTicketsData([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    // Fetch employees and clients for the selected project(s)
+    const fetchUsersAndTickets = async () => {
+      try {
+        const usersRef = collection(db, 'users');
+        let projectIdsToFetch = [];
+        if (selectedProjectId === 'all') {
+          projectIdsToFetch = allProjectIds;
+        } else {
+          projectIdsToFetch = [selectedProjectId];
         }
-
-        try {
-          const filterData = sessionStorage.getItem('ticketFilter');
-          if (filterData) {
-            const parsedFilter = JSON.parse(filterData);
-            setFilterStatus(parsedFilter.status);
-            setFilterPriority(parsedFilter.priority);
-            sessionStorage.removeItem('ticketFilter');
-          }
-        } catch (err) {
-          console.error('Error parsing filter data:', err);
-        }
-
-        // Fetch employees and clients separately
-        try {
-          const usersRef = collection(db, 'users');
-         
-          // Fetch employees
-          const employeesQuery = query(
-            usersRef,
-            where('project', '==', 'VMM'),
-            where('role', '==', 'employee')
-          );
-          const employeesSnapshot = await getDocs(employeesQuery);
-          const employeesList = [];
-          const employeeEmails = new Set();
-          const employeeNameCounts = {};
-
-          employeesSnapshot.forEach((doc) => {
-            const userData = doc.data();
-            if (userData.email !== user.email && !employeeEmails.has(userData.email)) {
-              employeeEmails.add(userData.email);
-             
-              const displayName = userData.firstName && userData.lastName
-                ? `${userData.firstName} ${userData.lastName}`.trim()
-                : userData.email.split('@')[0];
-             
-              employeeNameCounts[displayName] = (employeeNameCounts[displayName] || 0) + 1;
-             
-              employeesList.push({
-                id: doc.id,
-                email: userData.email,
-                name: displayName
-              });
-            }
-          });
-
-          // Process employee display names
-          employeesList.sort((a, b) => a.name.localeCompare(b.name));
-          employeesList.forEach(emp => {
-            if (employeeNameCounts[emp.name] > 1) {
-              const emailPart = emp.email.split('@')[0];
-              emp.displayName = `${emp.name} (${emailPart})`;
-            } else {
-              emp.displayName = emp.name;
-            }
-          });
-          setEmployees(employeesList);
-
-          // Fetch clients
-          const clientsQuery = query(
-            usersRef,
-            where('project', '==', 'VMM'),
-            where('role', '==', 'client')
-          );
-          const clientsSnapshot = await getDocs(clientsQuery);
-          const clientsList = [];
-          const clientEmails = new Set();
-          const clientNameCounts = {};
-
-          clientsSnapshot.forEach((doc) => {
-            const userData = doc.data();
-            if (userData.email !== user.email && !clientEmails.has(userData.email)) {
-              clientEmails.add(userData.email);
-             
-              const displayName = userData.firstName && userData.lastName
-                ? `${userData.firstName} ${userData.lastName}`.trim()
-                : userData.email.split('@')[0];
-             
-              clientNameCounts[displayName] = (clientNameCounts[displayName] || 0) + 1;
-             
-              clientsList.push({
-                id: doc.id,
-                email: userData.email,
-                name: displayName
-              });
-            }
-          });
-
-          // Process client display names
-          clientsList.sort((a, b) => a.name.localeCompare(b.name));
-          clientsList.forEach(client => {
-            if (clientNameCounts[client.name] > 1) {
-              const emailPart = client.email.split('@')[0];
-              client.displayName = `${client.name} (${emailPart})`;
-            } else {
-              client.displayName = client.name;
-            }
-          });
-          setClients(clientsList);
-
-        } catch (err) {
-          console.error('Error fetching users:', err);
-        }
-
-        // Set up real-time listener for tickets
+        // Fetch employees and clients for all projects (optional: can be improved to deduplicate)
+        // Fetch tickets for the selected project(s)
         const ticketsCollectionRef = collection(db, 'tickets');
-        const q = query(
-          ticketsCollectionRef,
-          where('project', '==', 'VMM')
-        );
-
-        const unsubscribeTickets = onSnapshot(q, (snapshot) => {
-          const tickets = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          setTicketsData(tickets);
+        let tickets = [];
+        if (projectIdsToFetch.length === 1) {
+          // Single project
+          const q = query(
+            ticketsCollectionRef,
+            where('projectId', '==', projectIdsToFetch[0])
+          );
+          const unsubscribeTickets = onSnapshot(q, (snapshot) => {
+            tickets = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            setTicketsData(tickets);
+            setLoading(false);
+          }, (err) => {
+            setError('Failed to load tickets for the project.');
+            setLoading(false);
+          });
+          return () => unsubscribeTickets();
+        } else if (projectIdsToFetch.length > 1 && projectIdsToFetch.length <= 10) {
+          // Multiple projects (up to 10)
+          const q = query(
+            ticketsCollectionRef,
+            where('projectId', 'in', projectIdsToFetch)
+          );
+          const unsubscribeTickets = onSnapshot(q, (snapshot) => {
+            tickets = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            setTicketsData(tickets);
+            setLoading(false);
+          }, (err) => {
+            setError('Failed to load tickets for the projects.');
+            setLoading(false);
+          });
+          return () => unsubscribeTickets();
+        } else {
+          // More than 10 projects: batch queries (not implemented here)
+          setError('Too many projects to display tickets. Please select a single project.');
+          setTicketsData([]);
           setLoading(false);
-        }, (err) => {
-          console.error('Error fetching project-filtered tickets:', err);
-          setError('Failed to load tickets for the project.');
-          setLoading(false);
-        });
-
-        return () => unsubscribeTickets();
-      } else {
+        }
+      } catch (err) {
+        setError('Failed to load users or tickets.');
         setLoading(false);
-        setTicketsData([]);
-        setEmployees([]);
-        setClients([]);
       }
-    });
-
-    return () => unsubscribeAuth();
-  }, []);
+    };
+    fetchUsersAndTickets();
+    // eslint-disable-next-line
+  }, [selectedProjectId, allProjectIds]);
 
   const handleTicketClick = (ticketId) => {
     setSelectedTicketId(ticketId);
@@ -566,7 +492,9 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
 };
 
 ProjectManagerTickets.propTypes = {
-  setActiveTab: PropTypes.func
+  setActiveTab: PropTypes.func,
+  selectedProjectId: PropTypes.string,
+  allProjectIds: PropTypes.array
 };
 
 export default ProjectManagerTickets;

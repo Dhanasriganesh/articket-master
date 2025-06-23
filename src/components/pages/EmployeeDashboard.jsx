@@ -33,7 +33,7 @@ import {
   Edit,
   ChevronLeft
 } from 'lucide-react';
-import { collection, query, onSnapshot, doc, updateDoc, serverTimestamp, where, getDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, serverTimestamp, where, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { auth } from '../../firebase/config';
 import Ticketing from './Ticketing'; // Import the Ticketing component
@@ -65,6 +65,8 @@ function EmployeeDashboard() {
   const messagesContainerRef = useRef(null);
   const unsubscribeRef = useRef(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
  
   // Mock data for demonstration
   const mockTickets = [
@@ -147,8 +149,31 @@ function EmployeeDashboard() {
       setIsLoading(true);
       setError(null);
       setupTicketListener(user);
+      // Fetch all projects where user is an employee
+      const fetchProjects = async () => {
+        try {
+          const projectsQuery = query(collection(db, 'projects'));
+          const projectsSnapshot = await getDocs(projectsQuery);
+          const projectsData = projectsSnapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(project =>
+              (project.members || []).some(
+                m => m.email === user.email && m.role === 'employee'
+              )
+            );
+          setProjects(projectsData);
+          if (projectsData.length > 0 && !selectedProjectId) {
+            setSelectedProjectId(projectsData[0].id);
+          }
+          setIsLoading(false);
+        } catch (err) {
+          setError('Failed to load projects.');
+          setIsLoading(false);
+        }
+      };
+      fetchProjects();
     }
-  }, [authChecked, user]);
+  }, [authChecked, user, db]);
  
   const setupTicketListener = (firebaseUser) => {
     try {
@@ -599,6 +624,21 @@ function EmployeeDashboard() {
  
         {/* Dashboard Content */}
         <main className="flex-1 overflow-auto p-6">
+          {projects.length > 1 && (
+            <div className="mb-6">
+              <label className="mr-2 font-semibold text-gray-700">Select Project:</label>
+              <select
+                value={selectedProjectId}
+                onChange={e => setSelectedProjectId(e.target.value)}
+                className="border border-gray-300 rounded px-3 py-2"
+              >
+                <option value="all">All Projects</option>
+                {projects.map(project => (
+                  <option key={project.id} value={project.id}>{project.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
               {/* Stats Cards */}
@@ -682,7 +722,7 @@ function EmployeeDashboard() {
             </div>
           )}
  
-          {activeTab === 'tickets' && <EmployeeTickets />}
+          {activeTab === 'tickets' && <EmployeeTickets selectedProjectId={selectedProjectId} allProjectIds={projects.map(p => p.id)} />}
  
           {activeTab === 'create' && (
             <div className="max-w-4xl mx-auto">

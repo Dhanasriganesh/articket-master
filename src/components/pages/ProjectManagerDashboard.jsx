@@ -69,6 +69,7 @@ const ProjectManagerDashboard = () => {
   const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
 
   const auth = getAuth();
   const db = getFirestore();
@@ -110,44 +111,41 @@ const ProjectManagerDashboard = () => {
           }
           setManagerName(displayName);
         }
-        // Get VMM project
+        // Fetch all projects where user is a project manager
         const projectsQuery = query(
-          collection(db, 'projects'),
-          where('name', '==', 'VMM')
+          collection(db, 'projects')
         );
         const projectsSnapshot = await getDocs(projectsQuery);
-        const projectsData = projectsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        const projectsData = projectsSnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(project =>
+            (project.members || []).some(
+              m => m.email === user.email && m.role === 'project_manager'
+            )
+          );
         setProjects(projectsData);
-        // Get VMM project employees
-        const usersRef = collection(db, 'users');
-        const employeesQuery = query(
-          usersRef,
-          where('role', '==', 'employee'),
-          where('project', '==', 'VMM')
-        );
-        const employeesSnapshot = await getDocs(employeesQuery);
-        const employeesCount = employeesSnapshot.size;
-        // Get tickets for VMM project
-        const ticketsQuery = query(
-          collection(db, 'tickets'),
-          where('projectId', '==', projectsData[0]?.id)
-        );
-        const ticketsSnapshot = await getDocs(ticketsQuery);
-        const ticketsData = ticketsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setTickets(ticketsData);
-        // Update stats
-        setStats({
-          totalProjects: projectsData.length,
-          activeTickets: ticketsData.filter(ticket => ticket.status === 'Open').length,
-          teamMembers: employeesCount,
-          completedTickets: ticketsData.filter(ticket => ticket.status === 'Closed').length
-        });
+        // Set default selected project
+        if (projectsData.length > 0 && !selectedProjectId) {
+          setSelectedProjectId(projectsData[0].id);
+        }
+        // Fetch tickets for selected project
+        if (selectedProjectId) {
+          const ticketsQuery = query(
+            collection(db, 'tickets'),
+            where('projectId', '==', selectedProjectId)
+          );
+          const ticketsSnapshot = await getDocs(ticketsQuery);
+          const ticketsData = ticketsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setTickets(ticketsData);
+          setStats({
+            totalProjects: projectsData.length,
+            activeTickets: ticketsData.filter(ticket => ticket.status === 'Open').length,
+            teamMembers: 0, // Optionally update with team count if needed
+            completedTickets: ticketsData.filter(ticket => ticket.status === 'Closed').length
+          });
+        } else {
+          setTickets([]);
+        }
         setLoading(false);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -158,7 +156,8 @@ const ProjectManagerDashboard = () => {
       setLoading(true);
       fetchDashboardData();
     }
-  }, [authChecked, user, db]);
+    // eslint-disable-next-line
+  }, [authChecked, user, db, selectedProjectId]);
 
   const handleLogout = async () => {
     try {
@@ -335,6 +334,21 @@ const ProjectManagerDashboard = () => {
 
         {/* Dashboard Content */}
         <main className="flex-1 overflow-auto p-6 bg-gray-50">
+          {projects.length > 1 && (
+            <div className="mb-6">
+              <label className="mr-2 font-semibold text-gray-700">Select Project:</label>
+              <select
+                value={selectedProjectId}
+                onChange={e => setSelectedProjectId(e.target.value)}
+                className="border border-gray-300 rounded px-3 py-2"
+              >
+                <option value="all">All Projects</option>
+                {projects.map(project => (
+                  <option key={project.id} value={project.id}>{project.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {activeTab === 'dashboard' && (
             <div className="space-y-8">
               {/* Stats Grid */}
@@ -460,7 +474,7 @@ const ProjectManagerDashboard = () => {
           
 
           {activeTab === 'tickets' && (
-            <ProjectTickets setActiveTab={setActiveTab} />
+            <ProjectTickets setActiveTab={setActiveTab} selectedProjectId={selectedProjectId} allProjectIds={projects.map(p => p.id)} />
           )}
 
           {activeTab === 'create' && (
