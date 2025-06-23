@@ -39,6 +39,7 @@ function Projects() {
   const [showDeleteMemberModal, setShowDeleteMemberModal] = useState(false);
   const [showEditProjectModal, setShowEditProjectModal] = useState(false);
   const [editProjectData, setEditProjectData] = useState({ id: '', name: '', description: '' });
+  const [isEditingMember, setIsEditingMember] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'projects'), (querySnapshot) => {
@@ -209,8 +210,9 @@ function Projects() {
     }
   };
 
-  const handleEditMember = (member) => {
+  const handleEditMember = (member, project) => {
     setEditingMember(member);
+    setSelectedProject(project);
     setFormData({
       email: member.email,
       role: member.role === 'client_head' ? 'head' : 
@@ -223,11 +225,14 @@ function Projects() {
 
   const handleUpdateMember = async (e) => {
     e.preventDefault();
+    console.log('Submitting edit member form', { selectedProject, editingMember, formData });
     if (!selectedProject || !editingMember) {
+      console.warn('Missing selectedProject or editingMember', { selectedProject, editingMember });
       return;
     }
-
+    setIsEditingMember(true);
     try {
+      // 1. Update the member in the project's members array
       const updatedMembers = selectedProject.members.map(member => {
         if (member.uid === editingMember.uid) {
           let newRole;
@@ -250,24 +255,33 @@ function Projects() {
         members: updatedMembers
       });
 
-      // Update user document in users collection
-      try {
-        const userDocRef = doc(db, 'users', editingMember.uid);
-        const updateData = {
-          email: formData.email,
-          role: updatedMembers.find(m => m.uid === editingMember.uid)?.role || editingMember.role,
-          userType: formData.userType,
-          updatedAt: new Date().toISOString(),
-        };
-        await updateDoc(userDocRef, updateData);
-      } catch (error) {
-        console.error('Error updating user document:', error);
-        showNotification('Member updated in project but failed to update user details', 'error');
+      // 2. Update or create the user document in users collection
+      const userDocRef = doc(db, 'users', editingMember.uid);
+      let userDocSnap = await getDoc(userDocRef);
+      let userProjects = [];
+      if (userDocSnap.exists()) {
+        const userData = userDocSnap.data();
+        userProjects = userData.projects || [];
+        // Ensure the project is in the user's projects array
+        if (!userProjects.includes(selectedProject.id)) {
+          userProjects.push(selectedProject.id);
+        }
+      } else {
+        // If user doc doesn't exist, create it with this project
+        userProjects = [selectedProject.id];
       }
+      const updateData = {
+        email: formData.email,
+        role: updatedMembers.find(m => m.uid === editingMember.uid)?.role || editingMember.role,
+        userType: formData.userType,
+        updatedAt: new Date().toISOString(),
+        projects: userProjects
+      };
+      await setDoc(userDocRef, updateData, { merge: true });
 
-      // Update local state
-      const updatedProjects = projects.map(p => 
-        p.id === selectedProject.id 
+      // 3. Update local state only after successful Firestore updates
+      const updatedProjects = projects.map(p =>
+        p.id === selectedProject.id
           ? { ...p, members: updatedMembers }
           : p
       );
@@ -283,6 +297,8 @@ function Projects() {
     } catch (error) {
       console.error('Error updating member:', error);
       showNotification('Failed to update member details', 'error');
+    } finally {
+      setIsEditingMember(false);
     }
   };
 
@@ -459,7 +475,7 @@ function Projects() {
                       <button
                         onClick={e => {
                           e.stopPropagation();
-                          handleEditMember(member);
+                          handleEditMember(member, project);
                         }}
                         className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       >
@@ -547,7 +563,7 @@ function Projects() {
                       <button
                         onClick={e => {
                           e.stopPropagation();
-                          handleEditMember(member);
+                          handleEditMember(member, project);
                         }}
                         className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       >
@@ -1059,13 +1075,14 @@ function Projects() {
                   </button>
                   <button
                     type="submit"
+                    disabled={isEditingMember}
                     className={`px-4 py-2 text-white rounded-xl shadow-lg transition-colors ${
                       formData.userType === 'employee' 
                         ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-blue-500/25 hover:shadow-blue-500/40'
                         : 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-purple-500/25 hover:shadow-purple-500/40'
-                    }`}
+                    } ${isEditingMember ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >
-                    Save Changes
+                    {isEditingMember ? 'Editing...' : 'Save Changes'}
                   </button>
                 </div>
               </form>
