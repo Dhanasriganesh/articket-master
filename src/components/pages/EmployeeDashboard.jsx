@@ -642,7 +642,7 @@ function EmployeeDashboard() {
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
               {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
                   <div className="flex items-center justify-between">
                     <div>
@@ -684,6 +684,17 @@ function EmployeeDashboard() {
                     </div>
                     <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
                       <CheckCircle className="w-6 h-6 text-emerald-600" />
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Closed</p>
+                      <p className="text-2xl font-bold text-gray-600">{tickets.filter(t => t.status === 'Closed').length}</p>
+                    </div>
+                    <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center">
+                      <XCircle className="w-6 h-6 text-gray-600" />
                     </div>
                   </div>
                 </div>
