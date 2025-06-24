@@ -1,13 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
+  Mail,
   AlertCircle,
   CheckCircle,
   Clock,
   XCircle,
   Plus,
   MessageSquare,
+  Send,
   User,
+  Search,
+  Filter,
+  ChevronDown,
+  Loader2,
+  Paperclip,
+  Trash2,
+  RefreshCw,
+  Calendar,
+  Tag,
   ChevronRight,
   LogOut,
   Home,
@@ -25,9 +36,7 @@ import {
   PieChart,
   Zap,
   TrendingUp,
-  Activity,
-  Loader2,
-  RefreshCw
+  Activity
 } from 'lucide-react';
 import { collection, query, onSnapshot, doc, updateDoc, serverTimestamp, where, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
@@ -87,7 +96,8 @@ function ClientDashboard() {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const unsubscribeRef = useRef(null);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showSignoutToast, setShowSignoutToast] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
  
   // Animated counts for priorities (must be at top level, not inside JSX)
   const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
@@ -134,8 +144,10 @@ function ClientDashboard() {
           if (userDocSnap.exists()) {
             const userData = userDocSnap.data();
             currentProject = userData.project || 'General';
+            console.log('User project for dashboard:', currentProject);
           }
         } catch (err) {
+          console.error('Error fetching user project:', err);
           currentProject = 'General';
         }
         // Query tickets for the user's project (all tickets, not just user's own)
@@ -175,11 +187,13 @@ function ClientDashboard() {
               setError(null);
               setIsLoading(false);
             } catch (err) {
+              console.error('Error processing tickets:', err);
               setError('Error processing tickets. Please try again.');
               setIsLoading(false);
             }
           },
           (error) => {
+            console.error('Firestore error:', error);
             setError('Error connecting to the server. Please try again.');
             setIsLoading(false);
           }
@@ -188,6 +202,7 @@ function ClientDashboard() {
       };
       getUserProject();
     } catch (err) {
+      console.error('Connection error:', err);
       setError('Unable to connect to the server. Please check your internet connection and try again.');
       setIsLoading(false);
     }
@@ -223,11 +238,21 @@ function ClientDashboard() {
     };
   }, []);
  
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setShowSignoutToast(true);
+  };
+ 
+  const confirmSignout = async () => {
+    setSigningOut(true);
     try {
       await auth.signOut();
       navigate('/login');
-    } catch (error) {}
+    } catch (error) {
+      console.error('Error signing out:', error);
+    } finally {
+      setSigningOut(false);
+      setShowSignoutToast(false);
+    }
   };
  
   const sendResponse = async (ticketId, message) => {
@@ -264,6 +289,7 @@ function ClientDashboard() {
       }, 150);
      
     } catch (error) {
+      console.error('Error sending response:', error);
       setError('Failed to send response. Please try again.');
     } finally {
       setIsSending(false);
@@ -439,32 +465,6 @@ function ClientDashboard() {
  
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Logout Confirmation Modal */}
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-lg p-8 max-w-xs w-full text-center">
-            <h2 className="text-lg font-semibold mb-4">Confirm Logout</h2>
-            <p className="mb-6 text-gray-700">Are you sure you want to log out?</p>
-            <div className="flex justify-center gap-4">
-              <button
-                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
-                onClick={() => setShowLogoutConfirm(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-                onClick={() => {
-                  setShowLogoutConfirm(false);
-                  handleLogout();
-                }}
-              >
-                Yes, Log Out
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div
@@ -484,7 +484,7 @@ function ClientDashboard() {
                   <MessageSquare className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                 
+                  <h1 className="text-l font-bold text-gray-900">Support Hub</h1>
                   <p className="text-sm text-gray-500">Client Portal</p>
                 </div>
               </div>
@@ -520,7 +520,7 @@ function ClientDashboard() {
               </div>
             )}
             <button
-              onClick={() => setShowLogoutConfirm(true)}
+              onClick={handleLogout}
               className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200`}
             >
               <LogOut className="w-4 h-4" />
@@ -543,14 +543,14 @@ function ClientDashboard() {
                 <Menu className="w-6 h-6 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Welcome, {clientName}!</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Welcome back, {clientName}!</h1>
                 <p className="text-gray-600">Manage your support tickets and communications</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
               
               <button
-                onClick={() => setShowLogoutConfirm(true)}
+                onClick={handleLogout}
                 className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
               >
                 <LogOut className="w-4 h-4" />
@@ -818,6 +818,27 @@ function ClientDashboard() {
           )}
         </main>
       </div>
+      {/* Signout Confirmation Toast */}
+      {showSignoutToast && (
+        <div className="fixed bottom-4 right-4 z-50 p-4 bg-white rounded-xl shadow-lg border border-gray-200 flex items-center space-x-4 animate-fade-in">
+          <LogOut className="w-6 h-6 text-red-600" />
+          <span className="text-gray-900 font-medium">Are you sure you want to sign out?</span>
+          <button
+            onClick={confirmSignout}
+            disabled={signingOut}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition disabled:opacity-60"
+          >
+            {signingOut ? 'Signing out...' : 'Yes'}
+          </button>
+          <button
+            onClick={() => setShowSignoutToast(false)}
+            disabled={signingOut}
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition disabled:opacity-60"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }

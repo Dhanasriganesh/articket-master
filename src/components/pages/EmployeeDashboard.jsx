@@ -1,39 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Mail,
   AlertCircle,
   CheckCircle,
   Clock,
-  XCircle,
   Plus,
   MessageSquare,
-  Send,
   User,
-  Search,
-  Filter,
-  ChevronDown,
   Loader2,
-  Paperclip,
-  Trash2,
   RefreshCw,
-  Calendar,
-  Tag,
-  ChevronRight,
   LogOut,
   Home,
   FileText,
-  Settings,
-  Bell,
   Menu,
-  X,
   ChevronsLeft,
-  ChevronsRight,
-  Flag,
-  Edit,
-  ChevronLeft
+  ChevronsRight
 } from 'lucide-react';
-import { collection, query, onSnapshot, doc, updateDoc, serverTimestamp, where, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, where, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { auth } from '../../firebase/config';
 import Ticketing from './Ticketing'; // Import the Ticketing component
@@ -41,96 +24,21 @@ import EmployeeTickets from './EmployeeTickets'; // Import the EmployeeTickets c
  
 function EmployeeDashboard() {
   const [tickets, setTickets] = useState([]);
-  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [selectedTicket] = useState(null);
   const [error, setError] = useState(null);
-  const [newResponse, setNewResponse] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('All');
-  const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [employeeName, setEmployeeName] = useState('');
-  const [userRole, setUserRole] = useState(null);
-  const [requesterNameFilter, setRequesterNameFilter] = useState('');
-  const [technicianFilter, setTechnicianFilter] = useState('');
-  const [dueDateFilter, setDueDateFilter] = useState('');
-  const [createdDateFilter, setCreatedDateFilter] = useState('');
-  const [hasSearched, setHasSearched] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState(null);
   const navigate = useNavigate();
-  const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const unsubscribeRef = useRef(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
- 
-  // Mock data for demonstration
-  const mockTickets = [
-    {
-      id: '1',
-      subject: 'Login Issues with Account',
-      description: 'I am unable to log into my account. The password reset link is not working.',
-      status: 'Open',
-      created: new Date('2024-01-15T10:00:00'),
-      ticketNumber: 'TKT-001',
-      adminResponses: [
-        {
-          message: 'Thank you for contacting support. We are looking into your login issue.',
-          timestamp: new Date('2024-01-15T11:00:00')
-        }
-      ],
-      customerResponses: [],
-      customer: 'John Doe',
-      project: 'Technical Support'
-    },
-    {
-      id: '2',
-      subject: 'Billing Question',
-      description: 'I have a question about my recent invoice. The charges seem higher than expected.',
-      status: 'In Progress',
-      created: new Date('2024-01-14T14:30:00'),
-      ticketNumber: 'TKT-002',
-      adminResponses: [
-        {
-          message: 'We have received your billing inquiry and are reviewing your account.',
-          timestamp: new Date('2024-01-14T15:00:00')
-        }
-      ],
-      customerResponses: [
-        {
-          message: 'Thank you for the quick response. I look forward to hearing back.',
-          timestamp: new Date('2024-01-14T15:30:00')
-        }
-      ],
-      customer: 'Jane Smith',
-      project: 'Billing'
-    },
-    {
-      id: '3',
-      subject: 'Feature Request',
-      description: 'It would be great to have a dark mode option in the application.',
-      status: 'Resolved',
-      created: new Date('2024-01-13T09:15:00'),
-      ticketNumber: 'TKT-003',
-      adminResponses: [
-        {
-          message: 'Thank you for the feature request. We will consider this for future updates.',
-          timestamp: new Date('2024-01-13T10:00:00')
-        },
-        {
-          message: 'Good news! Dark mode has been added to our roadmap for the next release.',
-          timestamp: new Date('2024-01-13T16:00:00')
-        }
-      ],
-      customerResponses: [],
-      customer: 'Mike Johnson',
-      project: 'Product'
-    }
-  ];
  
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
@@ -144,12 +52,11 @@ function EmployeeDashboard() {
     return () => unsubscribe();
   }, []);
  
+  // Fetch projects when user is authenticated
   useEffect(() => {
     if (authChecked && user) {
       setIsLoading(true);
       setError(null);
-      setupTicketListener(user);
-      // Fetch all projects where user is an employee
       const fetchProjects = async () => {
         try {
           const projectsQuery = query(collection(db, 'projects'));
@@ -166,7 +73,7 @@ function EmployeeDashboard() {
             setSelectedProjectId(projectsData[0].id);
           }
           setIsLoading(false);
-        } catch (err) {
+        } catch {
           setError('Failed to load projects.');
           setIsLoading(false);
         }
@@ -175,23 +82,23 @@ function EmployeeDashboard() {
     }
   }, [authChecked, user, db]);
  
-  const setupTicketListener = (firebaseUser) => {
-    try {
-      if (!firebaseUser) {
-        setError('Please sign in to view tickets');
-        setIsLoading(false);
-        return;
-      }
-      // Set employee name from email
-      const email = firebaseUser.email;
-      const name = email.split('@')[0];
-      setEmployeeName(name.charAt(0).toUpperCase() + name.slice(1));
-      // Query tickets for the current user
+  // Ticket listener updates when selectedProjectId, projects, or user changes
+  useEffect(() => {
+    if (!authChecked || !user) return;
+    setIsLoading(true);
+    setError(null);
+    let unsubscribe;
+    // Set employee name from email
+    const email = user.email;
+    const name = email.split('@')[0];
+    setEmployeeName(name.charAt(0).toUpperCase() + name.slice(1));
+    if (selectedProjectId && selectedProjectId !== 'all') {
+      // Single project
       const q = query(
         collection(db, 'tickets'),
-        where('email', '==', firebaseUser.email)
+        where('projectId', '==', selectedProjectId)
       );
-      const unsubscribe = onSnapshot(q,
+      unsubscribe = onSnapshot(q,
         (querySnapshot) => {
           try {
             const ticketsData = [];
@@ -232,13 +139,64 @@ function EmployeeDashboard() {
           setIsLoading(false);
         }
       );
-      unsubscribeRef.current = unsubscribe;
-    } catch (err) {
-      console.error('Connection error:', err);
-      setError('Unable to connect to the server. Please check your internet connection and try again.');
+    } else if (selectedProjectId === 'all' && projects.length > 0) {
+      // All projects: fetch tickets for all managed projects
+      const projectIds = projects.map(p => p.id);
+      let allTickets = [];
+      let unsubscribes = [];
+      const batchSize = 10;
+      for (let i = 0; i < projectIds.length; i += batchSize) {
+        const batchIds = projectIds.slice(i, i + batchSize);
+        const q = query(
+          collection(db, 'tickets'),
+          where('projectId', 'in', batchIds)
+        );
+        const batchUnsub = onSnapshot(q, (querySnapshot) => {
+          let batchTickets = [];
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            batchTickets.push({
+              id: doc.id,
+              subject: data.subject || 'No Subject',
+              description: data.description || 'No Description',
+              status: data.status || 'Open',
+              created: data.created || null,
+              dueDate: data.dueDate || null,
+              ticketNumber: data.ticketNumber || `TKT-${doc.id}`,
+              adminResponses: data.adminResponses || [],
+              customerResponses: data.customerResponses || [],
+              customer: data.customer || 'Unknown',
+              project: data.project || 'General'
+            });
+          });
+          allTickets = allTickets.filter(t => !batchTickets.some(bt => bt.id === t.id)).concat(batchTickets);
+          // Sort tickets by created date
+          allTickets.sort((a, b) => {
+            const dateA = a.created?.toDate?.() || new Date(a.created);
+            const dateB = b.created?.toDate?.() || new Date(b.created);
+            return dateB - dateA;
+          });
+          setTickets([...allTickets]);
+          setError(null);
+          setIsLoading(false);
+        }, (error) => {
+          console.error('Firestore error:', error);
+          setError('Error connecting to the server. Please try again.');
+          setIsLoading(false);
+        });
+        unsubscribes.push(batchUnsub);
+      }
+      unsubscribe = () => unsubscribes.forEach(unsub => unsub());
+    } else {
+      setTickets([]);
       setIsLoading(false);
+      return;
     }
-  };
+    unsubscribeRef.current = unsubscribe;
+    return () => {
+      if (unsubscribeRef.current) unsubscribeRef.current();
+    };
+  }, [authChecked, user, selectedProjectId, projects]);
  
   // Enhanced scroll to bottom function
   const scrollToBottom = () => {
@@ -270,152 +228,12 @@ function EmployeeDashboard() {
     }
   };
  
-  const sendResponse = async (ticketId, message) => {
-    if (!message.trim()) return;
-   
-    setIsSending(true);
-    setError(null);
-   
-    try {
-      const ticketRef = doc(db, 'tickets', ticketId);
-      const ticket = tickets.find(t => t.id === ticketId);
-     
-      const newResponse = {
-        message: message.trim(),
-        timestamp: new Date(),
-        sender: 'customer'
-      };
-     
-      await updateDoc(ticketRef, {
-        customerResponses: [...(ticket.customerResponses || []), newResponse],
-        lastUpdated: serverTimestamp()
-      });
-     
-      setSelectedTicket(prev => ({
-        ...prev,
-        customerResponses: [...(prev.customerResponses || []), newResponse]
-      }));
-     
-      setNewResponse('');
-     
-      // Scroll to bottom after sending message
-      setTimeout(() => {
-        scrollToBottom();
-      }, 150);
-     
-    } catch (error) {
-      console.error('Error sending response:', error);
-      setError('Failed to send response. Please try again.');
-    } finally {
-      setIsSending(false);
-    }
-  };
- 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'Open': return <AlertCircle className="w-4 h-4 text-blue-500" />;
-      case 'In Progress': return <Clock className="w-4 h-4 text-amber-500" />;
-      case 'Resolved': return <CheckCircle className="w-4 h-4 text-emerald-500" />;
-      case 'Closed': return <XCircle className="w-4 h-4 text-gray-500" />;
-      default: return null;
-    }
-  };
- 
-  const getStatusBadge = (status) => {
-    const baseClasses = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium";
-    switch (status) {
-      case 'Open':
-        return `${baseClasses} bg-blue-100 text-blue-800`;
-      case 'In Progress':
-        return `${baseClasses} bg-amber-100 text-amber-800`;
-      case 'Resolved':
-        return `${baseClasses} bg-emerald-100 text-emerald-800`;
-      case 'Closed':
-        return `${baseClasses} bg-gray-100 text-gray-800`;
-      default:
-        return `${baseClasses} bg-gray-100 text-gray-800`;
-    }
-  };
- 
-  const formatMessageTime = (timestamp) => {
-    if (!timestamp) return '';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
- 
-    const timeStr = date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
- 
-    if (date.toDateString() === now.toDateString()) {
-      return timeStr;
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return `Yesterday ${timeStr}`;
-    } else if (date.getFullYear() === now.getFullYear()) {
-      return `${date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric'
-      })} ${timeStr}`;
-    } else {
-      return `${date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      })} ${timeStr}`;
-    }
-  };
- 
-  // New function to format date and time for table display
-  const formatTableDateTime = (timestamp) => {
-    if (!timestamp) return '-';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
-  };
- 
-  const filteredTickets = tickets.filter(ticket => {
-    const matchesSearch = ticket.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         ticket.ticketNumber.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRequester = requesterNameFilter === '' || ticket.customer.toLowerCase().includes(requesterNameFilter.toLowerCase());
-    const matchesTechnician = technicianFilter === '' || (ticket.adminResponses.length > 0 && ticket.adminResponses[0].message.toLowerCase().includes(technicianFilter.toLowerCase())); // This is a placeholder, will need proper technician field
-    const matchesDueDate = dueDateFilter === '' || (ticket.dueDate && new Date(ticket.dueDate).toDateString() === new Date(dueDateFilter).toDateString());
-    const matchesCreatedDate = createdDateFilter === '' || (ticket.created && new Date(ticket.created.toDate()).toDateString() === new Date(createdDateFilter).toDateString());
- 
-    if (filterStatus === 'All') {
-      return matchesSearch && matchesRequester && matchesTechnician && matchesDueDate && matchesCreatedDate;
-    }
-    return matchesSearch && matchesRequester && matchesTechnician && matchesDueDate && matchesCreatedDate && ticket.status === filterStatus;
-  });
- 
-  const handleSearch = () => {
-    setHasSearched(true);
-  };
- 
-  const clearFilters = () => {
-    setSearchTerm('');
-    setFilterStatus('All');
-    setRequesterNameFilter('');
-    setTechnicianFilter('');
-    setDueDateFilter('');
-    setCreatedDateFilter('');
-    setHasSearched(false);
-  };
- 
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, active: activeTab === 'dashboard' },
     { id: 'tickets', label: 'My Tickets', icon: FileText, active: activeTab === 'tickets' },
     { id: 'create', label: 'Create Ticket', icon: Plus, active: activeTab === 'create' }
    
-    
+   
   ];
  
   const renderSidebarItem = (item) => {
@@ -451,7 +269,6 @@ function EmployeeDashboard() {
         const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
         if (userDoc.exists()) {
           const role = userDoc.data().role;
-          setUserRole(role);
           // If not employee, redirect accordingly
           if (role === 'client') {
             navigate('/clientdashboard');
@@ -610,7 +427,7 @@ function EmployeeDashboard() {
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              
+             
               <button
                 onClick={() => setShowLogoutConfirm(true)}
                 className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
@@ -642,7 +459,7 @@ function EmployeeDashboard() {
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
               {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
                   <div className="flex items-center justify-between">
                     <div>
@@ -684,17 +501,6 @@ function EmployeeDashboard() {
                     </div>
                     <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
                       <CheckCircle className="w-6 h-6 text-emerald-600" />
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Closed</p>
-                      <p className="text-2xl font-bold text-gray-600">{tickets.filter(t => t.status === 'Closed').length}</p>
-                    </div>
-                    <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center">
-                      <XCircle className="w-6 h-6 text-gray-600" />
                     </div>
                   </div>
                 </div>
@@ -741,7 +547,7 @@ function EmployeeDashboard() {
             </div>
           )}
  
-          
+         
         </main>
       </div>
     </div>
@@ -749,5 +555,3 @@ function EmployeeDashboard() {
 }
  
 export default EmployeeDashboard;
- 
- 

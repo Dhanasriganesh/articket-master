@@ -26,6 +26,7 @@ const ClientTickets = ({ setActiveTab }) => {
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
       if (user) {
+        console.log('User authenticated in ClientTickets.jsx', user.email);
         setLoading(true);
         setCurrentUserEmail(user.email);
  
@@ -53,7 +54,9 @@ const ClientTickets = ({ setActiveTab }) => {
             const userData = userDocSnap.data();
             currentProject = userData.project || 'General';
             setUserProject(currentProject);
+            console.log('Fetched user project:', currentProject);
           } else {
+            console.warn('User document not found for uid:', user.uid);
             setUserProject('General');
           }
         } catch (err) {
@@ -147,6 +150,9 @@ const ClientTickets = ({ setActiveTab }) => {
             }
           });
           setClients(clientsList);
+ 
+          console.log('Fetched employees:', employeesList);
+          console.log('Fetched clients:', clientsList);
         } catch (err) {
           console.error('Error fetching users:', err);
         }
@@ -164,6 +170,7 @@ const ClientTickets = ({ setActiveTab }) => {
           }));
           setTicketsData(tickets);
           setLoading(false);
+          console.log(`Fetched tickets for project ${currentProject}:`, tickets);
         }, (err) => {
           console.error('Error fetching project-filtered tickets:', err);
           setError('Failed to load tickets for your project.');
@@ -173,6 +180,7 @@ const ClientTickets = ({ setActiveTab }) => {
         return () => unsubscribeTickets();
  
       } else {
+        console.log('No user authenticated in ClientTickets.jsx');
         setLoading(false);
         setTicketsData([]);
         setUserProject(null);

@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, getDoc, getDocs, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../firebase/config';
+import { Link, useNavigate } from 'react-router-dom';
 import { BsTicketFill, BsFolderFill } from 'react-icons/bs';
 import TicketDetails from './TicketDetails';
-import PropTypes from 'prop-types';
-
-const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => {
+ 
+const EmployeeTickets = () => {
   const [ticketsData, setTicketsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const navigate = useNavigate();
   const [userProject, setUserProject] = useState(null);
   const [selectedTicketId, setSelectedTicketId] = useState(null);
   const [filterStatus, setFilterStatus] = useState('All');
@@ -20,86 +21,158 @@ const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => 
   const [clients, setClients] = useState([]);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
   const [currentUserData, setCurrentUserData] = useState(null);
-
+ 
   useEffect(() => {
-    if (!selectedProjectId || (selectedProjectId === 'all' && (!allProjectIds || allProjectIds.length === 0))) {
-      setTicketsData([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    // Fetch employees and clients for the selected project(s)
-    const fetchUsersAndTickets = async () => {
-      try {
-        let projectIdsToFetch = [];
-        if (selectedProjectId === 'all') {
-          projectIdsToFetch = allProjectIds;
-        } else {
-          projectIdsToFetch = [selectedProjectId];
+    const unsubscribeAuth = auth.onAuthStateChanged(async user => {
+      if (user) {
+        setLoading(true);
+        setCurrentUserEmail(user.email);
+        let currentProject = 'General';
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            currentProject = userData.project || 'General';
+            setUserProject(currentProject);
+            setCurrentUserData(userData);
+          } else {
+            setUserProject('General');
+          }
+        } catch (err) {
+          setError('Failed to load user project.');
+          setUserProject('General');
         }
-        // Fetch tickets for the selected project(s)
+ 
+        // Fetch employees and clients separately
+        try {
+          const usersRef = collection(db, 'users');
+         
+          // Fetch employees
+          const employeesQuery = query(
+            usersRef,
+            where('project', '==', currentProject),
+            where('role', '==', 'employee')
+          );
+          const employeesSnapshot = await getDocs(employeesQuery);
+          const employeesList = [];
+          const employeeEmails = new Set();
+          const employeeNameCounts = {};
+ 
+          employeesSnapshot.forEach((doc) => {
+            const userData = doc.data();
+            if (!employeeEmails.has(userData.email)) {
+              employeeEmails.add(userData.email);
+             
+              const displayName = userData.firstName && userData.lastName
+                ? `${userData.firstName} ${userData.lastName}`.trim()
+                : userData.email.split('@')[0];
+             
+              employeeNameCounts[displayName] = (employeeNameCounts[displayName] || 0) + 1;
+             
+              employeesList.push({
+                id: doc.id,
+                email: userData.email,
+                name: displayName
+              });
+            }
+          });
+ 
+          employeesList.sort((a, b) => a.name.localeCompare(b.name));
+          employeesList.forEach(emp => {
+            if (employeeNameCounts[emp.name] > 1) {
+              const emailPart = emp.email.split('@')[0];
+              emp.displayName = `${emp.name} (${emailPart})`;
+            } else {
+              emp.displayName = emp.name;
+            }
+          });
+          setEmployees(employeesList);
+ 
+          // Fetch clients
+          const clientsQuery = query(
+            usersRef,
+            where('project', '==', currentProject),
+            where('role', '==', 'client')
+          );
+          const clientsSnapshot = await getDocs(clientsQuery);
+          const clientsList = [];
+          const clientEmails = new Set();
+          const clientNameCounts = {};
+ 
+          clientsSnapshot.forEach((doc) => {
+            const userData = doc.data();
+            if (userData.email !== user.email && !clientEmails.has(userData.email)) {
+              clientEmails.add(userData.email);
+             
+              const displayName = userData.firstName && userData.lastName
+                ? `${userData.firstName} ${userData.lastName}`.trim()
+                : userData.email.split('@')[0];
+             
+              clientNameCounts[displayName] = (clientNameCounts[displayName] || 0) + 1;
+             
+              clientsList.push({
+                id: doc.id,
+                email: userData.email,
+                name: displayName
+              });
+            }
+          });
+ 
+          clientsList.sort((a, b) => a.name.localeCompare(b.name));
+          clientsList.forEach(client => {
+            if (clientNameCounts[client.name] > 1) {
+              const emailPart = client.email.split('@')[0];
+              client.displayName = `${client.name} (${emailPart})`;
+            } else {
+              client.displayName = client.name;
+            }
+          });
+          setClients(clientsList);
+ 
+          console.log('Fetched employees:', employeesList);
+          console.log('Fetched clients:', clientsList);
+        } catch (err) {
+          console.error('Error fetching users:', err);
+        }
+ 
+        // Query tickets for the employee's project
         const ticketsCollectionRef = collection(db, 'tickets');
-        let tickets = [];
-        if (projectIdsToFetch.length === 1) {
-          // Single project
-          const q = query(
-            ticketsCollectionRef,
-            where('projectId', '==', projectIdsToFetch[0])
-          );
-          const unsubscribeTickets = onSnapshot(q, (snapshot) => {
-            tickets = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }));
-            setTicketsData(tickets);
-            setLoading(false);
-          }, (error) => {
-            setError('Failed to load tickets for your project.');
-            setLoading(false);
-          });
-          return () => unsubscribeTickets();
-        } else if (projectIdsToFetch.length > 1 && projectIdsToFetch.length <= 10) {
-          // Multiple projects (up to 10)
-          const q = query(
-            ticketsCollectionRef,
-            where('projectId', 'in', projectIdsToFetch)
-          );
-          const unsubscribeTickets = onSnapshot(q, (snapshot) => {
-            tickets = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }));
-            setTicketsData(tickets);
-            setLoading(false);
-          }, (error) => {
-            setError('Failed to load tickets for your projects.');
-            setLoading(false);
-          });
-          return () => unsubscribeTickets();
-        } else {
-          // More than 10 projects: batch queries (not implemented here)
-          setError('Too many projects to display tickets. Please select a single project.');
-          setTicketsData([]);
+        const q = query(
+          ticketsCollectionRef,
+          where('project', '==', currentProject)
+        );
+        const unsubscribeTickets = onSnapshot(q, (snapshot) => {
+          const tickets = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          setTicketsData(tickets);
           setLoading(false);
-        }
-      } catch (err) {
-        setError('Failed to load users or tickets.');
+        }, (err) => {
+          setError('Failed to load tickets for your project.');
+          setLoading(false);
+        });
+        return () => unsubscribeTickets();
+      } else {
         setLoading(false);
+        setTicketsData([]);
+        setUserProject(null);
+        setEmployees([]);
+        setClients([]);
       }
-    };
-    fetchUsersAndTickets();
-    // eslint-disable-next-line
-  }, [selectedProjectId, allProjectIds]);
-
+    });
+    return () => unsubscribeAuth();
+  }, []);
+ 
   const handleTicketClick = (ticketId) => {
     setSelectedTicketId(ticketId);
   };
-
+ 
   const handleBackToTickets = () => {
     setSelectedTicketId(null);
   };
-
+ 
   // Filter tickets based on all criteria
   const filteredTickets = ticketsData.filter(ticket => {
     const matchesStatus = filterStatus === 'All' || ticket.status === filterStatus;
@@ -115,7 +188,7 @@ const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => 
       : clients.find(client => client.email === ticket.email)
         ? 'client'
         : null;
-
+ 
     if (ticketUser === 'employee') {
       matchesRaisedBy = filterRaisedByEmployee === 'all' ||
         (filterRaisedByEmployee === 'me' && ticket.email === currentUserEmail) ||
@@ -128,7 +201,7 @@ const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => 
    
     return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy;
   });
-
+ 
   const handleAssignTicket = async (ticketId, email) => {
     if (!ticketId || !email) return;
     const ticketRef = doc(db, 'tickets', ticketId);
@@ -147,7 +220,7 @@ const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => 
       console.error('Error assigning ticket:', err);
     }
   };
-
+ 
   const handleUnassignTicket = async (ticketId) => {
     if (!ticketId || !auth.currentUser) return;
     const ticketRef = doc(db, 'tickets', ticketId);
@@ -161,7 +234,7 @@ const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => 
       console.error('Error unassigning ticket:', err);
     }
   };
-
+ 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -172,7 +245,7 @@ const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => 
       </div>
     );
   }
-
+ 
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -183,11 +256,11 @@ const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => 
       </div>
     );
   }
-
+ 
   if (selectedTicketId) {
     return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} />;
   }
-
+ 
   return (
     <>
       <div className="flex justify-between items-center mb-8">
@@ -199,15 +272,15 @@ const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => 
             <p className="text-gray-600 mt-2">Project: {userProject}</p>
           )}
         </div>
-        <button
-          onClick={() => setActiveTab('create')}
+        <Link
+          to="/employeedashboard?tab=create"
           className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
         >
           <BsFolderFill className="mr-2" />
           Create New Ticket
-        </button>
+        </Link>
       </div>
-
+ 
       {/* Filters Bar */}
       <div className="flex flex-wrap items-center gap-4 mb-6 bg-white p-4 rounded-xl shadow border border-gray-100">
         <div>
@@ -296,7 +369,7 @@ const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => 
           Clear Filters
         </button>
       </div>
-
+ 
       {ticketsData.length > 0 ? (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <div className="overflow-x-auto">
@@ -368,6 +441,7 @@ const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => 
                       {(() => {
                         const creatorIsClient = clients.some(c => c.email === ticket.email);
                         const isProjectManager = currentUserData?.role === 'project_manager';
+                        const assignable = creatorIsClient && !isProjectManager ? [] : employees;
                         return (
                           <div className="flex items-center gap-2">
                             <select
@@ -425,24 +499,18 @@ const EmployeeTickets = ({ setActiveTab, selectedProjectId, allProjectIds }) => 
             No tickets have been raised for your project yet.
           </p>
           <div className="mt-6">
-            <button
-              onClick={() => setActiveTab('create')}
+            <Link
+              to="/employeedashboard?tab=create"
               className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
               <BsFolderFill className="mr-2" />
               Create New Ticket
-            </button>
+            </Link>
           </div>
         </div>
       )}
     </>
   );
 };
-
-EmployeeTickets.propTypes = {
-  setActiveTab: PropTypes.func,
-  selectedProjectId: PropTypes.string,
-  allProjectIds: PropTypes.array
-};
-
+ 
 export default EmployeeTickets;

@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { doc, getDoc, updateDoc, arrayUnion, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../../firebase/config';
 import {
@@ -34,9 +34,11 @@ const TicketDetails = ({ ticketId, onBack }) => {
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [newResponse, setNewResponse] = useState(''); // New state for comment input
+  const [newResponse, setNewResponse] = useState('');
   const [isSendingResponse, setIsSendingResponse] = useState(false);
-  const [activeTab, setActiveTab] = useState('Conversations');
+  const [activeTab, setActiveTab] = useState('Commentbox');
+  const [currentUserName, setCurrentUserName] = useState('');
+  const commentsEndRef = useRef(null);
 
   useEffect(() => {
     const fetchTicketAndUsers = async () => {
@@ -45,7 +47,6 @@ const TicketDetails = ({ ticketId, onBack }) => {
         setLoading(false);
         return;
       }
-
       setLoading(true);
       try {
         // Fetch ticket details
@@ -57,34 +58,44 @@ const TicketDetails = ({ ticketId, onBack }) => {
           return;
         }
         const ticketData = { id: ticketSnap.id, ...ticketSnap.data() };
-        setTicket(ticketData);
-
-        // Fetch current user data
+        // Merge old responses for display if comments array is missing
+        let comments = [];
+        if (ticketData.comments && Array.isArray(ticketData.comments)) {
+          comments = ticketData.comments;
+        } else {
+          // Migrate old responses for display only
+          if (ticketData.adminResponses) {
+            comments = comments.concat(ticketData.adminResponses.map(r => ({ ...r, authorRole: 'admin' })));
+          }
+          if (ticketData.customerResponses) {
+            comments = comments.concat(ticketData.customerResponses.map(r => ({ ...r, authorRole: 'customer' })));
+          }
+        }
+        // Sort comments by timestamp
+        comments.sort((a, b) => {
+          const ta = a.timestamp?.seconds ? a.timestamp.seconds : (a.timestamp?._seconds || new Date(a.timestamp).getTime()/1000 || 0);
+          const tb = b.timestamp?.seconds ? b.timestamp.seconds : (b.timestamp?._seconds || new Date(b.timestamp).getTime()/1000 || 0);
+          return ta - tb;
+        });
+        setTicket({ ...ticketData, comments });
+        // Fetch current user name
         const currentUser = auth.currentUser;
         if (currentUser) {
           const userDocRef = doc(db, 'users', currentUser.uid);
           const userDocSnap = await getDoc(userDocRef);
           if (userDocSnap.exists()) {
-            // setCurrentUserData(userDocSnap.data());
+            const data = userDocSnap.data();
+            let name = '';
+            if (data.firstName || data.lastName) {
+              name = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+            }
+            if (!name) {
+              name = (data.email || currentUser.email || '').split('@')[0];
+            }
+            setCurrentUserName(name);
+          } else {
+            setCurrentUserName(currentUser.displayName || (currentUser.email?.split('@')[0] || ''));
           }
-        }
-
-        // Determine who can be assigned the ticket
-        const usersRef = collection(db, 'users');
-        const ticketCreatorQuery = query(usersRef, where('email', '==', ticketData.email));
-        const ticketCreatorSnap = await getDocs(ticketCreatorQuery);
-
-        if (!ticketCreatorSnap.empty) {
-          const creatorData = ticketCreatorSnap.docs[0].data();
-          const targetRole = creatorData.role === 'client' ? 'employee' : 'client';
-
-          const assignableUsersQuery = query(
-            usersRef,
-            where('project', '==', ticketData.project),
-            where('role', '==', targetRole)
-          );
-          const assignableUsersSnap = await getDocs(assignableUsersQuery);
-          // setAssignableUsers(usersList);
         }
       } catch (err) {
         console.error('Error fetching data:', err);
@@ -93,59 +104,61 @@ const TicketDetails = ({ ticketId, onBack }) => {
         setLoading(false);
       }
     };
-
     fetchTicketAndUsers();
   }, [ticketId]);
 
+  // Scroll to bottom when comments change
+  useEffect(() => {
+    if (commentsEndRef.current) {
+      commentsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [ticket?.comments?.length]);
+
   const handleAddResponse = async () => {
     if (!newResponse.trim() || !ticketId || !auth.currentUser) return;
-
     setIsSendingResponse(true);
     try {
       const ticketRef = doc(db, 'tickets', ticketId);
-      const response = {
+      const currentUser = auth.currentUser;
+      // Get user name
+      let authorName = currentUserName;
+      if (!authorName) {
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const data = userDocSnap.data();
+          authorName = data.firstName || data.lastName ? `${data.firstName || ''} ${data.lastName || ''}`.trim() : (data.email || currentUser.email || '').split('@')[0];
+        } else {
+          authorName = currentUser.displayName || (currentUser.email?.split('@')[0] || '');
+        }
+      }
+      const comment = {
         message: newResponse.trim(),
-        timestamp: serverTimestamp(),
-        authorEmail: auth.currentUser.email, // Store the email of the responder
-        authorRole: 'client', // Assuming client is responding
+        timestamp: new Date(),
+        authorEmail: currentUser.email,
+        authorName,
+        authorRole: 'user',
       };
-
       await updateDoc(ticketRef, {
-        customerResponses: arrayUnion(response), // Add new response to customerResponses array
-        lastUpdated: serverTimestamp() // Update last updated timestamp
+        comments: arrayUnion(comment),
+        lastUpdated: serverTimestamp()
       });
-
-      setNewResponse(''); // Clear input
-      // Re-fetch ticket to update UI with new response, or manually add to state
-      // For simplicity, let's re-fetch the ticket details to update the UI
+      setNewResponse('');
+      // Re-fetch ticket to update UI
       const updatedTicketSnap = await getDoc(ticketRef);
       if (updatedTicketSnap.exists()) {
-        setTicket({ id: updatedTicketSnap.id, ...updatedTicketSnap.data() });
-        // Send email notification to project members
-        const updatedTicket = updatedTicketSnap.data();
-        const memberEmails = await fetchProjectMemberEmails(updatedTicket.project);
-        const emailParams = {
-          to_email: memberEmails.join(','),
-          from_name: 'Articket Support',
-          reply_to: auth.currentUser.email, // commenter's email
-          subject: updatedTicket.subject,
-          request_id: ticketId,
-          status: updatedTicket.status,
-          priority: updatedTicket.priority,
-          category: updatedTicket.category,
-          project: updatedTicket.project,
-          assigned_to: updatedTicket.assignedTo ? (updatedTicket.assignedTo.name || updatedTicket.assignedTo.email) : '-',
-          created: updatedTicket.created ? new Date(updatedTicket.created.toDate()).toLocaleString() : '',
-          requester: `${updatedTicket.customer} (${updatedTicket.email})`,
-          description: updatedTicket.description,
-          comment: newResponse.trim(),
-          ticket_link: `https://articket.vercel.app/tickets/${ticketId}`
-        };
-        await sendEmail(emailParams);
+        const ticketData = { id: updatedTicketSnap.id, ...updatedTicketSnap.data() };
+        let comments = ticketData.comments || [];
+        comments.sort((a, b) => {
+          const ta = a.timestamp?.seconds ? a.timestamp.seconds : (a.timestamp?._seconds || new Date(a.timestamp).getTime()/1000 || 0);
+          const tb = b.timestamp?.seconds ? b.timestamp.seconds : (b.timestamp?._seconds || new Date(b.timestamp).getTime()/1000 || 0);
+          return ta - tb;
+        });
+        setTicket({ ...ticketData, comments });
+        // Optionally send email notification here
       }
     } catch (err) {
-      console.error('Error adding response:', err);
-      // Optionally, show an error to the user
+      console.error('Error adding comment:', err);
     } finally {
       setIsSendingResponse(false);
     }
@@ -215,39 +228,16 @@ const TicketDetails = ({ ticketId, onBack }) => {
     <div className="flex flex-col lg:flex-row gap-8">
       {/* Main Content */}
       <div className="flex-1 min-w-0">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8 border-b pb-6 bg-gradient-to-r from-blue-50 to-white rounded-2xl shadow-sm px-6 pt-6">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-2xl font-bold text-gray-900 tracking-tight leading-tight">{ticket.subject}</span>
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-red-50 text-red-700 text-xs font-semibold border border-red-200 shadow-sm" style={{display: ticket.priority === 'High' ? 'inline-flex' : 'none'}}>
-                <span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span> High
-              </span>
-            </div>
-            <div className="text-xs text-gray-500 font-medium">Requested by <span className="font-semibold text-blue-700">{ticket.customer}</span> on {ticket.created ? new Date(ticket.created.toDate()).toLocaleString() : 'N/A'}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={onBack} className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-xl shadow transition-all"><ArrowLeft className="w-4 h-4 mr-1" /> Back</button>
-          </div>
-        </div>
+      <div className="flex flex-col md:flex-row gap-4 mb-8">
 
-        {/* Assignment section */}
-        <div className="mb-8 px-2">
-          <div className="bg-white rounded-2xl p-6 shadow-sm border">
-            <h3 className="text-base font-semibold text-gray-800 mb-3">Assignee</h3>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</p>
-                {ticket.assignedTo && <p className="text-xs text-gray-500">{ticket.assignedTo.email}</p>}
-              </div>
-            </div>
-          </div>
-        </div>
+
+</div>
+
 
         {/* Tabs */}
         <div className="border-b mb-8 px-2">
           <nav className="flex flex-wrap gap-2">
-            {['Conversations','Details','Checklists','Resolution','Time Elapsed Analysis'].map(tab => (
+            {['Commentbox','Details','Checklists','Resolution','Time Elapsed Analysis'].map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -262,58 +252,42 @@ const TicketDetails = ({ ticketId, onBack }) => {
 
         {/* Tab Content */}
         <div className="px-2 pb-2">
-          {activeTab === 'Conversations' && (
+          {activeTab === 'Commentbox' && (
             <>
-              {/* Conversation List (Responses) */}
-              <div className="bg-gradient-to-br from-blue-50 to-white rounded-2xl p-6 shadow-sm mb-10">
-                <div className="mb-4 text-base text-gray-700 font-semibold">Conversations</div>
+              {/* Comments List */}
+              <div className="bg-gradient-to-br from-blue-50 to-white rounded-2xl p-6 shadow-sm mb-10 max-h-96 overflow-y-auto">
+                <div className="mb-4 text-base text-gray-700 font-semibold">Comment Box</div>
                 <div className="space-y-6">
-                  {/* Admin Responses */}
-                  {ticket.adminResponses && ticket.adminResponses.length > 0 && ticket.adminResponses.map((response, index) => (
-                    <div key={index} className="flex items-start gap-4">
-                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center font-bold text-blue-700 text-lg shadow-sm">
-                        {response.authorEmail ? response.authorEmail.charAt(0).toUpperCase() : 'A'}
-                      </div>
-                      <div className="flex-1">
-                        <div className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-semibold text-blue-700">Admin</span>
-                            <span className="text-xs text-gray-400">{formatTimestamp(response.timestamp)}</span>
+                  {ticket.comments && ticket.comments.length > 0 ? (
+                    ticket.comments.map((comment, index) => (
+                      <div key={index} className="flex items-start gap-4">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center font-bold text-blue-700 text-lg shadow-sm">
+                          {comment.authorName ? comment.authorName.charAt(0).toUpperCase() : (comment.authorEmail ? comment.authorEmail.charAt(0).toUpperCase() : '?')}
+                        </div>
+                        <div className="flex-1">
+                          <div className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-semibold text-blue-700">{comment.authorName || comment.authorEmail}</span>
+                              <span className="text-xs text-gray-400">{formatTimestamp(comment.timestamp)}</span>
+                            </div>
+                            <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{comment.message}</div>
                           </div>
-                          <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{response.message}</div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                  {/* Customer Responses */}
-                  {ticket.customerResponses && ticket.customerResponses.length > 0 && ticket.customerResponses.map((response, index) => (
-                    <div key={index} className="flex items-start gap-4 flex-row-reverse">
-                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-green-200 flex items-center justify-center font-bold text-green-700 text-lg shadow-sm">
-                        {response.authorEmail ? response.authorEmail.charAt(0).toUpperCase() : 'U'}
-                      </div>
-                      <div className="flex-1">
-                        <div className="bg-white border border-green-100 rounded-xl p-4 shadow-sm">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-semibold text-green-700">You</span>
-                            <span className="text-xs text-gray-400">{formatTimestamp(response.timestamp)}</span>
-                          </div>
-                          <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{response.message}</div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {(!ticket.adminResponses || ticket.adminResponses.length === 0) && (!ticket.customerResponses || ticket.customerResponses.length === 0) && (
-                    <div className="text-gray-400 text-center py-12">No conversations yet.</div>
+                    ))
+                  ) : (
+                    <div className="text-gray-400 text-center py-12">No comments yet.</div>
                   )}
+                  <div ref={commentsEndRef} />
                 </div>
               </div>
-              {/* Add Response Section */}
+              {/* Add Comment Section */}
               <div className="bg-white rounded-2xl p-8 shadow border border-gray-100">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Add a Response</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Add a comment</h3>
                 <div className="flex flex-col space-y-4">
                   <textarea
                     className="w-full p-4 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[100px] bg-gray-50 shadow-sm"
-                    placeholder="Type your response here..."
+                    placeholder="Type your comment here..."
                     value={newResponse}
                     onChange={(e) => setNewResponse(e.target.value)}
                     rows="4"
@@ -335,7 +309,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
                       ) : (
                         <>
                           <Send className="h-4 w-4 mr-2" />
-                          <span>Send Response</span>
+                          <span>comment</span>
                         </>
                       )}
                     </button>
@@ -499,118 +473,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
         </div>
       </div>
       {/* Sidebar */}
-      <aside className="w-full lg:w-80 flex-shrink-0 bg-gradient-to-br from-slate-50 to-blue-50 border border-gray-100 rounded-2xl p-8 h-fit shadow-xl mt-8 lg:mt-0">
-        {/* Request ID */}
-        <div className="mb-8 pb-4 border-b border-gray-200 flex items-center gap-3">
-          <Hash className="w-5 h-5 text-blue-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Request ID</div>
-            <div className="text-lg font-bold text-gray-900 tracking-tight">{ticket.ticketNumber}</div>
-          </div>
-        </div>
-        {/* Status */}
-        <div className="mb-6 flex items-center gap-3">
-          <Info className="w-5 h-5 text-blue-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Status</div>
-            <div className={`font-semibold ${getStatusBadge(ticket.status)}`}>{ticket.status}</div>
-          </div>
-        </div>
-        {/* Life cycle */}
-        <div className="mb-6 flex items-center gap-3">
-          <Clock className="w-5 h-5 text-gray-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Life cycle</div>
-            <div className="font-semibold text-gray-800">Not Assigned</div>
-          </div>
-        </div>
-        {/* Workflow */}
-        <div className="mb-6 flex items-center gap-3">
-          <Clock className="w-5 h-5 text-gray-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Workflow</div>
-            <div className="font-semibold text-gray-800">Not Assigned</div>
-          </div>
-        </div>
-        {/* Priority */}
-        <div className="mb-6 flex items-center gap-3">
-          <Tag className="w-5 h-5 text-yellow-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Priority</div>
-            <div className={`font-semibold ${
-              ticket.priority === 'High' ? 'text-red-600' :
-              ticket.priority === 'Medium' ? 'text-yellow-600' :
-              'text-green-600'
-            }`}>{ticket.priority}</div>
-          </div>
-        </div>
-        {/* Technician */}
-        <div className="mb-6 flex items-center gap-3">
-          <User className="w-5 h-5 text-green-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Technician</div>
-            <div className="font-semibold text-gray-800">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</div>
-          </div>
-        </div>
-        {/* Group & Site */}
-        <div className="mb-6 flex items-center gap-3">
-          <Briefcase className="w-5 h-5 text-indigo-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Group & Site</div>
-            <div className="font-semibold text-gray-800">SAP Support</div>
-          </div>
-        </div>
-        {/* Tasks & Checklists */}
-        
-        <div className="mb-6 flex items-center gap-3">
-          <CheckCircle className="w-5 h-5 text-green-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Checklists</div>
-            <div className="font-semibold text-gray-800">0/0</div>
-          </div>
-        </div>
-        {/* Attachments */}
-        <div className="mb-6 flex items-center gap-3">
-          <Paperclip className="w-5 h-5 text-blue-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Attachments</div>
-            <div className="font-semibold text-gray-800">{ticket.attachments ? ticket.attachments.length : 0}</div>
-          </div>
-        </div>
-        {/* Due By */}
-        <div className="mb-6 flex items-center gap-3">
-          <Clock className="w-5 h-5 text-gray-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Due By</div>
-            <div className="font-semibold text-gray-800">N/A</div>
-          </div>
-        </div>
-        {/* Linked Requests */}
-        <div className="mb-6 flex items-center gap-3">
-          <Link className="w-5 h-5 text-blue-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Linked Requests</div>
-            <button className="font-semibold text-blue-600 hover:underline focus:outline-none bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-all">Attach</button>
-          </div>
-        </div>
-        {/* Tags */}
-        <div className="mb-6 flex items-center gap-3">
-          <Tag className="w-5 h-5 text-pink-400" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold">Tags</div>
-            <button className="font-semibold text-blue-600 hover:underline focus:outline-none bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-all">Add</button>
-          </div>
-        </div>
-        {/* Requester Details */}
-        <div className="pt-4 mt-8 border-t border-gray-200 flex items-start gap-3">
-          <User className="w-8 h-8 text-blue-400 bg-white rounded-full border border-blue-100 p-1" />
-          <div>
-            <div className="text-xs text-gray-500 font-semibold mb-1">Requester Details</div>
-            <div className="font-semibold text-gray-800">{ticket.customer}</div>
-            <div className="text-xs text-gray-500">{ticket.email}</div>
-          </div>
-        </div>
-      </aside>
+    
     </div>
   );
 };
