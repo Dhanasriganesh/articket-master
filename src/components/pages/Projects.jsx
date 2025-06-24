@@ -27,7 +27,10 @@ function Projects() {
   const [selectedProject, setSelectedProject] = useState(null);
   const [expandedProject, setExpandedProject] = useState(null);
   const [formData, setFormData] = useState({
+    name: '',
+    description: '',
     email: '',
+    password: '',
     role: 'client',
     userType: 'client'
   });
@@ -39,7 +42,9 @@ function Projects() {
   const [showDeleteMemberModal, setShowDeleteMemberModal] = useState(false);
   const [showEditProjectModal, setShowEditProjectModal] = useState(false);
   const [editProjectData, setEditProjectData] = useState({ id: '', name: '', description: '' });
-  const [isEditingMember, setIsEditingMember] = useState(false);
+  const [showRoleChangeConfirm, setShowRoleChangeConfirm] = useState(false);
+  const [pendingRoleChange, setPendingRoleChange] = useState(null);
+  const [blockedEmail, setBlockedEmail] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'projects'), (querySnapshot) => {
@@ -83,11 +88,48 @@ function Projects() {
 
   const handleAddPerson = async (e) => {
     e.preventDefault();
+    const email = formData.email.trim();
+    // LTD validation: only allow .com, .co, .org, .net
+    const ltdPattern = /^[^@\s]+@[^@\s]+\.(com|co|org|net)$/i;
+    if (!ltdPattern.test(email)) {
+      showNotification(`Invalid email LTD: ${email}. Only .com, .co, .org, .net are allowed.`, 'error');
+      return;
+    }
+    // Check if email is blocked
+    const blockedDoc = await getDoc(doc(db, 'blocked_emails', email));
+    if (blockedDoc.exists()) {
+      setBlockedEmail(email); // Set blocked email to show the Unblock button
+      showNotification(`This email has been blocked by admin and cannot be added.`, 'error');
+      return;
+    }
     if (!selectedProject) {
       return;
     }
-
     try {
+      // Check for email uniqueness across ALL roles and ALL projects
+      const globalEmailQuery = query(collection(db, 'users'), where('email', '==', email));
+      const globalEmailSnapshot = await getDocs(globalEmailQuery);
+      if (!globalEmailSnapshot.empty) {
+        let finalRole;
+        if (formData.userType === 'client') {
+          finalRole = formData.role === 'head' ? 'client_head' : 'client';
+        } else {
+          finalRole = formData.role === 'manager' ? 'project_manager' : 'employee';
+        }
+        // Block if ANY user doc with this email has a different role/userType
+        const conflict = globalEmailSnapshot.docs.some(doc => {
+          const user = doc.data();
+          return user.role !== finalRole || user.userType !== formData.userType;
+        });
+        if (conflict) {
+          showNotification(
+            `Email ${email} is already registered with a different role. Each email can only be used with one role across all projects.`,
+            'error'
+          );
+          return;
+        }
+        // If all roles/userTypes match, allow (for multiple projects)
+      }
       // Store current admin user
       const currentAdmin = auth.currentUser;
       if (!currentAdmin) {
@@ -179,6 +221,7 @@ function Projects() {
         setSelectedProject(newlySelectedProject);
       }
       setShowAddPersonModal(false);
+      setBlockedEmail(null);
       setFormData({ 
         name: '', 
         description: '', 
@@ -210,9 +253,8 @@ function Projects() {
     }
   };
 
-  const handleEditMember = (member, project) => {
+  const handleEditMember = (member) => {
     setEditingMember(member);
-    setSelectedProject(project);
     setFormData({
       email: member.email,
       role: member.role === 'client_head' ? 'head' : 
@@ -225,22 +267,49 @@ function Projects() {
 
   const handleUpdateMember = async (e) => {
     e.preventDefault();
-    console.log('Submitting edit member form', { selectedProject, editingMember, formData });
     if (!selectedProject || !editingMember) {
-      console.warn('Missing selectedProject or editingMember', { selectedProject, editingMember });
       return;
     }
-    setIsEditingMember(true);
+
+    // Determine new role
+    let newRole;
+    if (formData.userType === 'client') {
+      newRole = formData.role === 'head' ? 'client_head' : 'client';
+    } else {
+      newRole = formData.role === 'manager' ? 'project_manager' : 'employee';
+    }
+
+    // If role or userType is changed, show confirmation modal
+    if (
+      (editingMember.role !== newRole || editingMember.userType !== formData.userType)
+    ) {
+      setPendingRoleChange({ ...formData, newRole });
+      setShowRoleChangeConfirm(true);
+      return;
+    }
+
+    // Check if email is being changed and validate uniqueness
+    if (formData.email !== editingMember.email) {
+      const globalEmailQuery = query(collection(db, 'users'), where('email', '==', formData.email));
+      const globalEmailSnapshot = await getDocs(globalEmailQuery);
+      if (!globalEmailSnapshot.empty) {
+        const conflict = globalEmailSnapshot.docs.some(doc => {
+          const user = doc.data();
+          return user.role !== newRole || user.userType !== formData.userType;
+        });
+        if (conflict) {
+          showNotification(
+            `Email ${formData.email} is already registered with a different role. Each email can only be used with one role across all projects.`,
+            'error'
+          );
+          return;
+        }
+      }
+    }
+
     try {
-      // 1. Update the member in the project's members array
       const updatedMembers = selectedProject.members.map(member => {
         if (member.uid === editingMember.uid) {
-          let newRole;
-          if (formData.userType === 'client') {
-            newRole = formData.role === 'head' ? 'client_head' : 'client';
-          } else {
-            newRole = formData.role === 'manager' ? 'project_manager' : 'employee';
-          }
           return {
             ...member,
             email: formData.email,
@@ -255,33 +324,24 @@ function Projects() {
         members: updatedMembers
       });
 
-      // 2. Update or create the user document in users collection
-      const userDocRef = doc(db, 'users', editingMember.uid);
-      let userDocSnap = await getDoc(userDocRef);
-      let userProjects = [];
-      if (userDocSnap.exists()) {
-        const userData = userDocSnap.data();
-        userProjects = userData.projects || [];
-        // Ensure the project is in the user's projects array
-        if (!userProjects.includes(selectedProject.id)) {
-          userProjects.push(selectedProject.id);
-        }
-      } else {
-        // If user doc doesn't exist, create it with this project
-        userProjects = [selectedProject.id];
+      // Update user document in users collection
+      try {
+        const userDocRef = doc(db, 'users', editingMember.uid);
+        const updateData = {
+          email: formData.email,
+          role: updatedMembers.find(m => m.uid === editingMember.uid)?.role || editingMember.role,
+          userType: formData.userType,
+          updatedAt: new Date().toISOString(),
+        };
+        await updateDoc(userDocRef, updateData);
+      } catch (error) {
+        console.error('Error updating user document:', error);
+        showNotification('Member updated in project but failed to update user details', 'error');
       }
-      const updateData = {
-        email: formData.email,
-        role: updatedMembers.find(m => m.uid === editingMember.uid)?.role || editingMember.role,
-        userType: formData.userType,
-        updatedAt: new Date().toISOString(),
-        projects: userProjects
-      };
-      await setDoc(userDocRef, updateData, { merge: true });
 
-      // 3. Update local state only after successful Firestore updates
-      const updatedProjects = projects.map(p =>
-        p.id === selectedProject.id
+      // Update local state
+      const updatedProjects = projects.map(p => 
+        p.id === selectedProject.id 
           ? { ...p, members: updatedMembers }
           : p
       );
@@ -293,12 +353,88 @@ function Projects() {
         role: 'client',
         userType: 'client'
       });
-      showNotification('Member details updated successfully');
+      showNotification('Member details updated successfully', 'success');
     } catch (error) {
       console.error('Error updating member:', error);
       showNotification('Failed to update member details', 'error');
-    } finally {
-      setIsEditingMember(false);
+    }
+  };
+
+  const applyRoleChange = async (formData, editingMember, newRole) => {
+    // Check for email uniqueness as before
+    if (formData.email !== editingMember.email) {
+      const globalEmailQuery = query(collection(db, 'users'), where('email', '==', formData.email));
+      const globalEmailSnapshot = await getDocs(globalEmailQuery);
+      if (!globalEmailSnapshot.empty) {
+        const conflict = globalEmailSnapshot.docs.some(doc => {
+          const user = doc.data();
+          return user.role !== newRole || user.userType !== formData.userType;
+        });
+        if (conflict) {
+          showNotification(
+            `Email ${formData.email} is already registered with a different role. Each email can only be used with one role across all projects.`,
+            'error'
+          );
+          return;
+        }
+      }
+    }
+    try {
+      // Update all projects where this user is a member
+      const userEmail = formData.email;
+      const userUid = editingMember.uid;
+      const batch = [];
+      for (const project of projects) {
+        if (project.members.some(m => m.uid === userUid)) {
+          const updatedMembers = project.members.map(m =>
+            m.uid === userUid
+              ? { ...m, email: userEmail, role: newRole, userType: formData.userType }
+              : m
+          );
+          batch.push(updateDoc(doc(db, 'projects', project.id), { members: updatedMembers }));
+        }
+      }
+      await Promise.all(batch);
+      // Update user document in users collection
+      try {
+        const userDocRef = doc(db, 'users', userUid);
+        const updateData = {
+          email: userEmail,
+          role: newRole,
+          userType: formData.userType,
+          updatedAt: new Date().toISOString(),
+        };
+        await updateDoc(userDocRef, updateData);
+      } catch (error) {
+        console.error('Error updating user document:', error);
+        showNotification('Member updated in projects but failed to update user details', 'error');
+      }
+      // Update local state
+      const updatedProjects = projects.map(p => {
+        if (p.members.some(m => m.uid === userUid)) {
+          return {
+            ...p,
+            members: p.members.map(m =>
+              m.uid === userUid
+                ? { ...m, email: userEmail, role: newRole, userType: formData.userType }
+                : m
+            ),
+          };
+        }
+        return p;
+      });
+      setProjects(updatedProjects);
+      setShowEditMemberModal(false);
+      setEditingMember(null);
+      setFormData({
+        email: '',
+        role: 'client',
+        userType: 'client',
+      });
+      showNotification('User role updated in all projects and database', 'success');
+    } catch (error) {
+      console.error('Error updating member:', error);
+      showNotification('Failed to update member details', 'error');
     }
   };
 
@@ -340,6 +476,12 @@ function Projects() {
         // 3. If user is not in any other projects, delete user document
         if (userProjects.length === 0) {
           await deleteDoc(userDocRef);
+          // Add email to blocked_emails collection
+          await setDoc(doc(db, 'blocked_emails', memberToDelete.email), {
+            email: memberToDelete.email,
+            blockedAt: new Date().toISOString(),
+            reason: 'Deleted by admin'
+          });
         }
       }
       // Update local state
@@ -454,7 +596,7 @@ function Projects() {
                   className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors flex items-center space-x-1"
                 >
                   <UserPlus className="w-4 h-4" />
-                  <span className="text-sm font-medium">Add Employee</span>
+                  <span className="text-sm font-medium">Add </span>
                 </button>
               </div>
             </div>
@@ -475,7 +617,7 @@ function Projects() {
                       <button
                         onClick={e => {
                           e.stopPropagation();
-                          handleEditMember(member, project);
+                          handleEditMember(member);
                         }}
                         className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       >
@@ -542,7 +684,7 @@ function Projects() {
                   className="px-3 py-1.5 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors flex items-center space-x-1"
                 >
                   <UserPlus className="w-4 h-4" />
-                  <span className="text-sm font-medium">Add Client</span>
+                  <span className="text-sm font-medium">Add </span>
                 </button>
               </div>
             </div>
@@ -563,7 +705,7 @@ function Projects() {
                       <button
                         onClick={e => {
                           e.stopPropagation();
-                          handleEditMember(member, project);
+                          handleEditMember(member);
                         }}
                         className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       >
@@ -817,7 +959,10 @@ function Projects() {
                   <input
                     type="email"
                     value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, email: e.target.value });
+                      setBlockedEmail(null);
+                    }}
                     className="w-full px-4 py-2 bg-white/50 backdrop-blur-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     placeholder="Enter email address"
                     required
@@ -896,7 +1041,7 @@ function Projects() {
                 <div className="flex justify-end space-x-3 pt-4 relative">
                   <button
                     type="button"
-                    onClick={() => setShowAddPersonModal(false)}
+                    onClick={() => { setShowAddPersonModal(false); setBlockedEmail(null); }}
                     className="px-4 py-2 text-gray-700 bg-gray-100/80 backdrop-blur-sm rounded-xl hover:bg-gray-200/80 transition-colors"
                   >
                     Cancel
@@ -909,10 +1054,25 @@ function Projects() {
                         : 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40'
                     }`}
                   >
-                    Add {formData.userType === 'employee' ? 'Team Member' : 'Client'}
+                    Add
                   </button>
                 </div>
               </form>
+              {blockedEmail && (
+                <div className="mt-4 flex flex-col items-center">
+                  <p className="text-red-600 mb-2">This email is blocked. Do you want to unblock and add?</p>
+                  <button
+                    className="px-4 py-2 bg-yellow-500 text-white rounded-xl hover:bg-yellow-600"
+                    onClick={async () => {
+                      await deleteDoc(doc(db, 'blocked_emails', blockedEmail));
+                      setBlockedEmail(null);
+                      showNotification('Email unblocked. You can now add this user.', 'success');
+                    }}
+                  >
+                    Unblock & Add User
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -951,7 +1111,7 @@ function Projects() {
 
       {/* Notification Toast */}
       {notification.show && (
-        <div className={`fixed bottom-4 right-4 p-4 rounded-xl shadow-lg transition-all transform duration-300 ${
+        <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg transition-all duration-300 z-[9999] ${
           notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
         }`}>
           <div className="flex items-center space-x-2 text-white">
@@ -1075,14 +1235,13 @@ function Projects() {
                   </button>
                   <button
                     type="submit"
-                    disabled={isEditingMember}
                     className={`px-4 py-2 text-white rounded-xl shadow-lg transition-colors ${
                       formData.userType === 'employee' 
                         ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-blue-500/25 hover:shadow-blue-500/40'
                         : 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-purple-500/25 hover:shadow-purple-500/40'
-                    } ${isEditingMember ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    }`}
                   >
-                    {isEditingMember ? 'Editing...' : 'Save Changes'}
+                    Save Changes
                   </button>
                 </div>
               </form>
@@ -1248,6 +1407,42 @@ function Projects() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Role Change Confirmation Modal */}
+      {showRoleChangeConfirm && (
+        <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
+          <div className="absolute inset-0 bg-black bg-opacity-50"></div>
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 z-10">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-8 h-8 text-yellow-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Change User Role?</h3>
+              <p className="text-gray-600 mb-6">
+                This user's role will be changed in <b>all projects</b> where they are a member. Do you want to proceed?
+              </p>
+              <div className="flex justify-center space-x-3">
+                <button
+                  onClick={() => { setShowRoleChangeConfirm(false); setPendingRoleChange(null); }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowRoleChangeConfirm(false);
+                    await applyRoleChange(pendingRoleChange, editingMember, pendingRoleChange.newRole);
+                    setPendingRoleChange(null);
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors"
+                >
+                  Yes, Change Role
+                </button>
+              </div>
             </div>
           </div>
         </div>
