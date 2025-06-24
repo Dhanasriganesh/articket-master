@@ -128,8 +128,8 @@ const ProjectManagerDashboard = () => {
         if (projectsData.length > 0 && !selectedProjectId) {
           setSelectedProjectId(projectsData[0].id);
         }
-        // Fetch tickets for selected project
-        if (selectedProjectId) {
+        // Fetch tickets for selected project or all projects
+        if (selectedProjectId && selectedProjectId !== 'all') {
           const ticketsQuery = query(
             collection(db, 'tickets'),
             where('projectId', '==', selectedProjectId)
@@ -142,6 +142,28 @@ const ProjectManagerDashboard = () => {
             activeTickets: ticketsData.filter(ticket => ticket.status === 'Open').length,
             teamMembers: 0, // Optionally update with team count if needed
             completedTickets: ticketsData.filter(ticket => ticket.status === 'Closed').length
+          });
+        } else if (selectedProjectId === 'all' && projectsData.length > 0) {
+          // Firestore 'in' query limit is 10, so batch if needed
+          const projectIds = projectsData.map(p => p.id);
+          let allTickets = [];
+          const batchSize = 10;
+          for (let i = 0; i < projectIds.length; i += batchSize) {
+            const batchIds = projectIds.slice(i, i + batchSize);
+            const ticketsQuery = query(
+              collection(db, 'tickets'),
+              where('projectId', 'in', batchIds)
+            );
+            const ticketsSnapshot = await getDocs(ticketsQuery);
+            const ticketsData = ticketsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            allTickets = allTickets.concat(ticketsData);
+          }
+          setTickets(allTickets);
+          setStats({
+            totalProjects: projectsData.length,
+            activeTickets: allTickets.filter(ticket => ticket.status === 'Open').length,
+            teamMembers: 0, // Optionally update with team count if needed
+            completedTickets: allTickets.filter(ticket => ticket.status === 'Closed').length
           });
         } else {
           setTickets([]);
@@ -474,7 +496,12 @@ const ProjectManagerDashboard = () => {
           
 
           {activeTab === 'tickets' && (
-            <ProjectTickets setActiveTab={setActiveTab} selectedProjectId={selectedProjectId} allProjectIds={projects.map(p => p.id)} />
+            <ProjectTickets
+              setActiveTab={setActiveTab}
+              selectedProjectId={selectedProjectId}
+              selectedProjectName={projects.find(p => p.id === selectedProjectId)?.name || ''}
+              allProjectIds={projects.map(p => p.id)}
+            />
           )}
 
           {activeTab === 'create' && (

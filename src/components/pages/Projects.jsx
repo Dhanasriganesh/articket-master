@@ -439,65 +439,40 @@ function Projects() {
   };
 
   const handleDeleteMember = async (memberToDelete, projectId) => {
-    // Find the project from the projects array
-    const project = projects.find(p => p.id === projectId);
-    if (!project) {
-      return;
-    }
+    console.log('handleDeleteMember: called for', memberToDelete?.email, memberToDelete?.uid, 'in project', projectId);
     try {
-      const currentAdmin = auth.currentUser;
-      if (!currentAdmin) {
-        showNotification('Admin session expired. Please log in again.', 'error');
-        return;
+      // Always delete ALL user documents with this email, regardless of project membership
+      console.log('handleDeleteMember: Deleting ALL user documents for email:', memberToDelete.email);
+      const allUsersQuery = query(collection(db, 'users'), where('email', '==', memberToDelete.email));
+      const allUsersSnapshot = await getDocs(allUsersQuery);
+      console.log('handleDeleteMember: Found', allUsersSnapshot.docs.length, 'user docs for deletion for email:', memberToDelete.email);
+      for (const docSnap of allUsersSnapshot.docs) {
+        console.log('handleDeleteMember: Deleting user document:', docSnap.id, docSnap.data().email);
+        await deleteDoc(docSnap.ref);
+        console.log('handleDeleteMember: Deleted user document:', docSnap.id);
       }
-      // 1. Remove member from project first
-      const updatedMembers = project.members.filter(member => member.uid !== memberToDelete.uid);
-      await updateDoc(doc(db, 'projects', project.id), {
-        members: updatedMembers
-      });
-      // 2. Remove project from user's projects array
-      const userDocRef = doc(db, 'users', memberToDelete.uid);
-      let userDocSnap;
-      try {
-        userDocSnap = await getDoc(userDocRef);
-      } catch (error) {
-        userDocSnap = null;
-      }
-      if (userDocSnap && userDocSnap.exists()) {
-        const userData = userDocSnap.data();
-        let userProjects = userData.projects || [];
-        userProjects = userProjects.filter(pid => pid !== projectId);
-        // Remove project field if user is a client and this was their only project
-        let updateFields = { projects: userProjects };
-        if (userData.userType === 'client' && userProjects.length === 0) {
-          updateFields.project = null;
-        }
-        await updateDoc(userDocRef, updateFields);
-        // 3. If user is not in any other projects, delete user document
-        if (userProjects.length === 0) {
-          await deleteDoc(userDocRef);
-          // Add email to blocked_emails collection
-          await setDoc(doc(db, 'blocked_emails', memberToDelete.email), {
-            email: memberToDelete.email,
-            blockedAt: new Date().toISOString(),
-            reason: 'Deleted by admin'
-          });
+      console.log('handleDeleteMember: Finished deleting all user docs for email:', memberToDelete.email);
+      // Update local state to remove the member from the project in the UI
+      const project = projects.find(p => p.id === projectId);
+      if (project) {
+        // Remove the member from the project's members array in Firestore
+        const updatedMembers = project.members.filter(member => member.email !== memberToDelete.email);
+        await updateDoc(doc(db, 'projects', projectId), { members: updatedMembers });
+        // Update local state
+        const updatedProjects = projects.map(p =>
+          p.id === project.id
+            ? { ...p, members: updatedMembers }
+            : p
+        );
+        setProjects(updatedProjects);
+        if (selectedProject && selectedProject.id === project.id) {
+          const newlySelectedProject = updatedProjects.find(p => p.id === project.id);
+          if (newlySelectedProject) {
+            setSelectedProject(newlySelectedProject);
+          }
         }
       }
-      // Update local state
-      const updatedProjects = projects.map(p => 
-        p.id === project.id 
-          ? { ...p, members: updatedMembers }
-          : p
-      );
-      setProjects(updatedProjects);
-      if (selectedProject && selectedProject.id === project.id) {
-        const newlySelectedProject = updatedProjects.find(p => p.id === project.id);
-        if (newlySelectedProject) {
-          setSelectedProject(newlySelectedProject);
-        }
-      }
-      showNotification(`${memberToDelete.email} has been completely removed from the project and system`);
+      showNotification(`${memberToDelete.email} has been deleted from the project and system`);
     } catch (error) {
       console.error('Error deleting member:', error);
       showNotification('Failed to remove member from project', 'error');
@@ -1280,6 +1255,7 @@ function Projects() {
                   </button>
                   <button
                     onClick={() => {
+                      console.log('Delete button clicked for', memberToDelete?.email, memberDeleteProjectId);
                       handleDeleteMember(memberToDelete, memberDeleteProjectId);
                       setShowDeleteMemberModal(false);
                       setMemberToDelete(null);

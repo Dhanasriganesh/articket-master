@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types';
 import { useState, useEffect, useRef } from 'react';
-import { doc, getDoc, updateDoc, arrayUnion, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, serverTimestamp, collection, query, where, getDocs, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../../firebase/config';
 import {
   ArrowLeft,
@@ -30,6 +30,23 @@ function formatTimestamp(ts) {
   return '';
 }
 
+const priorities = [
+  { value: 'Low', label: 'Low' },
+  { value: 'Medium', label: 'Medium' },
+  { value: 'High', label: 'High' },
+];
+const categories = [
+  { value: 'Inscedent', label: 'Inscedent' },
+  { value: 'Service', label: 'Service' },
+  { value: 'Change', label: 'Change' },
+];
+const statusOptions = [
+  { value: 'Open', label: 'Open' },
+  { value: 'In Progress', label: 'In Progress' },
+  { value: 'Resolved', label: 'Resolved' },
+  { value: 'Closed', label: 'Closed' },
+];
+
 const TicketDetails = ({ ticketId, onBack }) => {
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -39,6 +56,9 @@ const TicketDetails = ({ ticketId, onBack }) => {
   const [activeTab, setActiveTab] = useState('Commentbox');
   const [currentUserName, setCurrentUserName] = useState('');
   const commentsEndRef = useRef(null);
+  // Add state for editing fields
+  const [editFields, setEditFields] = useState({ priority: '', status: '', category: '' });
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const fetchTicketAndUsers = async () => {
@@ -113,6 +133,112 @@ const TicketDetails = ({ ticketId, onBack }) => {
       commentsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [ticket?.comments?.length]);
+
+  // Add state for editing fields
+  useEffect(() => {
+    if (ticket) {
+      setEditFields({
+        priority: ticket.priority,
+        status: ticket.status,
+        category: ticket.category,
+      });
+    }
+  }, [ticket]);
+
+  // Helper to get next ticket number for a category
+  const getNextTicketNumber = async (category) => {
+    let prefix, counterDocId, startValue;
+    if (category === 'Inscedent') {
+      prefix = 'IN';
+      counterDocId = 'incident_counter';
+      startValue = 100000;
+    } else if (category === 'Service') {
+      prefix = 'SR';
+      counterDocId = 'service_counter';
+      startValue = 200000;
+    } else if (category === 'Change') {
+      prefix = 'CR';
+      counterDocId = 'change_counter';
+      startValue = 300000;
+    } else {
+      prefix = 'IN';
+      counterDocId = 'incident_counter';
+      startValue = 100000;
+    }
+    const counterRef = doc(db, 'counters', counterDocId);
+    const nextNumber = await runTransaction(db, async (transaction) => {
+      const counterDoc = await transaction.get(counterRef);
+      let current = startValue - 1;
+      if (counterDoc.exists()) {
+        current = counterDoc.data().value;
+      }
+      const newValue = current + 1;
+      transaction.set(counterRef, { value: newValue });
+      return newValue;
+    });
+    return `${prefix}${nextNumber}`;
+  };
+
+  // Handler for saving edits
+  const handleSaveDetails = async () => {
+    if (!ticket) return;
+    setIsSaving(true);
+    try {
+      const ticketRef = doc(db, 'tickets', ticket.id);
+      let updates = {};
+      let commentMsg = [];
+      // Priority
+      if (editFields.priority !== ticket.priority) {
+        updates.priority = editFields.priority;
+        commentMsg.push(`Priority changed to ${editFields.priority}`);
+      }
+      // Status
+      if (editFields.status !== ticket.status) {
+        updates.status = editFields.status;
+        commentMsg.push(`Status changed to ${editFields.status}`);
+      }
+      // Category (and ticket number)
+      if (editFields.category !== ticket.category) {
+        updates.category = editFields.category;
+        // Get new ticket number
+        const newTicketNumber = await getNextTicketNumber(editFields.category);
+        updates.ticketNumber = newTicketNumber;
+        commentMsg.push(`Category changed to ${editFields.category} and Ticket ID updated to ${newTicketNumber}`);
+      }
+      if (Object.keys(updates).length > 0) {
+        updates.lastUpdated = serverTimestamp();
+        await updateDoc(ticketRef, updates);
+        // Add comment
+        const currentUser = auth.currentUser;
+        let authorName = currentUserName;
+        if (!authorName) authorName = currentUser?.displayName || (currentUser?.email?.split('@')[0] || '');
+        const comment = {
+          message: commentMsg.join('; '),
+          timestamp: new Date(),
+          authorEmail: currentUser?.email,
+          authorName,
+          authorRole: 'user',
+        };
+        await updateDoc(ticketRef, { comments: arrayUnion(comment) });
+        // Refresh ticket
+        const updatedTicketSnap = await getDoc(ticketRef);
+        if (updatedTicketSnap.exists()) {
+          const ticketData = { id: updatedTicketSnap.id, ...updatedTicketSnap.data() };
+          let comments = ticketData.comments || [];
+          comments.sort((a, b) => {
+            const ta = a.timestamp?.seconds ? a.timestamp.seconds : (a.timestamp?._seconds || new Date(a.timestamp).getTime()/1000 || 0);
+            const tb = b.timestamp?.seconds ? b.timestamp.seconds : (b.timestamp?._seconds || new Date(b.timestamp).getTime()/1000 || 0);
+            return ta - tb;
+          });
+          setTicket({ ...ticketData, comments });
+        }
+      }
+    } catch (err) {
+      console.error('Error saving details:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleAddResponse = async () => {
     if (!newResponse.trim() || !ticketId || !auth.currentUser) return;
@@ -228,7 +354,17 @@ const TicketDetails = ({ ticketId, onBack }) => {
     <div className="flex flex-col lg:flex-row gap-8">
       {/* Main Content */}
       <div className="flex-1 min-w-0">
-      <div className="flex flex-col md:flex-row gap-4 mb-8">
+        {/* Go Back Button */}
+        <div className="mb-2 flex items-center">
+          <button
+            onClick={onBack}
+            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Go Back
+          </button>
+        </div>
+        <div className="flex flex-col md:flex-row gap-4 mb-8">
 
 
 </div>
@@ -323,13 +459,58 @@ const TicketDetails = ({ ticketId, onBack }) => {
               <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div><span className="font-semibold text-gray-700">Request ID:</span> {ticket.ticketNumber}</div>
-                  <div><span className="font-semibold text-gray-700">Status:</span> {ticket.status}</div>
-                  <div><span className="font-semibold text-gray-700">Priority:</span> {ticket.priority}</div>
-                  <div><span className="font-semibold text-gray-700">Category:</span> {ticket.category}</div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Status:</span>
+                    <select
+                      className="ml-2 border border-gray-300 rounded px-2 py-1"
+                      value={editFields.status}
+                      onChange={e => setEditFields(f => ({ ...f, status: e.target.value }))}
+                      disabled={isSaving}
+                    >
+                      {statusOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Priority:</span>
+                    <select
+                      className="ml-2 border border-gray-300 rounded px-2 py-1"
+                      value={editFields.priority}
+                      onChange={e => setEditFields(f => ({ ...f, priority: e.target.value }))}
+                      disabled={isSaving}
+                    >
+                      {priorities.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Category:</span>
+                    <select
+                      className="ml-2 border border-gray-300 rounded px-2 py-1"
+                      value={editFields.category}
+                      onChange={e => setEditFields(f => ({ ...f, category: e.target.value }))}
+                      disabled={isSaving}
+                    >
+                      {categories.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div><span className="font-semibold text-gray-700">Project:</span> {ticket.project}</div>
                   <div><span className="font-semibold text-gray-700">Created:</span> {ticket.created ? new Date(ticket.created.toDate()).toLocaleString() : 'N/A'}</div>
                   <div><span className="font-semibold text-gray-700">Assigned To:</span> {ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</div>
                   <div><span className="font-semibold text-gray-700">Requester:</span> {ticket.customer} ({ticket.email})</div>
+                </div>
+                <div className="flex justify-end mt-6">
+                  <button
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-50"
+                    onClick={handleSaveDetails}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  </button>
                 </div>
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">

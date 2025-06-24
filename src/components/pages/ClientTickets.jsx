@@ -22,6 +22,8 @@ const ClientTickets = ({ setActiveTab }) => {
   const [employees, setEmployees] = useState([]);
   const [clients, setClients] = useState([]);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
+  const [filtersApplied, setFiltersApplied] = useState(false);
+  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' for Newest, 'asc' for Oldest
  
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
@@ -229,6 +231,13 @@ const ClientTickets = ({ setActiveTab }) => {
     return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy;
   });
  
+  // Sort tickets by date
+  const sortedTickets = [...filteredTickets].sort((a, b) => {
+    const dateA = a.created?.toDate ? a.created.toDate() : new Date(a.created);
+    const dateB = b.created?.toDate ? b.created.toDate() : new Date(b.created);
+    return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+  });
+ 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -361,6 +370,24 @@ const ClientTickets = ({ setActiveTab }) => {
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
           />
         </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">Sort by Date</label>
+          <select
+            value={sortOrder}
+            onChange={e => setSortOrder(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+          >
+            <option value="desc">Newest</option>
+            <option value="asc">Oldest</option>
+          </select>
+        </div>
+        <button
+          onClick={() => setFiltersApplied(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
+          type="button"
+        >
+          Apply Filters
+        </button>
         <button
           onClick={() => {
             setFilterStatus('All');
@@ -368,13 +395,16 @@ const ClientTickets = ({ setActiveTab }) => {
             setFilterRaisedByEmployee('all');
             setFilterRaisedByClient('all');
             setSearchTerm('');
+            setFiltersApplied(false);
           }}
           className="ml-auto text-xs text-blue-600 hover:underline px-2 py-1 rounded"
+          type="button"
         >
           Clear Filters
         </button>
       </div>
-      {filteredTickets.length > 0 ? (
+      {/* Only show tickets if filtersApplied is true */}
+      {filtersApplied && sortedTickets.length > 0 ? (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -404,7 +434,7 @@ const ClientTickets = ({ setActiveTab }) => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredTickets.map((ticket) => (
+                {sortedTickets.map((ticket) => (
                   <tr
                     key={ticket.id}
                     onClick={() => handleTicketClick(ticket.id)}
@@ -505,23 +535,10 @@ const ClientTickets = ({ setActiveTab }) => {
             </table>
           </div>
         </div>
+      ) : filtersApplied ? (
+        <div className="text-gray-400 text-center py-12">No tickets found for selected filters.</div>
       ) : (
-        <div className="text-center py-12">
-          <BsTicketFill className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No tickets found</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Get started by creating a new ticket.
-          </p>
-          <div className="mt-6">
-            <Link
-              to="/client-dashboard?tab=create"
-              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <BsFolderFill className="mr-2" />
-              Create Your First Ticket
-            </Link>
-          </div>
-        </div>
+        <div className="text-gray-400 text-center py-12">Select filters and click 'Apply Filters' to view tickets.</div>
       )}
     </>
   );

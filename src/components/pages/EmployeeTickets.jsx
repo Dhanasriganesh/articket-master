@@ -21,6 +21,8 @@ const EmployeeTickets = () => {
   const [clients, setClients] = useState([]);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
   const [currentUserData, setCurrentUserData] = useState(null);
+  const [filtersApplied, setFiltersApplied] = useState(false);
+  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' for Newest, 'asc' for Oldest
  
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
@@ -202,6 +204,13 @@ const EmployeeTickets = () => {
     return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy;
   });
  
+  // Sort tickets by date
+  const sortedTickets = [...filteredTickets].sort((a, b) => {
+    const dateA = a.created?.toDate ? a.created.toDate() : new Date(a.created);
+    const dateB = b.created?.toDate ? b.created.toDate() : new Date(b.created);
+    return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+  });
+ 
   const handleAssignTicket = async (ticketId, email) => {
     if (!ticketId || !email) return;
     const ticketRef = doc(db, 'tickets', ticketId);
@@ -356,6 +365,24 @@ const EmployeeTickets = () => {
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
           />
         </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">Sort by Date</label>
+          <select
+            value={sortOrder}
+            onChange={e => setSortOrder(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+          >
+            <option value="desc">Newest</option>
+            <option value="asc">Oldest</option>
+          </select>
+        </div>
+        <button
+          onClick={() => setFiltersApplied(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
+          type="button"
+        >
+          Apply Filters
+        </button>
         <button
           onClick={() => {
             setFilterStatus('All');
@@ -363,14 +390,17 @@ const EmployeeTickets = () => {
             setFilterRaisedByEmployee('all');
             setFilterRaisedByClient('all');
             setSearchTerm('');
+            setFiltersApplied(false);
           }}
           className="ml-auto text-xs text-blue-600 hover:underline px-2 py-1 rounded"
+          type="button"
         >
           Clear Filters
         </button>
       </div>
  
-      {ticketsData.length > 0 ? (
+      {/* Only show tickets if filtersApplied is true */}
+      {filtersApplied && sortedTickets.length > 0 ? (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -400,7 +430,7 @@ const EmployeeTickets = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredTickets.map((ticket) => (
+                {sortedTickets.map((ticket) => (
                   <tr
                     key={ticket.id}
                     onClick={() => handleTicketClick(ticket.id)}
@@ -439,6 +469,11 @@ const EmployeeTickets = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {(() => {
+                        // If ticket is already assigned, just show the assignee's name/email (never 'Me' or 'Myself')
+                        if (ticket.assignedTo && ticket.assignedTo.email) {
+                          return ticket.assignedTo.name || ticket.assignedTo.email;
+                        }
+                        // If not assigned, show the dropdown
                         const creatorIsClient = clients.some(c => c.email === ticket.email);
                         const isProjectManager = currentUserData?.role === 'project_manager';
                         const assignable = creatorIsClient && !isProjectManager ? [] : employees;
@@ -452,15 +487,13 @@ const EmployeeTickets = () => {
                               disabled={(!isProjectManager && creatorIsClient) && ticket.assignedTo?.email === currentUserEmail}
                             >
                               <option value="" disabled>
-                                {ticket.assignedTo ? ticket.assignedTo.name : 'Assign...'}
+                                Assign...
                               </option>
                               {/* If ticket raised by client and not project manager, only show 'Assign to me' */}
                               {creatorIsClient && !isProjectManager ? (
-                                ticket.assignedTo?.email !== currentUserEmail && (
-                                  <option value={currentUserEmail}>
-                                    Assign to me ({currentUserEmail.split('@')[0]})
-                                  </option>
-                                )
+                                <option value={currentUserEmail}>
+                                  Assign to me ({currentUserEmail.split('@')[0]})
+                                </option>
                               ) : (
                                 employees.map(user => (
                                   <option key={user.id} value={user.email}>
@@ -469,18 +502,6 @@ const EmployeeTickets = () => {
                                 ))
                               )}
                             </select>
-                            {ticket.assignedTo && (
-                              <button
-                                type="button"
-                                className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  handleUnassignTicket(ticket.id);
-                                }}
-                              >
-                                Unassign
-                              </button>
-                            )}
                           </div>
                         );
                       })()}
@@ -491,23 +512,10 @@ const EmployeeTickets = () => {
             </table>
           </div>
         </div>
+      ) : filtersApplied ? (
+        <div className="text-gray-400 text-center py-12">No tickets found for selected filters.</div>
       ) : (
-        <div className="text-center py-12">
-          <BsTicketFill className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No tickets found</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            No tickets have been raised for your project yet.
-          </p>
-          <div className="mt-6">
-            <Link
-              to="/employeedashboard?tab=create"
-              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <BsFolderFill className="mr-2" />
-              Create New Ticket
-            </Link>
-          </div>
-        </div>
+        <div className="text-gray-400 text-center py-12">Select filters and click 'Apply Filters' to view tickets.</div>
       )}
     </>
   );

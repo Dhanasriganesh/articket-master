@@ -17,7 +17,7 @@ import TicketDetailsWrapper from '../pages/TicketDetailsWrapper';
  
 import { auth, db } from '../../firebase/config';
 import { onAuthStateChanged } from 'firebase/auth';
-import { query, collection, where, getDocs } from 'firebase/firestore';
+import { query, collection, where, getDocs, doc, getDoc } from 'firebase/firestore';
  
 // Protected Route component
 function ProtectedRoute({ children }) {
@@ -26,9 +26,37 @@ function ProtectedRoute({ children }) {
   const location = useLocation();
  
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAuthenticated(!!user);
-      setIsLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setIsAuthenticated(true);
+        // Check Firestore user status and existence
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          if (!userDocSnap.exists()) {
+            console.log('ProtectedRoute: User document does not exist, signing out.');
+            await auth.signOut();
+            setIsAuthenticated(false);
+            setIsLoading(false);
+            return;
+          }
+          const userData = userDocSnap.data();
+          console.log('ProtectedRoute: Firestore user status:', userData.status);
+          if (userData.status === 'disabled') {
+            console.log('ProtectedRoute: User is disabled, signing out.');
+            await auth.signOut();
+            setIsAuthenticated(false);
+            setIsLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.error('ProtectedRoute: Error checking user status in Firestore:', err);
+        }
+        setIsLoading(false);
+      } else {
+        setIsAuthenticated(false);
+        setIsLoading(false);
+      }
     });
  
     return () => unsubscribe();
@@ -150,8 +178,3 @@ function Routers() {
 }
  
 export default Routers;
- 
- 
- 
- 
- 

@@ -19,7 +19,7 @@ function formatTimestamp(ts) {
   return '';
 }
  
-const ProjectManagerTickets = ({ setActiveTab }) => {
+const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjectName, allProjectIds = [] }) => {
   const [ticketsData, setTicketsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -32,10 +32,11 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
   const [filterRaisedByClient, setFilterRaisedByClient] = useState('all');
   const [currentUserEmail, setCurrentUserEmail] = useState('');
   const [projects, setProjects] = useState([]);
-  const [selectedProject, setSelectedProject] = useState('VMM');
   const [employees, setEmployees] = useState([]);
   const [clients, setClients] = useState([]);
   const [currentUserData, setCurrentUserData] = useState(null);
+  const [filtersApplied, setFiltersApplied] = useState(false);
+  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' for Newest, 'asc' for Oldest
  
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
@@ -65,10 +66,10 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
         try {
           const usersRef = collection(db, 'users');
          
-          // Fetch employees
+          // Fetch employees for the selected project
           const employeesQuery = query(
             usersRef,
-            where('project', '==', 'VMM'),
+            where('project', '==', selectedProjectName),
             where('role', '==', 'employee')
           );
           const employeesSnapshot = await getDocs(employeesQuery);
@@ -107,10 +108,10 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
           });
           setEmployees(employeesList);
  
-          // Fetch clients
+          // Fetch clients for the selected project
           const clientsQuery = query(
             usersRef,
-            where('project', '==', 'VMM'),
+            where('project', '==', selectedProjectName),
             where('role', '==', 'client')
           );
           const clientsSnapshot = await getDocs(clientsQuery);
@@ -157,26 +158,57 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
  
         // Set up real-time listener for tickets
         const ticketsCollectionRef = collection(db, 'tickets');
-        const q = query(
-          ticketsCollectionRef,
-          where('project', '==', selectedProject)
-        );
- 
-        const unsubscribeTickets = onSnapshot(q, (snapshot) => {
-          const tickets = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          setTicketsData(tickets);
-          setLoading(false);
-          console.log(`Fetched tickets for project ${selectedProject}:`, tickets);
-        }, (err) => {
-          console.error('Error fetching project-filtered tickets:', err);
-          setError('Failed to load tickets for the project.');
-          setLoading(false);
-        });
- 
-        return () => unsubscribeTickets();
+        if (selectedProjectId === 'all' && allProjectIds.length > 0) {
+          // Firestore 'in' query limit is 10, so batch if needed
+          setTicketsData([]); // Clear before accumulating
+          let unsubscribes = [];
+          const batchSize = 10;
+          for (let i = 0; i < allProjectIds.length; i += batchSize) {
+            const batchIds = allProjectIds.slice(i, i + batchSize);
+            const q = query(
+              ticketsCollectionRef,
+              where('projectId', 'in', batchIds)
+            );
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+              const tickets = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              }));
+              // Accumulate tickets from all batches
+              setTicketsData(prev => {
+                // Remove any tickets from this batch, then add new
+                const filtered = prev.filter(t => !batchIds.includes(t.projectId));
+                // Avoid duplicates by id
+                const ids = new Set(filtered.map(t => t.id));
+                const merged = [...filtered, ...tickets.filter(t => !ids.has(t.id))];
+                return merged;
+              });
+              setLoading(false);
+            }, (err) => {
+              setError('Failed to load tickets for your projects.');
+              setLoading(false);
+            });
+            unsubscribes.push(unsubscribe);
+          }
+          return () => unsubscribes.forEach(unsub => unsub());
+        } else {
+          const q = query(
+            ticketsCollectionRef,
+            where('projectId', '==', selectedProjectId)
+          );
+          const unsubscribeTickets = onSnapshot(q, (snapshot) => {
+            const tickets = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            setTicketsData(tickets);
+            setLoading(false);
+          }, (err) => {
+            setError('Failed to load tickets for the project.');
+            setLoading(false);
+          });
+          return () => unsubscribeTickets();
+        }
       } else {
         console.log('No user authenticated in ProjectManagerTickets.jsx');
         setLoading(false);
@@ -186,7 +218,7 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
     });
  
     return () => unsubscribeAuth();
-  }, [selectedProject]);
+  }, [selectedProjectId, selectedProjectName, allProjectIds]);
  
   const handleTicketClick = (ticketId) => {
     setSelectedTicketId(ticketId);
@@ -232,11 +264,11 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
         customerResponses: arrayUnion(response)
       });
  
-      const memberEmails = await fetchProjectMemberEmails(ticket.project);
+      const memberEmails = await fetchProjectMemberEmails(selectedProjectName);
       const emailParams = {
         name: newAssignee.name,
         email: newAssignee.email,
-        project: ticket.project,
+        project: selectedProjectName,
         subject: ticket.subject,
         category: ticket.category,
         priority: ticket.priority,
@@ -291,6 +323,13 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
     return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy;
   });
  
+  // Sort tickets by date
+  const sortedTickets = [...filteredTickets].sort((a, b) => {
+    const dateA = a.created?.toDate ? a.created.toDate() : new Date(a.created);
+    const dateB = b.created?.toDate ? b.created.toDate() : new Date(b.created);
+    return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+  });
+ 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -324,7 +363,7 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
           <h1 className="text-3xl font-bold text-gray-900 flex items-center">
             <BsTicketFill className="mr-3 text-blue-600" /> Project Tickets
           </h1>
-          <p className="text-gray-600 mt-2">Project: {selectedProject}</p>
+          <p className="text-gray-600 mt-2">Project: {selectedProjectId === 'all' ? 'All Projects' : selectedProjectName}</p>
         </div>
         {setActiveTab ? (
           <button
@@ -420,6 +459,24 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
           />
         </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">Sort by Date</label>
+          <select
+            value={sortOrder}
+            onChange={e => setSortOrder(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+          >
+            <option value="desc">Newest</option>
+            <option value="asc">Oldest</option>
+          </select>
+        </div>
+        <button
+          onClick={() => setFiltersApplied(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
+          type="button"
+        >
+          Apply Filters
+        </button>
         <button
           onClick={() => {
             setFilterStatus('All');
@@ -427,14 +484,17 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
             setFilterRaisedByEmployee('all');
             setFilterRaisedByClient('all');
             setSearchTerm('');
+            setFiltersApplied(false);
           }}
           className="ml-auto text-xs text-blue-600 hover:underline px-2 py-1 rounded"
+          type="button"
         >
           Clear Filters
         </button>
       </div>
  
-      {filteredTickets.length > 0 ? (
+      {/* Only show tickets if filtersApplied is true */}
+      {filtersApplied && sortedTickets.length > 0 ? (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -467,7 +527,7 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredTickets.map((ticket) => (
+                {sortedTickets.map((ticket) => (
                   <tr
                     key={ticket.id}
                     onClick={() => handleTicketClick(ticket.id)}
@@ -553,23 +613,10 @@ const ProjectManagerTickets = ({ setActiveTab }) => {
             </table>
           </div>
         </div>
+      ) : filtersApplied ? (
+        <div className="text-gray-400 text-center py-12">No tickets found for selected filters.</div>
       ) : (
-        <div className="text-center py-12">
-          <BsTicketFill className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No tickets found</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Get started by creating a new ticket.
-          </p>
-          <div className="mt-6">
-            <Link
-              to="/project-manager-dashboard?tab=create"
-              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <BsFolderFill className="mr-2" />
-              Create New Ticket
-            </Link>
-          </div>
-        </div>
+        <div className="text-gray-400 text-center py-12">Select filters and click 'Apply Filters' to view tickets.</div>
       )}
     </>
   );

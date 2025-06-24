@@ -1,11 +1,13 @@
 import React from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import TicketDetails from './TicketDetails';
- 
+
 const TicketDetailsWrapper = () => {
   const { ticketId } = useParams();
-  return <TicketDetails ticketId={ticketId} />;
+  const navigate = useNavigate();
+  const handleBack = () => navigate(-1);
+  return <TicketDetails ticketId={ticketId} onBack={handleBack} />;
 };
- 
+
 export default TicketDetailsWrapper;
  

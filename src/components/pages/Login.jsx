@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail } from "firebase/auth";
-import { getFirestore, collection, query, where, getDocs, updateDoc, deleteField, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { getFirestore, collection, query, where, getDocs, updateDoc, deleteField, doc, setDoc, deleteDoc, getDoc } from "firebase/firestore";
 import artihcusLogo from '../../assets/Articket-Logo.png';
  
 const Login = () => {
@@ -73,26 +73,20 @@ const Login = () => {
       // 3. Handle UID migration/synchronization if the Firestore document ID is temporary
       if (userDocId !== actualUid) {
         console.log(`UID mismatch: Firestore ID (${userDocId}) vs Auth UID (${actualUid}). Migrating document.`);
-       
         // Create a new document with the actual Firebase Auth UID
         const newUserDocRef = doc(db, 'users', actualUid);
-       
         // Copy all data from the old document, add status: 'active', and remove password
         const updatedUserData = { ...userData, status: 'active' };
         delete updatedUserData.password; // Ensure temporary password is not copied
- 
         await setDoc(newUserDocRef, updatedUserData);
         console.log('New user document created with actual UID.', newUserDocRef.id);
- 
         // Delete the old temporary document
         await deleteDoc(userDocRefByEmail);
         console.log('Old temporary user document deleted.', userDocRefByEmail.id);
- 
         // Update userDocRef and userData to point to the new, correct document for subsequent operations
         userData = updatedUserData;
         userDocId = actualUid;
         // We don't need userDocRefByEmail anymore after deletion
- 
       } else if (userData.status === 'pending') {
         // If UIDs match but status is still pending, update existing document
         console.log('UIDs match, but status pending. Updating existing document.');
@@ -100,6 +94,23 @@ const Login = () => {
           status: 'active',
           password: deleteField() // Remove the temporary password field
         });
+      }
+ 
+      // 4. After migration or if not pending, check by UID. If the document exists and is not disabled, allow login. If not, block login and show error.
+      const userDocRef = doc(db, 'users', actualUid);
+      const userDocSnap = await getDoc(userDocRef);
+      if (!userDocSnap.exists()) {
+        console.log('Login: Blocked login - user document does not exist for UID:', actualUid, email);
+        await auth.signOut();
+        setError('Your account has been deleted by the admin.');
+        return;
+      }
+      const latestUserData = userDocSnap.data();
+      if (latestUserData.status === 'disabled') {
+        console.log('Login: Blocked login - user is disabled for UID:', actualUid, email);
+        await auth.signOut();
+        setError('Your account has been disabled by the admin.');
+        return;
       }
  
       // 💾 Save login state and user data
@@ -243,11 +254,12 @@ const Login = () => {
           </button>
         </form>
  
-        
+       
       </div>
     </div>
   );
 };
  
 export default Login;
+ 
  
