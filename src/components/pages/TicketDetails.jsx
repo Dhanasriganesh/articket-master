@@ -42,6 +42,7 @@ const categories = [
 ];
 const statusOptions = [
   { value: 'Open', label: 'Open' },
+  { value: 'On Hold', label: 'On Hold' },
   { value: 'In Progress', label: 'In Progress' },
   { value: 'Resolved', label: 'Resolved' },
   { value: 'Closed', label: 'Closed' },
@@ -59,6 +60,11 @@ const TicketDetails = ({ ticketId, onBack }) => {
   // Add state for editing fields
   const [editFields, setEditFields] = useState({ priority: '', status: '', category: '' });
   const [isSaving, setIsSaving] = useState(false);
+  const [resolutionText, setResolutionText] = useState('');
+  const [resolutionStatus, setResolutionStatus] = useState('');
+  const [isSavingResolution, setIsSavingResolution] = useState(false);
+  const [commentAttachments, setCommentAttachments] = useState([]);
+  const [resolutionAttachments, setResolutionAttachments] = useState([]);
 
   useEffect(() => {
     const fetchTicketAndUsers = async () => {
@@ -142,6 +148,8 @@ const TicketDetails = ({ ticketId, onBack }) => {
         status: ticket.status,
         category: ticket.category,
       });
+      setResolutionText(ticket.resolution || '');
+      setResolutionStatus(ticket.status || '');
     }
   }, [ticket]);
 
@@ -177,6 +185,31 @@ const TicketDetails = ({ ticketId, onBack }) => {
       return newValue;
     });
     return `${prefix}${nextNumber}`;
+  };
+
+  // Helper to convert files to base64
+  const fileToBase64 = file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      data: reader.result
+    });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const handleCommentAttachmentChange = async (e) => {
+    const files = Array.from(e.target.files);
+    const base64Files = await Promise.all(files.map(fileToBase64));
+    setCommentAttachments(base64Files);
+  };
+
+  const handleResolutionAttachmentChange = async (e) => {
+    const files = Array.from(e.target.files);
+    const base64Files = await Promise.all(files.map(fileToBase64));
+    setResolutionAttachments(base64Files);
   };
 
   // Handler for saving edits
@@ -264,12 +297,14 @@ const TicketDetails = ({ ticketId, onBack }) => {
         authorEmail: currentUser.email,
         authorName,
         authorRole: 'user',
+        attachments: commentAttachments
       };
       await updateDoc(ticketRef, {
         comments: arrayUnion(comment),
         lastUpdated: serverTimestamp()
       });
       setNewResponse('');
+      setCommentAttachments([]);
       // Re-fetch ticket to update UI
       const updatedTicketSnap = await getDoc(ticketRef);
       if (updatedTicketSnap.exists()) {
@@ -281,7 +316,6 @@ const TicketDetails = ({ ticketId, onBack }) => {
           return ta - tb;
         });
         setTicket({ ...ticketData, comments });
-        // Optionally send email notification here
       }
     } catch (err) {
       console.error('Error adding comment:', err);
@@ -302,6 +336,48 @@ const TicketDetails = ({ ticketId, onBack }) => {
         return 'bg-gray-100 text-gray-800';
       default:
         return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const handleSaveResolution = async () => {
+    if (!ticket) return;
+    setIsSavingResolution(true);
+    try {
+      const ticketRef = doc(db, 'tickets', ticket.id);
+      const currentUser = auth.currentUser;
+      let authorName = currentUserName;
+      if (!authorName) authorName = currentUser?.displayName || (currentUser?.email?.split('@')[0] || '');
+      await updateDoc(ticketRef, {
+        resolution: resolutionText,
+        status: resolutionStatus,
+        lastUpdated: serverTimestamp(),
+        resolutionAttachments: resolutionAttachments,
+        comments: arrayUnion({
+          message: `Resolution updated by ${authorName}:\n${resolutionText}`,
+          timestamp: new Date(),
+          authorEmail: currentUser?.email,
+          authorName,
+          authorRole: 'resolver',
+          attachments: resolutionAttachments
+        })
+      });
+      // Refresh ticket
+      const updatedTicketSnap = await getDoc(ticketRef);
+      if (updatedTicketSnap.exists()) {
+        const ticketData = { id: updatedTicketSnap.id, ...updatedTicketSnap.data() };
+        let comments = ticketData.comments || [];
+        comments.sort((a, b) => {
+          const ta = a.timestamp?.seconds ? a.timestamp.seconds : (a.timestamp?._seconds || new Date(a.timestamp).getTime()/1000 || 0);
+          const tb = b.timestamp?.seconds ? b.timestamp.seconds : (b.timestamp?._seconds || new Date(b.timestamp).getTime()/1000 || 0);
+          return ta - tb;
+        });
+        setTicket({ ...ticketData, comments });
+      }
+      setResolutionAttachments([]);
+    } catch (err) {
+      console.error('Error saving resolution:', err);
+    } finally {
+      setIsSavingResolution(false);
     }
   };
 
@@ -407,6 +483,25 @@ const TicketDetails = ({ ticketId, onBack }) => {
                               <span className="text-xs text-gray-400">{formatTimestamp(comment.timestamp)}</span>
                             </div>
                             <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{comment.message}</div>
+                            {comment.attachments && comment.attachments.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {comment.attachments.map((file, idx) => (
+                                  <div key={idx} className="flex flex-col items-center border rounded p-1 bg-gray-50">
+                                    {file.type.startsWith('image/') ? (
+                                      <a href={file.data} target="_blank" rel="noopener noreferrer">
+                                        <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
+                                      </a>
+                                    ) : file.type === 'application/pdf' ? (
+                                      <a href={file.data} target="_blank" rel="noopener noreferrer" className="text-red-600 underline">PDF: {file.name}</a>
+                                    ) : file.type.startsWith('video/') ? (
+                                      <video src={file.data} controls className="w-16 h-16 mb-1" />
+                                    ) : (
+                                      <a href={file.data} download={file.name} className="text-gray-600 underline">{file.name}</a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -428,6 +523,36 @@ const TicketDetails = ({ ticketId, onBack }) => {
                     onChange={(e) => setNewResponse(e.target.value)}
                     rows="4"
                   ></textarea>
+                  <input
+                    id="comment-attachment-input"
+                    type="file"
+                    multiple
+                    accept="image/*,application/pdf,video/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt"
+                    onChange={handleCommentAttachmentChange}
+                    className="hidden"
+                  />
+                  <label htmlFor="comment-attachment-input" className="inline-flex items-center cursor-pointer text-blue-600 hover:text-blue-800 mb-2">
+                    <Paperclip className="w-5 h-5 mr-1" />
+                    <span>Choose file(s)</span>
+                  </label>
+                  {/* Preview selected attachments */}
+                  {commentAttachments.length > 0 && (
+                    <div className="flex flex-wrap gap-4 mb-2">
+                      {commentAttachments.map((file, idx) => (
+                        <div key={idx} className="flex flex-col items-center border rounded p-2 bg-gray-50">
+                          {file.type.startsWith('image/') ? (
+                            <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
+                          ) : file.type === 'application/pdf' ? (
+                            <span className="text-red-600">PDF: {file.name}</span>
+                          ) : file.type.startsWith('video/') ? (
+                            <video src={file.data} controls className="w-16 h-16 mb-1" />
+                          ) : (
+                            <span className="text-gray-600">{file.name}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex justify-end">
                     <button
                       onClick={handleAddResponse}
@@ -581,13 +706,91 @@ const TicketDetails = ({ ticketId, onBack }) => {
           {activeTab === 'Resolution' && (
             <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm space-y-6">
               <div className="font-bold text-lg text-gray-900 mb-4">Resolution</div>
-              <div className="text-gray-800 mb-2">Sample resolution steps for this ticket:</div>
-              <ol className="list-decimal list-inside space-y-2 text-gray-700">
-                <li>Identified root cause as missing master data in SAP EWM.</li>
-                <li>Updated the master data and reprocessed the failed delivery.</li>
-                <li>Confirmed with the user that the issue is resolved.</li>
-              </ol>
-              <div className="mt-4 text-green-700 font-semibold">Status: Resolved</div>
+              <div className="mb-2 text-gray-700">Explain the problem, steps taken, and how the issue was resolved:</div>
+              <textarea
+                className="w-full p-4 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[120px] bg-gray-50 shadow-sm"
+                placeholder="Describe the resolution..."
+                value={resolutionText}
+                onChange={e => setResolutionText(e.target.value)}
+                disabled={isSavingResolution}
+              />
+              <input
+                id="resolution-attachment-input"
+                type="file"
+                multiple
+                accept="image/*,application/pdf,video/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt"
+                onChange={handleResolutionAttachmentChange}
+                className="hidden"
+              />
+              <label htmlFor="resolution-attachment-input" className="inline-flex items-center cursor-pointer text-blue-600 hover:text-blue-800 mb-2">
+                <Paperclip className="w-5 h-5 mr-1" />
+                <span>Choose file(s)</span>
+              </label>
+              {/* Preview selected attachments for resolution */}
+              {resolutionAttachments.length > 0 && (
+                <div className="flex flex-wrap gap-4 mb-2">
+                  {resolutionAttachments.map((file, idx) => (
+                    <div key={idx} className="flex flex-col items-center border rounded p-2 bg-gray-50">
+                      {file.type.startsWith('image/') ? (
+                        <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
+                      ) : file.type === 'application/pdf' ? (
+                        <span className="text-red-600">PDF: {file.name}</span>
+                      ) : file.type.startsWith('video/') ? (
+                        <video src={file.data} controls className="w-16 h-16 mb-1" />
+                      ) : (
+                        <span className="text-gray-600">{file.name}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-col sm:flex-row gap-4 items-center">
+                <div className="flex-1">
+                  <label className="font-semibold text-gray-700 mr-2">Status:</label>
+                  <select
+                    className="border border-gray-300 rounded px-2 py-1"
+                    value={resolutionStatus}
+                    onChange={e => setResolutionStatus(e.target.value)}
+                    disabled={isSavingResolution}
+                  >
+                    {statusOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-50"
+                  onClick={handleSaveResolution}
+                  disabled={isSavingResolution || !resolutionText.trim() || !resolutionStatus}
+                >
+                  {isSavingResolution ? 'Saving...' : 'Submit'}
+                </button>
+              </div>
+              {ticket.resolution && (
+                <div className="mt-4 text-gray-600 text-sm">
+                  <span className="font-semibold">Last Resolution:</span> {ticket.resolution}
+                </div>
+              )}
+              {/* Show previous resolution attachments if any */}
+              {ticket.resolutionAttachments && ticket.resolutionAttachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {ticket.resolutionAttachments.map((file, idx) => (
+                    <div key={idx} className="flex flex-col items-center border rounded p-1 bg-gray-50">
+                      {file.type.startsWith('image/') ? (
+                        <a href={file.data} target="_blank" rel="noopener noreferrer">
+                          <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
+                        </a>
+                      ) : file.type === 'application/pdf' ? (
+                        <a href={file.data} target="_blank" rel="noopener noreferrer" className="text-red-600 underline">PDF: {file.name}</a>
+                      ) : file.type.startsWith('video/') ? (
+                        <video src={file.data} controls className="w-16 h-16 mb-1" />
+                      ) : (
+                        <a href={file.data} download={file.name} className="text-gray-600 underline">{file.name}</a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {activeTab === 'Time Elapsed Analysis' && (
