@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import ClientHeadTickets from './ClientHeadTickets';
 import Ticketing from './Ticketing';
 import {
@@ -20,9 +20,13 @@ import {
   Zap,
   User,
   Briefcase,
-  Activity
+  Activity,
+  Clock,
+  Loader2,
+  RefreshCw,
+  FileText
 } from 'lucide-react';
-import { collection, query, where, getDocs, getFirestore, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, getFirestore, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -70,7 +74,7 @@ const ClientHeadDashboard = () => {
   const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
- 
+  const [searchParams] = useSearchParams();
   const auth = getAuth();
   const db = getFirestore();
  
@@ -89,7 +93,13 @@ const ClientHeadDashboard = () => {
     });
     return () => unsubscribe();
   }, [auth, navigate]);
- 
+   // Handle URL parameters for tab navigation
+   useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['dashboard', 'tickets', 'create', 'clients'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
@@ -168,8 +178,8 @@ const ClientHeadDashboard = () => {
  
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, active: activeTab === 'dashboard' },
-    { id: 'clients', label: 'People', icon: Users, active: activeTab === 'clients' },
-   
+    { id: 'team', label: 'Team', icon: Users, active: activeTab === 'team' },
+    // { id: 'clients', label: 'People', icon: Users, active: activeTab === 'clients' },
     { id: 'tickets', label: 'Tickets', icon: MessageSquare, active: activeTab === 'tickets' }
   ];
  
@@ -204,6 +214,9 @@ const ClientHeadDashboard = () => {
       </div>
     );
   }
+ 
+  // Find the project where the client head is a member
+  const myProject = projects.find(project => (project.members || []).some(m => m.email === user?.email && m.role === 'client_head'));
  
   return (
     <div className="flex h-screen bg-gray-50">
@@ -494,6 +507,28 @@ const ClientHeadDashboard = () => {
           )}
  
           {/* Other tabs content */}
+          {activeTab === 'team' && (
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Clients</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                {(myProject?.members?.filter(m => m.userType === 'client') || []).map(member => (
+                  <div key={member.uid} className="bg-purple-50 rounded-xl p-6 flex flex-col items-center shadow hover:shadow-lg transition">
+                    <div className="w-16 h-16 bg-purple-200 rounded-full flex items-center justify-center mb-4">
+                      <User className="w-8 h-8 text-purple-600" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-semibold text-gray-900">{member.email}</p>
+                      <p className="text-sm text-gray-600 capitalize">{member.role.replace('_', ' ')}</p>
+                    </div>
+                  </div>
+                ))}
+                {((myProject?.members?.filter(m => m.userType === 'client') || []).length === 0) && (
+                  <div className="col-span-full text-center text-gray-500">No clients found for this project.</div>
+                )}
+              </div>
+            </div>
+          )}
+ 
           {activeTab === 'clients' && (
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
               <h2 className="text-xl font-bold text-gray-900 mb-4">Clients Management</h2>
@@ -509,7 +544,7 @@ const ClientHeadDashboard = () => {
  
           {activeTab === 'create' && (
             <div className="max-w-auto mx-auto">
-              <Ticketing />
+  <Ticketing onTicketCreated={() => setActiveTab('tickets')} />
             </div>
           )}
         </main>

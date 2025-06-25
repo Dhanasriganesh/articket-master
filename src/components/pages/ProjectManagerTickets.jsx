@@ -553,11 +553,7 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
                       {ticket.priority}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ticket.email === currentUserEmail ? (
-                        <span className="text-blue-600 font-medium">Me</span>
-                      ) : (
-                        employees.find(emp => emp.email === ticket.email)?.name || ticket.email
-                      )}
+                      {ticket.customer}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {(() => {
@@ -569,22 +565,24 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
                           : employees;
                         return (
                           <div className="flex items-center gap-2">
-                            <select
-                              value={ticket.assignedTo?.email || ''}
-                              onChange={(e) => handleAssignTicket(ticket.id, e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                              className="border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              disabled={(!isProjectManager && creatorIsClient) && ticket.assignedTo?.email === currentUserEmail}
-                            >
-                              <option value="" disabled>
-                                {ticket.assignedTo ? ticket.assignedTo.name : 'Assign...'}
-                              </option>
-                              {assignable.map(user => (
-                                <option key={user.id} value={user.email}>
-                                  {user.name || user.email.split('@')[0]}
+                            {isProjectManager && (
+                              <select
+                                value={ticket.assignedTo?.email || ''}
+                                onChange={(e) => handleAssignTicket(ticket.id, e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                disabled={(!isProjectManager && creatorIsClient) && ticket.assignedTo?.email === currentUserEmail}
+                              >
+                                <option value="" disabled>
+                                  {ticket.assignedTo ? ticket.assignedTo.name : 'Assign...'}
                                 </option>
-                              ))}
-                            </select>
+                                {assignable.map(user => (
+                                  <option key={user.id} value={user.email}>
+                                    {user.name || user.email.split('@')[0]}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                             {ticket.assignedTo && (
                               <button
                                 type="button"

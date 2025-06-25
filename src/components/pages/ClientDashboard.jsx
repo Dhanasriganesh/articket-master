@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Mail,
   AlertCircle,
@@ -38,7 +38,7 @@ import {
   TrendingUp,
   Activity
 } from 'lucide-react';
-import { collection, query, onSnapshot, doc, updateDoc, serverTimestamp, where, getDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, serverTimestamp, where, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { auth } from '../../firebase/config';
 import Ticketing from './Ticketing'; // Import the Ticketing component
@@ -98,6 +98,7 @@ function ClientDashboard() {
   const unsubscribeRef = useRef(null);
   const [showSignoutToast, setShowSignoutToast] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [searchParams] = useSearchParams();
  
   // Animated counts for priorities (must be at top level, not inside JSX)
   const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
@@ -115,6 +116,14 @@ function ClientDashboard() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Handle URL parameters for tab navigation
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['dashboard', 'tickets', 'create'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
  
   useEffect(() => {
     if (authChecked && user) {
@@ -799,7 +808,7 @@ function ClientDashboard() {
  
           {activeTab === 'create' && (
             <div className="max-w-auto mx-auto">
-              <Ticketing />
+              <Ticketing onTicketCreated={() => setActiveTab('tickets')} />
             </div>
           )}
  

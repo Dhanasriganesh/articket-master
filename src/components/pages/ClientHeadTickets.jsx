@@ -502,11 +502,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
                       {ticket.priority}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ticket.email === currentUserEmail ? (
-                        <span className="text-blue-600 font-medium">Me</span>
-                      ) : (
-                        employees.find(emp => emp.email === ticket.email)?.name || ticket.email
-                      )}
+                      {ticket.customer}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {(() => {

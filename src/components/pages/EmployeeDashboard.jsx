@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
   CheckCircle,
@@ -39,6 +39,7 @@ function EmployeeDashboard() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [searchParams] = useSearchParams();
  
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
@@ -51,6 +52,14 @@ function EmployeeDashboard() {
     });
     return () => unsubscribe();
   }, []);
+ 
+  // Handle URL parameters for tab navigation
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['dashboard', 'tickets', 'create'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
  
   // Fetch projects when user is authenticated
   useEffect(() => {
@@ -542,8 +551,8 @@ function EmployeeDashboard() {
           {activeTab === 'tickets' && <EmployeeTickets selectedProjectId={selectedProjectId} allProjectIds={projects.map(p => p.id)} />}
  
           {activeTab === 'create' && (
-            <div className="max-w-4xl mx-auto">
-              <Ticketing />
+            <div className="max-w-auto mx-auto">
+              <Ticketing onTicketCreated={() => setActiveTab('tickets')} />
             </div>
           )}
  

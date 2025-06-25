@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Send,
   Paperclip,
@@ -16,7 +17,7 @@ import { collection, addDoc, serverTimestamp, query, where, getDocs, updateDoc, 
 import { db, auth } from '../../firebase/config';
 import { sendEmail } from '../../utils/sendEmail';
  
-function Client() {
+function Client({ onTicketCreated = null }) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -35,8 +36,11 @@ function Client() {
   const [userData, setUserData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
+  const [countdown, setCountdown] = useState(5);
   const fileInputRef = useRef(null);
   const [previewFile, setPreviewFile] = useState(null);
+  const navigate = useNavigate();
+  const location = useLocation();
  
   const priorities = [
     { value: 'Low', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200', description: 'Non-urgent, can wait', icon: '🟢' },
@@ -49,6 +53,25 @@ function Client() {
     { value: 'Service' },
     { value: 'Change' },
   ];
+
+  // Function to reset form
+  const resetForm = () => {
+    setFormData(prev => ({
+      ...prev,
+      name: userData ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim() : '',
+      email: userData?.email || auth.currentUser?.email || '',
+      project: userData?.project || 'General',
+      subject: '',
+      priority: 'Medium',
+      description: '',
+      category: 'Technical Issue',
+      otherIssue: ''
+    }));
+    setSubmitSuccess(false);
+    setTicketId(null);
+    setCurrentStep(1);
+    setAttachments([]);
+  };
 
   // Fetch user data on component mount
   useEffect(() => {
@@ -94,6 +117,56 @@ function Client() {
 
     fetchUserData();
   }, []);
+
+  // Countdown effect for redirect
+  useEffect(() => {
+    if (submitSuccess && countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (submitSuccess && countdown === 0) {
+      // Reset form before redirecting
+      resetForm();
+      
+      // If we have a callback function, use it (for dashboard context)
+      if (onTicketCreated) {
+        onTicketCreated();
+        return;
+      }
+      
+      // Otherwise, use navigation (for standalone context)
+      const redirectToMyTickets = () => {
+        // Check if we're in a dashboard context
+        if (location.pathname.includes('/clientdashboard') || location.search.includes('tab=create')) {
+          // We're in a dashboard, redirect to tickets tab
+          navigate('/clientdashboard?tab=tickets');
+        } else if (location.pathname.includes('/employeedashboard')) {
+          navigate('/employeedashboard?tab=tickets');
+        } else if (location.pathname.includes('/project-manager-dashboard')) {
+          navigate('/project-manager-dashboard?tab=tickets');
+        } else if (location.pathname.includes('/client-head-dashboard')) {
+          navigate('/client-head-dashboard?tab=tickets');
+        } else {
+          // Default fallback - try to determine from user role
+          if (userData?.role === 'client') {
+            navigate('/clientdashboard?tab=tickets');
+          } else if (userData?.role === 'employee') {
+            navigate('/employeedashboard?tab=tickets');
+          } else if (userData?.role === 'project_manager') {
+            navigate('/project-manager-dashboard?tab=tickets');
+          } else if (userData?.role === 'client_head') {
+            navigate('/client-head-dashboard?tab=tickets');
+          } else {
+            // Fallback to client dashboard
+            navigate('/clientdashboard?tab=tickets');
+          }
+        }
+      };
+      
+      redirectToMyTickets();
+    }
+  }, [submitSuccess, countdown, navigate, location, userData, onTicketCreated, resetForm]);
  
   const validateForm = async () => {
     const newErrors = {};
@@ -307,24 +380,7 @@ function Client() {
       setIsSubmitting(false);
       setSubmitSuccess(true);
       setAttachments([]);
-     
-      // Reset form after success
-      setTimeout(() => {
-        setFormData(prev => ({
-          ...prev,
-          name: userData ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim() : '',
-          email: userData?.email || auth.currentUser?.email || '',
-          project: userData?.project || 'General',
-          subject: '',
-          priority: 'Medium',
-          description: '',
-          category: 'Technical Issue',
-          otherIssue: ''
-        }));
-        setSubmitSuccess(false);
-        setTicketId(null);
-        setCurrentStep(1);
-      }, 3000);
+      setCountdown(5); // Reset countdown for new ticket
     } catch (error) {
       console.error('Error adding ticket:', error);
       setIsSubmitting(false);
@@ -405,8 +461,18 @@ function Client() {
             <p className="text-sm text-gray-600 mb-2">Ticket ID</p>
             <p className="font-mono text-xl font-bold text-blue-600">{ticketId}</p>
           </div>
+          <div className="text-gray-600 text-sm mb-6">
+            Redirecting to My Tickets in <span className="font-bold text-blue-600">{countdown}</span> seconds...
+          </div>
           <button
-            onClick={() => setSubmitSuccess(false)}
+            onClick={() => {
+              resetForm();
+              setCountdown(5);
+              // If we have a callback, use it immediately
+              if (onTicketCreated) {
+                onTicketCreated();
+              }
+            }}
             className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 px-6 rounded-2xl font-semibold text-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 transform hover:scale-105 shadow-lg"
           >
             Create Another Ticket
