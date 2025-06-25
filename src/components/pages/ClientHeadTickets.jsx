@@ -506,17 +506,21 @@ const ClientHeadTickets = ({ setActiveTab }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {(() => {
-                        // Hide dropdown if ticket raised by any client (including current user if client head)
+                        // If ticket is raised by a client, do not show dropdown
                         const ticketRaisedByClient = clients.some(client => client.email === ticket.email) || ticket.email === currentUserEmail;
                         if (ticketRaisedByClient) {
                           return ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-';
                         }
-                        const assignable = employees;
+                        // Only allow assignment to client head and clients
+                        const assignable = [
+                          ...(currentUserData?.email ? [{ email: currentUserData.email, id: 'client_head', name: currentUserData.displayName || currentUserData.email.split('@')[0] }] : []),
+                          ...clients
+                        ];
                         return (
                           <select
                             value={ticket.assignedTo?.email || ''}
-                            onChange={(e) => handleAssignTicket(ticket.id, e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
+                            onChange={e => handleAssignTicket(ticket.id, e.target.value)}
+                            onClick={e => e.stopPropagation()}
                             className="border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                             disabled={assignable.length === 0}
                           >
@@ -525,7 +529,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
                             </option>
                             {assignable.map(user => (
                               <option key={user.id} value={user.email}>
-                                {user.email.split('@')[0]}
+                                {user.name || user.email.split('@')[0]}
                               </option>
                             ))}
                           </select>

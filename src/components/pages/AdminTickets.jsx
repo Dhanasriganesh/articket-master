@@ -42,6 +42,7 @@ function AdminTickets() {
   const [filtersApplied, setFiltersApplied] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState({ status: '', priority: '', category: '', subject: '', description: '' });
+  const [selectedTicketIds, setSelectedTicketIds] = useState([]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(query(collection(db, 'tickets')), (snapshot) => {
@@ -162,6 +163,27 @@ function AdminTickets() {
         return matchesStatus && matchesPriority && matchesProject && matchesSearch;
       })
     : [];
+
+  const allSelected = activeTab === 'deleted' && filteredTickets.length > 0 && filteredTickets.every(t => selectedTicketIds.includes(t.id));
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedTicketIds(filteredTickets.map(t => t.id));
+    } else {
+      setSelectedTicketIds([]);
+    }
+  };
+  const handleSelectTicket = (ticketId, checked) => {
+    setSelectedTicketIds(prev => checked ? [...prev, ticketId] : prev.filter(id => id !== ticketId));
+  };
+  const handleBulkDelete = async () => {
+    if (window.confirm('Are you sure you want to delete all selected tickets?')) {
+      for (const ticketId of selectedTicketIds) {
+        await deleteDoc(doc(db, 'tickets', ticketId));
+      }
+      setTickets(tickets.filter(t => !selectedTicketIds.includes(t.id)));
+      setSelectedTicketIds([]);
+    }
+  };
 
   if (loading) {
     return (
@@ -312,6 +334,11 @@ function AdminTickets() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  {activeTab === 'deleted' && (
+                    <th className="px-6 py-3">
+                      <input type="checkbox" checked={allSelected} onChange={handleSelectAll} />
+                    </th>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -329,6 +356,11 @@ function AdminTickets() {
                     onClick={() => handleTicketClick(ticket.id)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                   >
+                    {activeTab === 'deleted' && (
+                      <td className="px-6 py-4">
+                        <input type="checkbox" checked={selectedTicketIds.includes(ticket.id)} onChange={e => { e.stopPropagation(); handleSelectTicket(ticket.id, e.target.checked); }} />
+                      </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -445,6 +477,9 @@ function AdminTickets() {
             </form>
           </div>
         </div>
+      )}
+      {activeTab === 'deleted' && selectedTicketIds.length > 0 && (
+        <button onClick={handleBulkDelete} className="bg-red-600 text-white px-4 py-2 rounded-lg mb-2">Delete Selected</button>
       )}
     </div>
   );

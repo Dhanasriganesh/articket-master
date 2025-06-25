@@ -559,19 +559,19 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
                       {(() => {
                         const creatorIsClient = clients.some(c => c.email === ticket.email);
                         const isProjectManager = currentUserData?.role === 'project_manager';
-                        // Always include the project manager as an assignable option
-                        const assignable = isProjectManager
-                          ? [{ email: currentUserEmail, id: 'pm', name: currentUserData?.firstName ? `${currentUserData.firstName} ${currentUserData.lastName}` : currentUserEmail.split('@')[0] }, ...employees]
-                          : employees;
-                        return (
-                          <div className="flex items-center gap-2">
-                            {isProjectManager && (
+                        // Only show assign dropdown if ticket is raised by a client
+                        if (creatorIsClient) {
+                          const assignable = isProjectManager
+                            ? [{ email: currentUserEmail, id: 'pm', name: currentUserData?.firstName ? `${currentUserData.firstName} ${currentUserData.lastName}` : currentUserEmail.split('@')[0] }, ...employees]
+                            : employees;
+                          return (
+                            <div className="flex items-center gap-2">
                               <select
                                 value={ticket.assignedTo?.email || ''}
-                                onChange={(e) => handleAssignTicket(ticket.id, e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
+                                onChange={e => handleAssignTicket(ticket.id, e.target.value)}
+                                onClick={e => e.stopPropagation()}
                                 className="border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                disabled={(!isProjectManager && creatorIsClient) && ticket.assignedTo?.email === currentUserEmail}
+                                disabled={assignable.length === 0}
                               >
                                 <option value="" disabled>
                                   {ticket.assignedTo ? ticket.assignedTo.name : 'Assign...'}
@@ -582,21 +582,23 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
                                   </option>
                                 ))}
                               </select>
-                            )}
-                            {ticket.assignedTo && (
-                              <button
-                                type="button"
-                                className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  handleUnassignTicket(ticket.id);
-                                }}
-                              >
-                                Unassign
-                              </button>
-                            )}
-                          </div>
-                        );
+                              {ticket.assignedTo && (
+                                <button
+                                  type="button"
+                                  className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    handleUnassignTicket(ticket.id);
+                                  }}
+                                >
+                                  Unassign
+                                </button>
+                              )}
+                            </div>
+                          );
+                        }
+                        // Otherwise, just show the assignee or '-'
+                        return ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-';
                       })()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

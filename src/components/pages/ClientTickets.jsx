@@ -71,11 +71,11 @@ const ClientTickets = ({ setActiveTab }) => {
         try {
           const usersRef = collection(db, 'users');
          
-          // Fetch employees
+          // Fetch employees and project managers
           const employeesQuery = query(
             usersRef,
             where('project', '==', currentProject),
-            where('role', '==', 'employee')
+            where('role', 'in', ['employee', 'manager'])
           );
           const employeesSnapshot = await getDocs(employeesQuery);
           const employeesList = [];
@@ -96,7 +96,8 @@ const ClientTickets = ({ setActiveTab }) => {
               employeesList.push({
                 id: doc.id,
                 email: userData.email,
-                name: displayName
+                name: displayName,
+                role: userData.role
               });
             }
           });
@@ -137,7 +138,8 @@ const ClientTickets = ({ setActiveTab }) => {
               clientsList.push({
                 id: doc.id,
                 email: userData.email,
-                name: displayName
+                name: displayName,
+                role: userData.role
               });
             }
           });
@@ -464,16 +466,20 @@ const ClientTickets = ({ setActiveTab }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {(() => {
-                        const ticketRaisedByEmployee = employees.some(emp => emp.email === ticket.email);
+                        // Find the user who raised the ticket in the employees array
+                        const ticketRaiser = employees.find(emp => emp.email === ticket.email);
+                        const ticketRaisedByEmployeeOrManager = ticketRaiser && (ticketRaiser.role === 'employee' || ticketRaiser.role === 'project_manager');
+                        const ticketRaisedByEmployee = employees.some(emp => emp.email === ticket.email && emp.role === 'employee');
+                        const ticketRaisedByProjectManager = employees.some(emp => emp.email === ticket.email && emp.role === 'project_manager');
                         const ticketRaisedByClient = clients.some(client => client.email === ticket.email);
                         const isClientHead = clients.find(c => c.email === currentUserEmail)?.role === 'client_head';
                         if (ticketRaisedByClient) {
                           // Read-only for client-raised tickets
                           return ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-';
                         }
-                        return (
-                          <div className="flex items-center gap-2">
-                            {ticketRaisedByEmployee ? (
+                        if (ticketRaisedByEmployee || ticketRaisedByProjectManager) {
+                          return (
+                            <div className="flex items-center gap-2">
                               <select
                                 value={ticket.assignedTo?.email || ''}
                                 onChange={(e) => handleAssignTicket(ticket.id, e.target.value)}
@@ -497,13 +503,7 @@ const ClientTickets = ({ setActiveTab }) => {
                                   )
                                 )}
                               </select>
-                            ) : (
-                              ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'
-                            )}
-                            {ticket.assignedTo && ticketRaisedByEmployee && (
-                              // Only allow unassign for employee-raised tickets
-                              (!employees.some(emp => emp.email === ticket.assignedTo.email) &&
-                                (ticketRaisedByEmployee || clients.some(c => c.email === ticket.assignedTo.email))) && (
+                              {ticket.assignedTo && (ticket.assignedTo.email === currentUserEmail) && (
                                 <button
                                   type="button"
                                   className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
@@ -514,10 +514,11 @@ const ClientTickets = ({ setActiveTab }) => {
                                 >
                                   Unassign
                                 </button>
-                              )
-                            )}
-                          </div>
-                        );
+                              )}
+                            </div>
+                          );
+                        }
+                        return ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-';
                       })()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

@@ -373,7 +373,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
         {/* Tabs */}
         <div className="border-b mb-8 px-2">
           <nav className="flex flex-wrap gap-2">
-            {['Commentbox','Details','Checklists','Resolution','Time Elapsed Analysis'].map(tab => (
+            {['Commentbox','Details','Resolution','Time Elapsed Analysis'].map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -577,25 +577,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
               )}
             </div>
           )}
-          {activeTab === 'Checklists' && (
-            <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm space-y-6">
-              <div className="font-bold text-lg text-gray-900 mb-4">Checklists</div>
-              <ul className="space-y-3">
-                <li className="flex items-center gap-3">
-                  <span className="w-4 h-4 rounded-full bg-green-400 flex items-center justify-center text-white text-xs">✓</span>
-                  <span className="text-gray-800">Verify SAP EWM system connectivity</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <span className="w-4 h-4 rounded-full bg-gray-300 flex items-center justify-center text-white text-xs">•</span>
-                  <span className="text-gray-800">Check user authorization for warehouse tasks</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <span className="w-4 h-4 rounded-full bg-gray-300 flex items-center justify-center text-white text-xs">•</span>
-                  <span className="text-gray-800">Review error logs for recent failures</span>
-                </li>
-              </ul>
-            </div>
-          )}
+        
           {activeTab === 'Resolution' && (
             <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm space-y-6">
               <div className="font-bold text-lg text-gray-900 mb-4">Resolution</div>

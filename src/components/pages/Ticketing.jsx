@@ -49,9 +49,9 @@ function Client({ onTicketCreated = null }) {
   ];
  
   const categories = [
-    { value: 'Inscedent'},
-    { value: 'Service' },
-    { value: 'Change' },
+    { value: 'Incident-request'},
+    { value: 'Service-request' },
+    { value: 'Change-request' },
   ];
 
   // Function to reset form
@@ -255,15 +255,15 @@ function Client({ onTicketCreated = null }) {
   // Helper to get the next ticket number for a category
   const getNextTicketNumber = async (category) => {
     let prefix, counterDocId, startValue;
-    if (category === 'Inscedent') {
+    if (category === 'Incident-request') {
       prefix = 'IN';
       counterDocId = 'incident_counter';
       startValue = 100000;
-    } else if (category === 'Service') {
+    } else if (category === 'Service-request') {
       prefix = 'SR';
       counterDocId = 'service_counter';
       startValue = 200000;
-    } else if (category === 'Change') {
+    } else if (category === 'Change-request') {
       prefix = 'CR';
       counterDocId = 'change_counter';
       startValue = 300000;
@@ -416,6 +416,12 @@ function Client({ onTicketCreated = null }) {
   };
 
   const nextStep = () => {
+    if (currentStep === 2) {
+      if (!formData.description.trim() || formData.description.trim().length < 10) {
+        setErrors(prev => ({ ...prev, description: 'Description must be at least 10 characters' }));
+        return;
+      }
+    }
     if (currentStep < 4) {
       setCurrentStep(currentStep + 1);
     }
@@ -697,25 +703,11 @@ function Client({ onTicketCreated = null }) {
                       >
                         {categories.map(category => (
                           <option key={category.value} value={category.value}>
-                            {category.icon} {category.value} - {category.description}
+                            {category.icon} {category.value}
                           </option>
                         ))}
                       </select>
-                      {/* Show input if 'Others' is selected */}
-                      {formData.category === 'Others' && (
-                        <div className="mt-4">
-                          <label className="block text-sm font-semibold text-gray-700 mb-1">Please specify the issue</label>
-                          <input
-                            type="text"
-                            name="otherIssue"
-                            value={formData.otherIssue || ''}
-                            onChange={e => setFormData(prev => ({ ...prev, otherIssue: e.target.value }))}
-                            className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300"
-                            placeholder="Describe your issue"
-                            required
-                          />
-                        </div>
-                      )}
+                  
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-800 mb-3">Priority</h3>

@@ -463,23 +463,41 @@ const EmployeeTickets = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {(() => {
-                        // If ticket is already assigned, just show the assignee's name/email (never 'Me' or 'Myself')
-                        if (ticket.assignedTo && ticket.assignedTo.email) {
-                          return ticket.assignedTo.name || ticket.assignedTo.email;
-                        }
-                        // If not assigned, show the dropdown
                         const creatorIsClient = clients.some(c => c.email === ticket.email);
-                        const isProjectManager = currentUserData?.role === 'project_manager';
-                        const assignable = creatorIsClient && !isProjectManager ? [] : employees;
-                        return (
-                          <div className="flex items-center gap-2">
-                            {assignable.map(user => (
-                              <option key={user.id} value={user.email}>
-                                {user.email.split('@')[0]}
-                              </option>
-                            ))}
-                          </div>
-                        );
+                        // Show assign dropdown if ticket is raised by client or client head and not assigned
+                        if (creatorIsClient && !ticket.assignedTo) {
+                          return (
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={''}
+                                onChange={e => { e.stopPropagation(); handleAssignTicket(ticket.id, currentUserEmail); }}
+                                className="border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 z-20 relative"
+                                style={{ zIndex: 20, position: 'relative' }}
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <option value="" disabled>Assign to me</option>
+                                <option value={currentUserEmail}>Assign to me ({currentUserEmail.split('@')[0]})</option>
+                              </select>
+                            </div>
+                          );
+                        }
+                        // If assigned to current employee, show unassign button
+                        if (ticket.assignedTo && ticket.assignedTo.email === currentUserEmail) {
+                          return (
+                            <div className="flex items-center gap-2">
+                              {ticket.assignedTo.name || ticket.assignedTo.email}
+                              <button
+                                type="button"
+                                className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                                onClick={e => { e.stopPropagation(); handleUnassignTicket(ticket.id); }}
+                              >
+                                Unassign
+                              </button>
+                            </div>
+                          );
+                        }
+                        // Otherwise, just show the assignee or '-'
+                        return ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-';
                       })()}
                     </td>
                   </tr>
