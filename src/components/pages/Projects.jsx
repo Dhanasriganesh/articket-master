@@ -89,6 +89,11 @@ function Projects() {
   const handleAddPerson = async (e) => {
     e.preventDefault();
     const email = formData.email.trim();
+    // Password length validation
+    if ((formData.password || '').length < 6) {
+      showNotification('Password must be at least 6 characters long.', 'error');
+      return;
+    }
     // LTD validation: only allow .com, .co, .org, .net
     const ltdPattern = /^[^@\s]+@[^@\s]+\.(com|co|org|net)$/i;
     if (!ltdPattern.test(email)) {
@@ -105,6 +110,18 @@ function Projects() {
     if (!selectedProject) {
       return;
     }
+    // Prevent adding an employee to multiple projects (but allow project managers in multiple projects)
+    if (formData.userType === 'employee' && formData.role === 'employee') {
+      // Check all projects for this email as employee
+      for (const project of projects) {
+        if (project.members && project.members.some(m => m.userType === 'employee' && m.role === 'employee' && m.email.toLowerCase() === email.toLowerCase())) {
+          showNotification(`Employee already exists in ${project.name}.`, 'error');
+          return;
+        }
+      }
+    }
+    // Allow project managers to be added to multiple projects
+    // Only prevent employees from being in multiple projects
     try {
       // Check for email uniqueness across ALL roles and ALL projects
       const globalEmailQuery = query(collection(db, 'users'), where('email', '==', email));
@@ -256,18 +273,20 @@ function Projects() {
   const handleEditMember = (member) => {
     setEditingMember(member);
     setFormData({
-      email: member.email,
+      email: member.email || '',
       role: member.role === 'client_head' ? 'head' : 
             member.role === 'project_manager' ? 'manager' : 
             member.role === 'client' ? 'client' : 'employee',
-      userType: member.userType
+      userType: member.userType || 'client'
     });
     setShowEditMemberModal(true);
   };
 
   const handleUpdateMember = async (e) => {
     e.preventDefault();
+    console.log('handleUpdateMember: called with formData:', formData, 'editingMember:', editingMember);
     if (!selectedProject || !editingMember) {
+      console.log('handleUpdateMember: missing selectedProject or editingMember');
       return;
     }
 
@@ -279,85 +298,26 @@ function Projects() {
       newRole = formData.role === 'manager' ? 'project_manager' : 'employee';
     }
 
-    // If role or userType is changed, show confirmation modal
+    // If role, userType, or email is changed, always use applyRoleChange
     if (
-      (editingMember.role !== newRole || editingMember.userType !== formData.userType)
+      editingMember.role !== newRole ||
+      editingMember.userType !== formData.userType ||
+      editingMember.email !== formData.email
     ) {
-      setPendingRoleChange({ ...formData, newRole });
-      setShowRoleChangeConfirm(true);
+      setShowEditMemberModal(false);
+      applyRoleChange(formData, editingMember, newRole);
       return;
     }
 
-    // Check if email is being changed and validate uniqueness
-    if (formData.email !== editingMember.email) {
-      const globalEmailQuery = query(collection(db, 'users'), where('email', '==', formData.email));
-      const globalEmailSnapshot = await getDocs(globalEmailQuery);
-      if (!globalEmailSnapshot.empty) {
-        const conflict = globalEmailSnapshot.docs.some(doc => {
-          const user = doc.data();
-          return user.role !== newRole || user.userType !== formData.userType;
-        });
-        if (conflict) {
-          showNotification(
-            `Email ${formData.email} is already registered with a different role. Each email can only be used with one role across all projects.`,
-            'error'
-          );
-          return;
-        }
-      }
-    }
-
-    try {
-      const updatedMembers = selectedProject.members.map(member => {
-        if (member.uid === editingMember.uid) {
-          return {
-            ...member,
-            email: formData.email,
-            role: newRole,
-            userType: formData.userType
-          };
-        }
-        return member;
-      });
-
-      await updateDoc(doc(db, 'projects', selectedProject.id), {
-        members: updatedMembers
-      });
-
-      // Update user document in users collection
-      try {
-        const userDocRef = doc(db, 'users', editingMember.uid);
-        const updateData = {
-          email: formData.email,
-          role: updatedMembers.find(m => m.uid === editingMember.uid)?.role || editingMember.role,
-          userType: formData.userType,
-          updatedAt: new Date().toISOString(),
-        };
-        await updateDoc(userDocRef, updateData);
-      } catch (error) {
-        console.error('Error updating user document:', error);
-        showNotification('Member updated in project but failed to update user details', 'error');
-      }
-
-      // Update local state
-      const updatedProjects = projects.map(p => 
-        p.id === selectedProject.id 
-          ? { ...p, members: updatedMembers }
-          : p
-      );
-      setProjects(updatedProjects);
-      setShowEditMemberModal(false);
-      setEditingMember(null);
-      setFormData({
-        email: '',
-        role: 'client',
-        userType: 'client'
-      });
-      showNotification('Member details updated successfully', 'success');
-    } catch (error) {
-      console.error('Error updating member:', error);
-      showNotification('Failed to update member details', 'error');
-    }
+    // If nothing changed, just close modal
+    setShowEditMemberModal(false);
+    setEditingMember(null);
+    setFormData({
+      email: '',
+      role: 'client',
+      userType: 'client'
+    });
+    showNotification('No changes made to member details', 'info');
   };
 
   const applyRoleChange = async (formData, editingMember, newRole) => {
@@ -384,6 +344,7 @@ function Projects() {
       const userEmail = formData.email;
       const userUid = editingMember.uid;
       const batch = [];
+      let updatedAnyProject = false;
       for (const project of projects) {
         if (project.members.some(m => m.uid === userUid)) {
           const updatedMembers = project.members.map(m =>
@@ -392,46 +353,52 @@ function Projects() {
               : m
           );
           batch.push(updateDoc(doc(db, 'projects', project.id), { members: updatedMembers }));
+          console.log('applyRoleChange: Updating project', project.id, 'members for user', userUid, userEmail, newRole);
+          updatedAnyProject = true;
         }
       }
       await Promise.all(batch);
+      if (updatedAnyProject) {
+        console.log('applyRoleChange: Updated project members for user', userUid, userEmail, newRole);
+      }
       // Update user document in users collection
       try {
         const userDocRef = doc(db, 'users', userUid);
-        const updateData = {
-          email: userEmail,
-          role: newRole,
-          userType: formData.userType,
-          updatedAt: new Date().toISOString(),
-        };
-        await updateDoc(userDocRef, updateData);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const updateData = {
+            email: userEmail,
+            role: newRole,
+            userType: formData.userType,
+            updatedAt: new Date().toISOString(),
+          };
+          await updateDoc(userDocRef, updateData);
+          console.log('applyRoleChange: Updated user doc for UID:', userUid, updateData);
+        } else {
+          // Try to find the real UID doc by email if temp doc is missing
+          const realUidQuery = query(collection(db, 'users'), where('email', '==', userEmail));
+          const realUidSnapshot = await getDocs(realUidQuery);
+          for (const docSnap of realUidSnapshot.docs) {
+            if (!docSnap.id.startsWith('temp_')) {
+              const updateData = {
+                email: userEmail,
+                role: newRole,
+                userType: formData.userType,
+                updatedAt: new Date().toISOString(),
+              };
+              await updateDoc(doc(db, 'users', docSnap.id), updateData);
+              console.log('applyRoleChange: Updated user doc for real UID:', docSnap.id, updateData);
+            }
+          }
+          if (realUidSnapshot.empty) {
+            console.warn('applyRoleChange: No user doc found for email:', userEmail, 'Skipping update.');
+          }
+        }
       } catch (error) {
         console.error('Error updating user document:', error);
         showNotification('Member updated in projects but failed to update user details', 'error');
       }
-      // Update local state
-      const updatedProjects = projects.map(p => {
-        if (p.members.some(m => m.uid === userUid)) {
-          return {
-            ...p,
-            members: p.members.map(m =>
-              m.uid === userUid
-                ? { ...m, email: userEmail, role: newRole, userType: formData.userType }
-                : m
-            ),
-          };
-        }
-        return p;
-      });
-      setProjects(updatedProjects);
-      setShowEditMemberModal(false);
-      setEditingMember(null);
-      setFormData({
-        email: '',
-        role: 'client',
-        userType: 'client',
-      });
-      showNotification('User role updated in all projects and database', 'success');
+      showNotification('User role/email updated in all projects and database', 'success');
     } catch (error) {
       console.error('Error updating member:', error);
       showNotification('Failed to update member details', 'error');
@@ -499,7 +466,7 @@ function Projects() {
               }
               await updateDoc(userDocRef, updateFields);
             }
-          } catch (err) {
+          } catch {
             // Ignore errors for missing docs
           }
         }
@@ -592,6 +559,7 @@ function Projects() {
                       <button
                         onClick={e => {
                           e.stopPropagation();
+                          setSelectedProject(project);
                           handleEditMember(member);
                         }}
                         className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -680,6 +648,7 @@ function Projects() {
                       <button
                         onClick={e => {
                           e.stopPropagation();
+                          setSelectedProject(project);
                           handleEditMember(member);
                         }}
                         className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -1129,13 +1098,13 @@ function Projects() {
                 </button>
               </div>
               {/* Form */}
-              <form onSubmit={handleUpdateMember} className="space-y-4 relative">
+              <form onSubmit={(e) => { console.log('Save Changes button clicked'); handleUpdateMember(e); }} className="space-y-4 relative">
                 {/* Email Field */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                   <input
                     type="email"
-                    value={formData.email}
+                    value={formData.email || ''}
                     onChange={e => setFormData({ ...formData, email: e.target.value })}
                     className="w-full px-4 py-2 bg-white/50 backdrop-blur-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     placeholder="Enter email address"
@@ -1399,7 +1368,7 @@ function Projects() {
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Change User Role?</h3>
               <p className="text-gray-600 mb-6">
-                This user's role will be changed in <b>all projects</b> where they are a member. Do you want to proceed?
+                This user&apos;s role will be changed in <b>all projects</b> where they are a member. Do you want to proceed?
               </p>
               <div className="flex justify-center space-x-3">
                 <button
