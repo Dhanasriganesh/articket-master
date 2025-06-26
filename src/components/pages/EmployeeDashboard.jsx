@@ -280,23 +280,33 @@ function EmployeeDashboard() {
     );
   };
  
-  // Fetch latest user role from Firestore on mount
+  // Replace the fetchRole useEffect with a real-time listener for role changes
   useEffect(() => {
-    const fetchRole = async () => {
-      if (auth.currentUser) {
-        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+    let unsubscribe;
+    if (auth.currentUser) {
+      const userDocRef = doc(db, 'users', auth.currentUser.uid);
+      unsubscribe = onSnapshot(userDocRef, (userDoc) => {
         if (userDoc.exists()) {
           const role = userDoc.data().role;
-          // If not employee, redirect accordingly
           if (role === 'client') {
             navigate('/clientdashboard');
           } else if (role === 'admin') {
             navigate('/admin');
+          } else if (role === 'project_manager') {
+            navigate('/projectmanagerdashboard');
+          } else if (role !== 'employee') {
+            // If role is removed or unknown, sign out
+            auth.signOut();
+            navigate('/login');
           }
+        } else {
+          // User doc deleted, sign out
+          auth.signOut();
+          navigate('/login');
         }
-      }
-    };
-    fetchRole();
+      });
+    }
+    return () => { if (unsubscribe) unsubscribe(); };
   }, [navigate]);
  
   if (error) {
