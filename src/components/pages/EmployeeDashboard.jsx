@@ -505,7 +505,7 @@ function EmployeeDashboard() {
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <button
-                    onClick={() => navigate('/ticketing')}
+                    onClick={() => setActiveTab('create')}
                     className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all duration-200"
                   >
                     <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">

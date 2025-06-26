@@ -539,7 +539,10 @@ function Projects() {
                   onClick={() => {
                     setSelectedProject(project);
                     setFormData({
-                      ...formData,
+                      name: '',
+                      description: '',
+                      email: '',
+                      password: '',
                       userType: 'employee',
                       role: 'employee'
                     });
@@ -600,7 +603,10 @@ function Projects() {
                       onClick={() => {
                         setSelectedProject(project);
                         setFormData({
-                          ...formData,
+                          name: '',
+                          description: '',
+                          email: '',
+                          password: '',
                           userType: 'employee',
                           role: 'employee'
                         });
@@ -628,7 +634,10 @@ function Projects() {
                   onClick={() => {
                     setSelectedProject(project);
                     setFormData({
-                      ...formData,
+                      name: '',
+                      description: '',
+                      email: '',
+                      password: '',
                       userType: 'client',
                       role: 'client'
                     });
@@ -689,7 +698,10 @@ function Projects() {
                       onClick={() => {
                         setSelectedProject(project);
                         setFormData({
-                          ...formData,
+                          name: '',
+                          description: '',
+                          email: '',
+                          password: '',
                           userType: 'client',
                           role: 'client'
                         });

@@ -43,7 +43,7 @@ const priorities = [
   { value: 'High', label: 'High' },
 ];
 const categories = [
-  { value: 'Inscedent', label: 'Inscedent' },
+  { value: 'Incident', label: 'Incident' },
   { value: 'Service', label: 'Service' },
   { value: 'Change', label: 'Change' },
 ];
@@ -212,7 +212,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
   // Helper to get next ticket number for a category
   const getNextTicketNumber = async (category) => {
     let prefix, counterDocId, startValue;
-    if (category === 'Inscedent') {
+    if (category === 'Incident') {
       prefix = 'IN';
       counterDocId = 'incident_counter';
       startValue = 100000;
