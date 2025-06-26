@@ -406,6 +406,35 @@ const ProjectManagerDashboard = () => {
     // eslint-disable-next-line
   }, [authChecked, user, db, selectedProjectId]);
 
+  // Add a real-time listener for role changes
+  useEffect(() => {
+    let unsubscribe;
+    if (auth.currentUser) {
+      const userDocRef = doc(db, 'users', auth.currentUser.uid);
+      unsubscribe = onSnapshot(userDocRef, (userDoc) => {
+        if (userDoc.exists()) {
+          const role = userDoc.data().role;
+          if (role === 'employee') {
+            navigate('/employeedashboard');
+          } else if (role === 'admin') {
+            navigate('/admin');
+          } else if (role === 'client') {
+            navigate('/clientdashboard');
+          } else if (role !== 'project_manager') {
+            // If role is removed or unknown, sign out
+            auth.signOut();
+            navigate('/login');
+          }
+        } else {
+          // User doc deleted, sign out
+          auth.signOut();
+          navigate('/login');
+        }
+      });
+    }
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, [auth, navigate]);
+
   const handleLogout = async () => {
     try {
       await auth.signOut();
