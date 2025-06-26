@@ -857,6 +857,20 @@ const TicketDetails = ({ ticketId, onBack }) => {
                     )}
                   </div>
                   <div><span className="font-semibold text-gray-700">Requester:</span> {ticket.customer} ({ticket.email})</div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Resolution:</span>
+                    <span
+                      className="ml-2 text-blue-600 underline cursor-pointer"
+                      onClick={() => {
+                        if (!resolutionText.trim()) {
+                          setActiveTab('Resolution');
+                          showToast('Please fill the resolution in resolution section', 'error');
+                        }
+                      }}
+                    >
+                      {ticket.resolution ? ticket.resolution : 'No resolution provided'}
+                    </span>
+                  </div>
                 </div>
                 {isEditMode && (
                   <div className="flex justify-end mt-6 gap-2">
