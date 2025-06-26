@@ -402,7 +402,7 @@ function EmployeeDashboard() {
                   <User className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{employeeName}</p>
+                  <p className="text-sm font-medium text-gray-900">{employeeName.toUpperCase()}</p>
                   <p className="text-xs text-gray-500">Employee</p>
                 </div>
               </div>
@@ -431,7 +431,7 @@ function EmployeeDashboard() {
                 <Menu className="w-6 h-6 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Welcome, {employeeName}!</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Welcome, {employeeName.toUpperCase()}!</h1>
                 <p className="text-gray-600">Manage your assigned support tickets and communications</p>
               </div>
             </div>

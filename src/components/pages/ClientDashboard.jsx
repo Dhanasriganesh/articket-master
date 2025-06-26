@@ -523,7 +523,7 @@ function ClientDashboard() {
                   <User className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{clientName}</p>
+                  <p className="text-sm font-medium text-gray-900">{clientName.toUpperCase()}</p>
                   <p className="text-xs text-gray-500">Client</p>
                 </div>
               </div>
@@ -552,7 +552,7 @@ function ClientDashboard() {
                 <Menu className="w-6 h-6 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Welcome back, {clientName}!</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Welcome back, {clientName.toUpperCase()}!</h1>
                 <p className="text-gray-600">Manage your support tickets and communications</p>
               </div>
             </div>

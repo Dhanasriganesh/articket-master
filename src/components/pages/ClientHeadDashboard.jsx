@@ -299,7 +299,7 @@ const ClientHeadDashboard = () => {
                   <User className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{clientHeadName}</p>
+                  <p className="text-sm font-medium text-gray-900">{clientHeadName.toUpperCase()}</p>
                   <p className="text-xs text-gray-500">Client Head</p>
                 </div>
               </div>
@@ -328,7 +328,7 @@ const ClientHeadDashboard = () => {
                 <Menu className="w-6 h-6 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Welcome, {clientHeadName}!</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Welcome, {clientHeadName.toUpperCase()}!</h1>
                 <p className="text-gray-600">Monitor client activities and project progress</p>
               </div>
             </div>
