@@ -417,21 +417,9 @@ function Projects() {
   const handleDeleteMember = async (memberToDelete, projectId) => {
     console.log('handleDeleteMember: called for', memberToDelete?.email, memberToDelete?.uid, 'in project', projectId);
     try {
-      // Always delete ALL user documents with this email, regardless of project membership
-      console.log('handleDeleteMember: Deleting ALL user documents for email:', memberToDelete.email);
-      const allUsersQuery = query(collection(db, 'users'), where('email', '==', memberToDelete.email));
-      const allUsersSnapshot = await getDocs(allUsersQuery);
-      console.log('handleDeleteMember: Found', allUsersSnapshot.docs.length, 'user docs for deletion for email:', memberToDelete.email);
-      for (const docSnap of allUsersSnapshot.docs) {
-        console.log('handleDeleteMember: Deleting user document:', docSnap.id, docSnap.data().email);
-        await deleteDoc(docSnap.ref);
-        console.log('handleDeleteMember: Deleted user document:', docSnap.id);
-      }
-      console.log('handleDeleteMember: Finished deleting all user docs for email:', memberToDelete.email);
-      // Update local state to remove the member from the project in the UI
+      // Remove the member from the project's members array in Firestore
       const project = projects.find(p => p.id === projectId);
       if (project) {
-        // Remove the member from the project's members array in Firestore
         const updatedMembers = project.members.filter(member => member.email !== memberToDelete.email);
         await updateDoc(doc(db, 'projects', projectId), { members: updatedMembers });
         // Update local state
@@ -448,7 +436,20 @@ function Projects() {
           }
         }
       }
-      showNotification(`${memberToDelete.email} has been deleted from the project and system`);
+      // Check if the user is a member of any other project
+      const isStillMember = projects.some(p =>
+        p.id !== projectId && (p.members || []).some(m => m.email === memberToDelete.email)
+      );
+      if (!isStillMember) {
+        // Only delete user doc if not a member of any other project
+        const allUsersQuery = query(collection(db, 'users'), where('email', '==', memberToDelete.email));
+        const allUsersSnapshot = await getDocs(allUsersQuery);
+        for (const docSnap of allUsersSnapshot.docs) {
+          await deleteDoc(docSnap.ref);
+        }
+        console.log('handleDeleteMember: Deleted user doc for', memberToDelete.email);
+      }
+      showNotification(`${memberToDelete.email} has been deleted from the project${!isStillMember ? ' and system' : ''}`);
     } catch (error) {
       console.error('Error deleting member:', error);
       showNotification('Failed to remove member from project', 'error');

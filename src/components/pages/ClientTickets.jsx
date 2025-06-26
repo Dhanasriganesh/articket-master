@@ -276,6 +276,13 @@ const ClientTickets = ({ setActiveTab }) => {
     return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
   });
  
+  // Ticket counts for cards
+  const totalTickets = ticketsData.length;
+  const openTickets = ticketsData.filter(t => t.status === 'Open').length;
+  const inProgressTickets = ticketsData.filter(t => t.status === 'In Progress').length;
+  const resolvedTickets = ticketsData.filter(t => t.status === 'Resolved').length;
+  const closedTickets = ticketsData.filter(t => t.status === 'Closed').length;
+ 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -304,31 +311,37 @@ const ClientTickets = ({ setActiveTab }) => {
  
   return (
     <>
-      <div className="flex justify-between items-center mb-8">
-        <div>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
+        <div className="flex items-center gap-4">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center">
             <BsTicketFill className="mr-3 text-blue-600" /> Project Tickets
           </h1>
-          {userProject && (
-            <p className="text-gray-600 mt-2">Project: {userProject}</p>
-          )}
+          {/* Ticket Stats Cards */}
+          <div className="flex gap-2">
+            <div className="bg-white rounded-lg shadow border border-gray-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+              <span className="text-xs text-gray-500">Total</span>
+              <span className="text-lg font-bold text-gray-900">{totalTickets}</span>
+            </div>
+            <div className="bg-blue-50 rounded-lg shadow border border-blue-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+              <span className="text-xs text-blue-600">Open</span>
+              <span className="text-lg font-bold text-blue-700">{openTickets}</span>
+            </div>
+            <div className="bg-yellow-50 rounded-lg shadow border border-yellow-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+              <span className="text-xs text-yellow-600">In Progress</span>
+              <span className="text-lg font-bold text-yellow-700">{inProgressTickets}</span>
+            </div>
+            <div className="bg-green-50 rounded-lg shadow border border-green-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+              <span className="text-xs text-green-600">Resolved</span>
+              <span className="text-lg font-bold text-green-700">{resolvedTickets}</span>
+            </div>
+            <div className="bg-gray-50 rounded-lg shadow border border-gray-200 px-3 py-2 flex flex-col items-center min-w-[70px]">
+              <span className="text-xs text-gray-600">Closed</span>
+              <span className="text-lg font-bold text-gray-700">{closedTickets}</span>
+            </div>
+          </div>
         </div>
-        {setActiveTab ? (
-          <button
-            onClick={() => setActiveTab('create')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
-          >
-            <BsFolderFill className="mr-2" />
-            Create New Ticket
-          </button>
-        ) : (
-          <Link
-            to="/client-dashboard?tab=create"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
-          >
-            <BsFolderFill className="mr-2" />
-            Create New Ticket
-          </Link>
+        {userProject && (
+          <p className="text-gray-600 mt-2">Project: {userProject}</p>
         )}
       </div>
  

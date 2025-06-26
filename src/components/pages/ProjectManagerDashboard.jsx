@@ -21,14 +21,17 @@ import {
   RefreshCw,
   FileText
 } from 'lucide-react';
-import { collection, query, where, getDocs, getFirestore, doc, getDoc,onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, getFirestore, doc, getDoc,onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend
 } from 'recharts';
 import ProjectTickets from './ProjectManagerTickets';
 import TeamManagement from './TeamManagement';
 import Ticketing from './Ticketing';
+import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 // Animated count-up hook (same as ClientDashboard)
 function useCountUp(target, duration = 1200) {
@@ -52,6 +55,216 @@ function useCountUp(target, duration = 1200) {
     requestAnimationFrame(animate);
   }, [target, duration]);
   return count;
+}
+
+// Utility to compute KPI metrics from ticket data (reuse from TeamManagement)
+function computeKPIsForTickets(tickets) {
+  let totalResponse = 0, totalResolution = 0, count = 0;
+  const details = tickets.map(ticket => {
+    // Find created time
+    const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+    // Find assignment time (first comment with 'Assigned to <name>' and authorRole 'user' or 'system')
+    let assigned = null;
+    let resolved = null;
+    if (ticket.comments && Array.isArray(ticket.comments)) {
+      for (const c of ticket.comments) {
+        if (!assigned && c.message && c.message.toLowerCase().includes('assigned to') && c.authorRole && (c.authorRole === 'user' || c.authorRole === 'system')) {
+          assigned = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
+        }
+        if (!resolved && c.message && c.message.toLowerCase().includes('resolution updated') && c.authorRole && c.authorRole === 'resolver') {
+          resolved = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
+        }
+      }
+    }
+    // Fallback: if ticket.status is Resolved and lastUpdated exists
+    if (!resolved && ticket.status === 'Resolved' && ticket.lastUpdated) {
+      resolved = ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate() : new Date(ticket.lastUpdated);
+    }
+    // Only count if assigned
+    if (ticket.assignedTo && ticket.assignedTo.email) {
+      count++;
+      let responseTime = assigned && created ? (assigned - created) : null;
+      let resolutionTime = resolved && assigned ? (resolved - assigned) : null;
+      if (responseTime) totalResponse += responseTime;
+      if (resolutionTime) totalResolution += resolutionTime;
+      return {
+        ticketNumber: ticket.ticketNumber,
+        subject: ticket.subject,
+        assignee: ticket.assignedTo?.email,
+        responseTime,
+        resolutionTime,
+        status: ticket.status,
+        created,
+        assigned,
+        resolved
+      };
+    }
+    return null;
+  }).filter(Boolean);
+  return {
+    count,
+    avgResponse: count ? totalResponse / count : 0,
+    avgResolution: count ? totalResolution / count : 0,
+    details
+  };
+}
+
+// Utility to convert KPI data to CSV and trigger download
+async function downloadKpiCsv(kpiData, projectName = '') {
+  if (!kpiData || !kpiData.details) return;
+  // Chart data summary rows
+  const chartHeader = ['Ticket #', 'Response Time (min)', 'Resolution Time (min)'];
+  const chartRows = kpiData.details.map(row => [
+    row.ticketNumber,
+    row.responseTime ? (row.responseTime/1000/60).toFixed(2) : '',
+    row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) : ''
+  ]);
+  // Table data
+  const header = ['Ticket #','Subject','Assignee','Response Time (min)','Resolution Time (min)','Status'];
+  const rows = kpiData.details.map(row => [
+    row.ticketNumber,
+    row.subject,
+    row.assignee,
+    row.responseTime ? (row.responseTime/1000/60).toFixed(2) : '',
+    row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) : '',
+    row.status
+  ]);
+  // Compose CSV
+  const csvContent = [
+    ['KPI Bar Chart Data:'],
+    chartHeader,
+    ...chartRows,
+    [],
+    ['KPI Table Data:'],
+    header,
+    ...rows
+  ].map(r => r.map(x => '"'+String(x).replace(/"/g,'""')+'"').join(',')).join('\n');
+
+  // Save KPI report to Firestore
+  try {
+    const db = getFirestore();
+    const auth = getAuth();
+    const user = auth.currentUser;
+    const reportDoc = {
+      createdAt: serverTimestamp(),
+      createdBy: user ? { uid: user.uid, email: user.email } : null,
+      project: projectName || '',
+      summary: {
+        totalTickets: kpiData.count,
+        avgResponse: kpiData.avgResponse,
+        avgResolution: kpiData.avgResolution
+      },
+      chartData: chartRows,
+      tableData: rows
+    };
+    await addDoc(collection(db, 'kpi_reports'), reportDoc);
+  } catch (e) {
+    // Optionally show error to user
+    console.error('Failed to save KPI report to Firestore:', e);
+  }
+
+  // Download CSV
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `KPI_Report_Project.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Helper to convert SVG chart to PNG data URL
+async function getChartPngDataUrl(chartId) {
+  const chartElem = document.getElementById(chartId);
+  if (!chartElem) return null;
+  const svg = chartElem.querySelector('svg');
+  if (!svg) return null;
+  const svgData = new XMLSerializer().serializeToString(svg);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const img = new window.Image();
+  img.src = 'data:image/svg+xml;base64,' + window.btoa(svgData);
+  await new Promise(res => { img.onload = res; });
+  canvas.width = img.width;
+  canvas.height = img.height;
+  ctx.drawImage(img, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+async function exportKpiToExcelWithChartImage(kpiData, chartId, projectName = '') {
+  if (!kpiData || !kpiData.details) return;
+
+  // 1. Create workbook and worksheet
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('KPI Report');
+
+  // 2. Add table data
+  worksheet.addRow(['Ticket #','Subject','Assignee','Response Time (min)','Resolution Time (min)','Status']);
+  kpiData.details.forEach(row => {
+    worksheet.addRow([
+      row.ticketNumber,
+      row.subject,
+      row.assignee,
+      row.responseTime ? (row.responseTime/1000/60).toFixed(2) : '',
+      row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) : '',
+      row.status
+    ]);
+  });
+
+  // 3. Add chart image
+  const imgDataUrl = await getChartPngDataUrl(chartId);
+  if (imgDataUrl) {
+    const imageId = workbook.addImage({
+      base64: imgDataUrl,
+      extension: 'png',
+    });
+    // Place the image at the top of the worksheet
+    worksheet.addImage(imageId, {
+      tl: { col: 0, row: 0 },
+      ext: { width: 500, height: 300 }
+    });
+  }
+
+  // 4. Download the Excel file
+  const buffer = await workbook.xlsx.writeBuffer();
+  saveAs(new Blob([buffer]), `KPI_Report_${projectName || 'Project'}.xlsx`);
+
+  // 5. Save KPI report to Firestore
+  try {
+    const db = getFirestore();
+    const auth = getAuth();
+    const user = auth.currentUser;
+    const chartData = kpiData.details.map(row => ({
+      ticketNumber: row.ticketNumber,
+      responseTime: row.responseTime ? (row.responseTime/1000/60).toFixed(2) : '',
+      resolutionTime: row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) : ''
+    }));
+    const tableData = kpiData.details.map(row => ({
+      ticketNumber: row.ticketNumber,
+      subject: row.subject,
+      assignee: row.assignee,
+      responseTime: row.responseTime ? (row.responseTime/1000/60).toFixed(2) : '',
+      resolutionTime: row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) : '',
+      status: row.status
+    }));
+    const reportDoc = {
+      createdAt: serverTimestamp(),
+      createdBy: user ? { uid: user.uid, email: user.email } : null,
+      project: projectName || '',
+      summary: {
+        totalTickets: kpiData.count,
+        avgResponse: kpiData.avgResponse,
+        avgResolution: kpiData.avgResolution
+      },
+      chartData,
+      tableData
+    };
+    await addDoc(collection(db, 'kpi_reports'), reportDoc);
+  } catch (e) {
+    console.error('Failed to save KPI report to Firestore:', e);
+  }
 }
 
 const ProjectManagerDashboard = () => {
@@ -206,6 +419,7 @@ const ProjectManagerDashboard = () => {
     { id: 'dashboard', label: 'Dashboard', icon: Home, active: activeTab === 'dashboard' },
     { id: 'tickets', label: 'Tickets', icon: MessageSquare, active: activeTab === 'tickets' },
     { id: 'team', label: 'Team', icon: Users, active: activeTab === 'team' },
+    { id: 'kpi', label: 'KPI Reports', icon: BarChart3, active: activeTab === 'kpi' },
     { id: 'create', label: 'Create Ticket', icon: Plus, active: activeTab === 'create' }
   ];
 
@@ -214,7 +428,7 @@ const ProjectManagerDashboard = () => {
     return (
       <button
         key={item.id}
-        onClick={() => {
+        onClick={item.onClick ? item.onClick : () => {
           setActiveTab(item.id);
           setSidebarOpen(false);
         }}
@@ -505,25 +719,7 @@ const ProjectManagerDashboard = () => {
           )}
 
           {activeTab === 'team' && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Team Members</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                {(projects.find(p => p.id === selectedProjectId)?.members?.filter(m => m.userType === 'employee') || []).map(member => (
-                  <div key={member.uid} className="bg-blue-50 rounded-xl p-6 flex flex-col items-center shadow hover:shadow-lg transition">
-                    <div className="w-16 h-16 bg-blue-200 rounded-full flex items-center justify-center mb-4">
-                      <User className="w-8 h-8 text-blue-600" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-lg font-semibold text-gray-900">{member.email}</p>
-                      <p className="text-sm text-gray-600 capitalize">{member.role.replace('_', ' ')}</p>
-                    </div>
-                  </div>
-                ))}
-                {((projects.find(p => p.id === selectedProjectId)?.members?.filter(m => m.userType === 'employee') || []).length === 0) && (
-                  <div className="col-span-full text-center text-gray-500">No team members found for this project.</div>
-                )}
-              </div>
-            </div>
+            <TeamManagement />
           )}
 
           {activeTab === 'tickets' && (
@@ -539,6 +735,86 @@ const ProjectManagerDashboard = () => {
           {activeTab === 'create' && (
             <div className="max-w-auto mx-auto">
                <Ticketing onTicketCreated={() => setActiveTab('tickets')} />
+            </div>
+          )}
+
+          {activeTab === 'kpi' && (
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-blue-600" />KPI Reports</h2>
+              {/* Compute KPIs for all tickets in the selected project(s) */}
+              {tickets.length === 0 ? (
+                <div className="text-gray-500">No tickets found for KPI analysis.</div>
+              ) : (
+                (() => {
+                  const kpi = computeKPIsForTickets(tickets);
+                  return (
+                    <>
+                      <div className="mb-4">
+                        <div><b>Total Tickets Assigned:</b> {kpi.count}</div>
+                        <div><b>Avg. Response Time:</b> {kpi.avgResponse ? (kpi.avgResponse/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
+                        <div><b>Avg. Resolution Time:</b> {kpi.avgResolution ? (kpi.avgResolution/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
+                      </div>
+                      {/* KPI Bar Chart */}
+                      <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart">
+                        <h3 className="text-lg font-semibold mb-2">KPI Bar Chart</h3>
+                        <ResponsiveContainer width="100%" height={250}>
+                          <BarChart data={kpi.details.map(row => ({
+                            name: row.ticketNumber,
+                            'Response Time (min)': row.responseTime ? (row.responseTime/1000/60) : 0,
+                            'Resolution Time (min)': row.resolutionTime ? (row.resolutionTime/1000/60) : 0,
+                          }))}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="Response Time (min)" fill="#8884d8" />
+                            <Bar dataKey="Resolution Time (min)" fill="#82ca9d" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="flex gap-4 mb-4">
+                        {/* <button
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
+                          onClick={() => downloadKpiCsv(kpi, projects.find(p => p.id === selectedProjectId)?.name || '')}
+                        >
+                          Download CSV
+                        </button> */}
+                        <button
+                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+                          onClick={() => exportKpiToExcelWithChartImage(kpi, 'kpi-bar-chart', projects.find(p => p.id === selectedProjectId)?.name || '')}
+                        >
+                          Export to Excel
+                        </button>
+                      </div>
+                      <table className="min-w-full text-xs text-left text-gray-700 border">
+                        <thead>
+                          <tr>
+                            <th className="py-1 px-2">Ticket #</th>
+                            <th className="py-1 px-2">Subject</th>
+                            <th className="py-1 px-2">Assignee</th>
+                            <th className="py-1 px-2">Response Time</th>
+                            <th className="py-1 px-2">Resolution Time</th>
+                            <th className="py-1 px-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {kpi.details.map((row, idx) => (
+                            <tr key={idx} className="border-t">
+                              <td className="py-1 px-2">{row.ticketNumber}</td>
+                              <td className="py-1 px-2">{row.subject}</td>
+                              <td className="py-1 px-2">{row.assignee}</td>
+                              <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                              <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                              <td className="py-1 px-2">{row.status}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  );
+                })()
+              )}
             </div>
           )}
         </main>

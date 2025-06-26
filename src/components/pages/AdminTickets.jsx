@@ -1,36 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Paperclip,
-  User,
-  Mail,
-  Clock,
-  X,
-  File,
-  FileText,
-  Image,
-  Video,
-  Loader2,
-  Projector,
-  Edit2,
-  ChevronDown,
-  ChevronUp,
-  DownloadCloud,
+  // Projector,
+  // Edit2,
+  // ChevronDown,
+  // ChevronUp,
+  // DownloadCloud,
   Filter,
-  Trash2,
-  Search,
+  // Trash2,
+  // Search,
   FolderKanban,
-  AlertCircle,
-  FolderOpen
+  // AlertCircle,
+  // FolderOpen
 } from 'lucide-react';
-import { serverTimestamp, updateDoc, doc, onSnapshot, collection, query, orderBy, deleteDoc } from 'firebase/firestore';
+import { serverTimestamp, updateDoc, doc, onSnapshot, collection, query, deleteDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import TicketDetails from './TicketDetails';
-import { BsTicketFill, BsFolderFill } from 'react-icons/bs';
+import { BsTicketFill } from 'react-icons/bs';
 
 function AdminTickets() {
   const [tickets, setTickets] = useState([]);
   const [projects, setProjects] = useState([]);
-  const [deletedProjects, setDeletedProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedTicketId, setSelectedTicketId] = useState(null);
@@ -55,7 +44,7 @@ function AdminTickets() {
       const ticketList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTickets(ticketList);
       setLoading(false);
-    }, (err) => {
+    }, () => {
       setError('Failed to load tickets.');
       setLoading(false);
     });
@@ -70,31 +59,6 @@ function AdminTickets() {
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    const checkDeletedProjects = () => {
-      const deletedProjectMap = new Map();
-      
-      tickets.forEach(ticket => {
-        if (ticket.projectId && !projects.find(p => p.id === ticket.projectId)) {
-          if (!deletedProjectMap.has(ticket.projectId)) {
-            deletedProjectMap.set(ticket.projectId, {
-              id: ticket.projectId,
-              name: ticket.project || `Deleted Project (${ticket.projectId})`,
-              isDeleted: true
-            });
-          }
-        }
-      });
-      
-      const deletedProjectsList = Array.from(deletedProjectMap.values());
-      setDeletedProjects(deletedProjectsList);
-    };
-
-    if (tickets.length > 0 && projects.length > 0) {
-      checkDeletedProjects();
-    }
-  }, [tickets, projects]);
-
   // Close dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(event) {
@@ -107,7 +71,7 @@ function AdminTickets() {
   }, []);
 
   // Helper to summarize selected options
-  const summarize = (arr, allLabel, options) => {
+  const summarize = (arr, allLabel) => {
     if (arr.includes('All')) return allLabel;
     if (arr.length === 0) return allLabel;
     return arr.join(', ');
@@ -133,7 +97,7 @@ function AdminTickets() {
       try {
         await deleteDoc(doc(db, 'tickets', ticketId));
         setTickets(tickets.filter(t => t.id !== ticketId));
-      } catch (error) {
+      } catch {
         alert('Error deleting ticket.');
       }
     }
@@ -149,31 +113,9 @@ function AdminTickets() {
       });
       setShowEditModal(false);
       setSelectedTicketId(null);
-    } catch (error) {
+    } catch {
       alert('Error updating ticket.');
     }
-  };
-
-  const getTicketsForTab = () => {
-    if (activeTab === 'live') {
-      return tickets.filter(ticket => {
-        return !ticket.projectId || projects.find(p => p.id === ticket.projectId);
-      });
-    } else if (activeTab === 'deleted') {
-      return tickets.filter(ticket => {
-        return ticket.projectId && !projects.find(p => p.id === ticket.projectId);
-      });
-    }
-    return [];
-  };
-
-  const getProjectsForFilter = () => {
-    if (activeTab === 'live') {
-      return projects;
-    } else if (activeTab === 'deleted') {
-      return deletedProjects;
-    }
-    return [];
   };
 
   const handleCheckboxFilter = (filter, setFilter, value) => {
@@ -222,6 +164,13 @@ function AdminTickets() {
     }
   };
 
+  // Ticket counts for cards
+  const totalTickets = tickets.length;
+  const openTickets = tickets.filter(t => t.status === 'Open').length;
+  const inProgressTickets = tickets.filter(t => t.status === 'In Progress').length;
+  const resolvedTickets = tickets.filter(t => t.status === 'Resolved').length;
+  const closedTickets = tickets.filter(t => t.status === 'Closed').length;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -250,11 +199,35 @@ function AdminTickets() {
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-          <BsTicketFill className="mr-3 text-blue-600" /> Tickets
-        </h1>
-        
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+            <BsTicketFill className="mr-3 text-blue-600" /> Tickets
+          </h1>
+          {/* Ticket Stats Cards */}
+          <div className="flex gap-2">
+            <div className="bg-white rounded-lg shadow border border-gray-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+              <span className="text-xs text-gray-500">Total</span>
+              <span className="text-lg font-bold text-gray-900">{totalTickets}</span>
+            </div>
+            <div className="bg-blue-50 rounded-lg shadow border border-blue-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+              <span className="text-xs text-blue-600">Open</span>
+              <span className="text-lg font-bold text-blue-700">{openTickets}</span>
+            </div>
+            <div className="bg-yellow-50 rounded-lg shadow border border-yellow-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+              <span className="text-xs text-yellow-600">In Progress</span>
+              <span className="text-lg font-bold text-yellow-700">{inProgressTickets}</span>
+            </div>
+            <div className="bg-green-50 rounded-lg shadow border border-green-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+              <span className="text-xs text-green-600">Resolved</span>
+              <span className="text-lg font-bold text-green-700">{resolvedTickets}</span>
+            </div>
+            <div className="bg-gray-50 rounded-lg shadow border border-gray-200 px-3 py-2 flex flex-col items-center min-w-[70px]">
+              <span className="text-xs text-gray-600">Closed</span>
+              <span className="text-lg font-bold text-gray-700">{closedTickets}</span>
+            </div>
+          </div>
+        </div>
       </div>
       <div className="mb-6">
         <div className="border-b border-gray-200">
@@ -295,14 +268,14 @@ function AdminTickets() {
           <label className="text-xs font-semibold text-gray-500 mr-2">Project</label>
           <div className="relative" ref={projectDropdownRef}>
             <button type="button" className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[120px] text-left" onClick={() => setProjectDropdownOpen(v => !v)}>
-              {summarize(filterProject, 'All', getProjectsForFilter().map(p => p.name))}
+              {summarize(filterProject, 'All', projects.map(p => p.name))}
             </button>
             {projectDropdownOpen && (
               <div className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 p-2 min-w-[180px]">
                 <label className="flex items-center text-sm">
                   <input type="checkbox" checked={filterProject.includes('All')} onChange={() => handleCheckboxFilter(filterProject, setFilterProject, 'All')} /> All
                 </label>
-                {getProjectsForFilter().map(project => (
+                {projects.map(project => (
                   <label key={project.id} className="flex items-center text-sm">
                     <input type="checkbox" checked={filterProject.includes(project.id)} onChange={() => handleCheckboxFilter(filterProject, setFilterProject, project.id)} /> {project.name}
                   </label>

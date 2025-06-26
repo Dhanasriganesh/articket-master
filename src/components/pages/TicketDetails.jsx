@@ -13,7 +13,14 @@ import {
   Send,
   CheckCircle,
   Paperclip,
-  Link
+  Link,
+  Menu,
+  LogOut,
+  Home,
+  FileText,
+  MessageSquare,
+  FolderOpen
+
 } from 'lucide-react';
 import { sendEmail } from '../../utils/sendEmail';
 import { fetchProjectMemberEmails } from '../../utils/emailUtils';
@@ -1060,7 +1067,105 @@ const TicketDetails = ({ ticketId, onBack }) => {
         </div>
       </div>
       {/* Sidebar */}
-    
+    {/* Sidebar */}
+    <div className="w-full lg:w-80 space-y-6">
+        {/* SLA Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4"></h3>
+          <div className="space-y-4">
+            <div className="flex items-start space-x-3">
+              <Clock className="w-5 h-5 text-gray-500 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-gray-700">Time to resolution</p>
+                <p className="text-lg font-bold text-blue-600">
+                  within {ticket.sla || (ticket.priority === 'High' ? '24h' : ticket.priority === 'Medium' ? '48h' : '80h')}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+ 
+        {/* Fields Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Fields</h3>
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-gray-600">Start date</p>
+              <p className="text-sm font-medium text-gray-900">
+                {ticket.created ? formatTimestamp(ticket.created).split(',')[0] : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Priority</p>
+              <div className="flex items-center space-x-2">
+                <span className={`inline-block w-2 h-2 rounded-full ${
+                  ticket.priority === 'High' ? 'bg-red-500' :
+                  ticket.priority === 'Medium' ? 'bg-yellow-500' :
+                  'bg-blue-500'
+                }`}></span>
+                <p className="text-sm font-medium text-gray-900">{ticket.priority || 'Low'}</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Project</p>
+              <div className="flex items-center space-x-2">
+                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center">
+                  <FolderOpen className="w-4 h-4 text-indigo-600" />
+                </div>
+                <p className="text-sm font-medium text-gray-900">{ticket.project || 'General'}</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Reporter</p>
+              <div className="flex items-center space-x-2 mt-1">
+                <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
+                  <User className="w-4 h-4 text-blue-600" />
+                </div>
+                <p className="text-sm font-medium text-gray-900">
+                  {ticket.customer || ticket.email?.split('@')[0] || 'N/A'}
+                </p>
+              </div>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Assignee</p>
+              <div className="flex items-center space-x-2 mt-1">
+                <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center">
+                  <User className="w-4 h-4 text-purple-600" />
+                </div>
+                <p className="text-sm font-medium text-gray-900">
+                  {ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email?.split('@')[0]) : 'Unassigned'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+ 
+        {/* Attachments Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Attachments</h3>
+          <div className="space-y-3">
+            {ticket.attachments && ticket.attachments.length > 0 ? (
+              ticket.attachments.map((file, index) => (
+                <div key={index} className="flex items-start space-x-3">
+                  <div className="flex-shrink-0">
+                    <Paperclip className="w-5 h-5 text-gray-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {(file.size / 1024).toFixed(1)} KB • {formatTimestamp(file.uploadedAt || new Date())}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="flex items-center justify-center py-4">
+                <p className="text-sm text-gray-500">No attachments</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

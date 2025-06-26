@@ -46,6 +46,7 @@ import ClientTickets from './ClientTickets'; // Import the ClientTickets compone
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
+import LogoutModal from './LogoutModal';
  
 // Animated count-up hook
 function useCountUp(target, duration = 1200) {
@@ -96,7 +97,7 @@ function ClientDashboard() {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const unsubscribeRef = useRef(null);
-  const [showSignoutToast, setShowSignoutToast] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [searchParams] = useSearchParams();
  
@@ -247,11 +248,8 @@ function ClientDashboard() {
     };
   }, []);
  
-  const handleLogout = () => {
-    setShowSignoutToast(true);
-  };
- 
-  const confirmSignout = async () => {
+  const handleLogout = () => setShowLogoutModal(true);
+  const handleLogoutConfirm = async () => {
     setSigningOut(true);
     try {
       await auth.signOut();
@@ -260,9 +258,10 @@ function ClientDashboard() {
       console.error('Error signing out:', error);
     } finally {
       setSigningOut(false);
-      setShowSignoutToast(false);
+      setShowLogoutModal(false);
     }
   };
+  const handleLogoutCancel = () => setShowLogoutModal(false);
  
   const sendResponse = async (ticketId, message) => {
     if (!message.trim()) return;
@@ -827,27 +826,8 @@ function ClientDashboard() {
           )}
         </main>
       </div>
-      {/* Signout Confirmation Toast */}
-      {showSignoutToast && (
-        <div className="fixed bottom-4 right-4 z-50 p-4 bg-white rounded-xl shadow-lg border border-gray-200 flex items-center space-x-4 animate-fade-in">
-          <LogOut className="w-6 h-6 text-red-600" />
-          <span className="text-gray-900 font-medium">Are you sure you want to sign out?</span>
-          <button
-            onClick={confirmSignout}
-            disabled={signingOut}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition disabled:opacity-60"
-          >
-            {signingOut ? 'Signing out...' : 'Yes'}
-          </button>
-          <button
-            onClick={() => setShowSignoutToast(false)}
-            disabled={signingOut}
-            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition disabled:opacity-60"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
+      {/* Replace old signout modal/toast with reusable modal */}
+      <LogoutModal open={showLogoutModal} onCancel={handleLogoutCancel} onConfirm={handleLogoutConfirm} loading={signingOut} />
     </div>
   );
 }

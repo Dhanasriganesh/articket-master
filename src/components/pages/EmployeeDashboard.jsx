@@ -21,6 +21,7 @@ import { db } from '../../firebase/config';
 import { auth } from '../../firebase/config';
 import Ticketing from './Ticketing'; // Import the Ticketing component
 import EmployeeTickets from './EmployeeTickets'; // Import the EmployeeTickets component
+import LogoutModal from './LogoutModal';
  
 function EmployeeDashboard() {
   const [tickets, setTickets] = useState([]);
@@ -36,7 +37,8 @@ function EmployeeDashboard() {
   const navigate = useNavigate();
   const messagesContainerRef = useRef(null);
   const unsubscribeRef = useRef(null);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [searchParams] = useSearchParams();
@@ -229,13 +231,20 @@ function EmployeeDashboard() {
   }, [selectedTicket?.adminResponses, selectedTicket?.customerResponses, selectedTicket?.id]);
  
   const handleLogout = async () => {
+    setSigningOut(true);
     try {
       await auth.signOut();
       navigate('/login');
     } catch (error) {
       console.error('Error signing out:', error);
+    } finally {
+      setSigningOut(false);
+      setShowLogoutModal(false);
     }
   };
+ 
+  const handleLogoutClick = () => setShowLogoutModal(true);
+  const handleLogoutCancel = () => setShowLogoutModal(false);
  
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, active: activeTab === 'dashboard' },
@@ -328,31 +337,7 @@ function EmployeeDashboard() {
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Logout Confirmation Modal */}
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-lg p-8 max-w-xs w-full text-center">
-            <h2 className="text-lg font-semibold mb-4">Confirm Logout</h2>
-            <p className="mb-6 text-gray-700">Are you sure you want to log out?</p>
-            <div className="flex justify-center gap-4">
-              <button
-                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
-                onClick={() => setShowLogoutConfirm(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-                onClick={() => {
-                  setShowLogoutConfirm(false);
-                  handleLogout();
-                }}
-              >
-                Yes, Log Out
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <LogoutModal open={showLogoutModal} onCancel={handleLogoutCancel} onConfirm={handleLogout} loading={signingOut} />
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div
@@ -408,7 +393,7 @@ function EmployeeDashboard() {
               </div>
             )}
             <button
-              onClick={() => setShowLogoutConfirm(true)}
+              onClick={handleLogoutClick}
               className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200`}
             >
               <LogOut className="w-4 h-4" />
@@ -438,7 +423,7 @@ function EmployeeDashboard() {
             <div className="flex items-center space-x-4">
              
               <button
-                onClick={() => setShowLogoutConfirm(true)}
+                onClick={handleLogoutClick}
                 className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
               >
                 <LogOut className="w-4 h-4" />

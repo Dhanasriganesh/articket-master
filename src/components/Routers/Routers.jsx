@@ -14,6 +14,7 @@ import ProjectManagerDashboard from "../pages/ProjectManagerDashboard";
 import ClientHeadDashboard from "../pages/ClientHeadDashboard";
 import EmployeeTickets from "../pages/EmployeeTickets";
 import TicketDetailsWrapper from '../pages/TicketDetailsWrapper';
+import EmployeeKPIDashboard from '../pages/EmployeeKPIDashboard';
  
 import { auth, db } from '../../firebase/config';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -173,8 +174,14 @@ function Routers() {
       <Route path="/project-manager-dashboard" element={<ProjectManagerDashboard />} />
       <Route path="/client-head-dashboard" element={<ClientHeadDashboard />} />
       <Route path="/tickets/:ticketId" element={<TicketDetailsWrapper />} />
+      <Route path="/team/employee/:id" element={
+        <ProtectedRoute>
+          <EmployeeKPIDashboard />
+        </ProtectedRoute>
+      } />
     </Routes>
   );
 }
  
 export default Routers;
+ 
