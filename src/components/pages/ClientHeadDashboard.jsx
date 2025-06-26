@@ -179,8 +179,8 @@ const ClientHeadDashboard = () => {
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, active: activeTab === 'dashboard' },
     { id: 'team', label: 'Team', icon: Users, active: activeTab === 'team' },
-    // { id: 'clients', label: 'People', icon: Users, active: activeTab === 'clients' },
-    { id: 'tickets', label: 'Tickets', icon: MessageSquare, active: activeTab === 'tickets' }
+    { id: 'tickets', label: 'Tickets', icon: MessageSquare, active: activeTab === 'tickets' },
+    { id: 'create', label: 'Create Ticket', icon: Plus, active: activeTab === 'create' },
   ];
  
   const renderSidebarItem = (item) => {
@@ -462,47 +462,7 @@ const ClientHeadDashboard = () => {
                 </div>
               </div>
  
-              {/* Clients and Recent Tickets Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Recent Tickets */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                  <div className="p-6 border-b border-gray-200">
-                    <h2 className="text-xl font-semibold text-gray-900">Recent Tickets</h2>
-                  </div>
-                  <div className="divide-y divide-gray-200">
-                    {tickets.slice(0, 5).map(ticket => (
-                      <div key={ticket.id} className="p-6 hover:bg-gray-50">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <h3 className="text-sm font-medium text-gray-900">{ticket.subject}</h3>
-                            <div className="flex items-center gap-4 mt-1">
-                              <p className="text-sm text-gray-500">
-                                {ticket.customer}
-                              </p>
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                ticket.status === 'Open' ? 'bg-yellow-100 text-yellow-800' :
-                                ticket.status === 'Closed' ? 'bg-green-100 text-green-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
-                                {ticket.status}
-                              </span>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => navigate(`/ticket/${ticket.id}`)}
-                            className="text-blue-600 hover:text-blue-700 font-medium text-sm"
-                          >
-                            View →
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
- 
- 
-               
-              </div>
+            
             </div>
           )}
  
@@ -539,13 +499,11 @@ const ClientHeadDashboard = () => {
           
  
           {activeTab === 'tickets' && (
-            <ClientHeadTickets setActiveTab={setActiveTab} />
+            <ClientHeadTickets />
           )}
  
           {activeTab === 'create' && (
-            <div className="max-w-auto mx-auto">
-  <Ticketing onTicketCreated={() => setActiveTab('tickets')} />
-            </div>
+            <Ticketing />
           )}
         </main>
       </div>

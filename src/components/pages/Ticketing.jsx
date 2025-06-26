@@ -417,6 +417,10 @@ function Client({ onTicketCreated = null }) {
 
   const nextStep = () => {
     if (currentStep === 2) {
+      if (!formData.subject.trim()) {
+        setErrors(prev => ({ ...prev, subject: 'Subject is required' }));
+        return;
+      }
       if (!formData.description.trim() || formData.description.trim().length < 10) {
         setErrors(prev => ({ ...prev, description: 'Description must be at least 10 characters' }));
         return;
@@ -470,19 +474,7 @@ function Client({ onTicketCreated = null }) {
           <div className="text-gray-600 text-sm mb-6">
             Redirecting to My Tickets in <span className="font-bold text-blue-600">{countdown}</span> seconds...
           </div>
-          <button
-            onClick={() => {
-              resetForm();
-              setCountdown(5);
-              // If we have a callback, use it immediately
-              if (onTicketCreated) {
-                onTicketCreated();
-              }
-            }}
-            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 px-6 rounded-2xl font-semibold text-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 transform hover:scale-105 shadow-lg"
-          >
-            Create Another Ticket
-          </button>
+          
         </div>
       </div>
     );
@@ -686,7 +678,6 @@ function Client({ onTicketCreated = null }) {
                 </div>
               </div>
             )}
-
             {/* Step 3: Priority & Category */}
             {currentStep === 3 && (
               <div className="space-y-8">
@@ -744,7 +735,6 @@ function Client({ onTicketCreated = null }) {
                 </div>
               </div>
             )}
-
             {/* Step 4: Review & Submit */}
             {currentStep === 4 && (
               <div className="space-y-8">

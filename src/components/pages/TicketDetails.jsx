@@ -65,6 +65,21 @@ const TicketDetails = ({ ticketId, onBack }) => {
   const [isSavingResolution, setIsSavingResolution] = useState(false);
   const [commentAttachments, setCommentAttachments] = useState([]);
   const [resolutionAttachments, setResolutionAttachments] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [selectedAssignee, setSelectedAssignee] = useState('');
+  const [currentUserRole, setCurrentUserRole] = useState('');
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingCommentIndex, setEditingCommentIndex] = useState(null);
+  const [editingCommentValue, setEditingCommentValue] = useState('');
+  const [isSavingCommentEdit, setIsSavingCommentEdit] = useState(false);
+  const [detailsError, setDetailsError] = useState('');
+  const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
+
+  // Toast helper
+  const showToast = (message, type = 'error') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type }), 2500);
+  };
 
   useEffect(() => {
     const fetchTicketAndUsers = async () => {
@@ -153,6 +168,40 @@ const TicketDetails = ({ ticketId, onBack }) => {
     }
   }, [ticket]);
 
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      if (!ticket?.project) return;
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('project', '==', ticket.project), where('role', 'in', ['employee', 'project_manager']));
+      const snapshot = await getDocs(q);
+      const emps = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          email: data.email,
+          name: data.firstName && data.lastName ? `${data.firstName} ${data.lastName}`.trim() : data.email.split('@')[0],
+          role: data.role
+        };
+      });
+      setEmployees(emps);
+    };
+    const fetchCurrentUserRole = async () => {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          setCurrentUserRole(userDocSnap.data().role);
+        }
+      }
+    };
+    if (ticket) {
+      fetchEmployees();
+      setSelectedAssignee(ticket.assignedTo?.email || '');
+      fetchCurrentUserRole();
+    }
+  }, [ticket]);
+
   // Helper to get next ticket number for a category
   const getNextTicketNumber = async (category) => {
     let prefix, counterDocId, startValue;
@@ -212,9 +261,25 @@ const TicketDetails = ({ ticketId, onBack }) => {
     setResolutionAttachments(base64Files);
   };
 
+  const handleAssignChange = (e) => {
+    setSelectedAssignee(e.target.value);
+  };
+
+  // Modified status dropdown handler
+  const handleStatusChange = (e) => {
+    const newStatus = e.target.value;
+    if ((newStatus === 'Resolved' || newStatus === 'Closed') && !resolutionText.trim()) {
+      showToast('Please fill the resolution in resolution section', 'error');
+      return; // Do not update the field
+    }
+    setEditFields(f => ({ ...f, status: newStatus }));
+  };
+
   // Handler for saving edits
   const handleSaveDetails = async () => {
     if (!ticket) return;
+    setDetailsError('');
+    // No need to revalidate here, as dropdown prevents invalid state
     setIsSaving(true);
     try {
       const ticketRef = doc(db, 'tickets', ticket.id);
@@ -237,6 +302,14 @@ const TicketDetails = ({ ticketId, onBack }) => {
         const newTicketNumber = await getNextTicketNumber(editFields.category);
         updates.ticketNumber = newTicketNumber;
         commentMsg.push(`Category changed to ${editFields.category} and Ticket ID updated to ${newTicketNumber}`);
+      }
+      // Assignment
+      if (selectedAssignee && (!ticket.assignedTo || ticket.assignedTo.email !== selectedAssignee)) {
+        const assignee = employees.find(emp => emp.email === selectedAssignee);
+        if (assignee) {
+          updates.assignedTo = { email: assignee.email, name: assignee.name, role: assignee.role };
+          commentMsg.push(`Assigned to ${assignee.name}`);
+        }
       }
       if (Object.keys(updates).length > 0) {
         updates.lastUpdated = serverTimestamp();
@@ -381,6 +454,62 @@ const TicketDetails = ({ ticketId, onBack }) => {
     }
   };
 
+  // Add a function to reset edit fields
+  const resetEditFields = () => {
+    if (ticket) {
+      setEditFields({
+        priority: ticket.priority,
+        status: ticket.status,
+        category: ticket.category,
+      });
+      setSelectedAssignee(ticket.assignedTo?.email || '');
+    }
+  };
+
+  // Edit comment handler
+  const handleEditComment = (index, message) => {
+    setEditingCommentIndex(index);
+    setEditingCommentValue(message);
+  };
+  const handleCancelEditComment = () => {
+    setEditingCommentIndex(null);
+    setEditingCommentValue('');
+  };
+  const handleSaveEditComment = async (comment, index) => {
+    if (!ticket) return;
+    setIsSavingCommentEdit(true);
+    try {
+      const ticketRef = doc(db, 'tickets', ticket.id);
+      // Prepare new comments array
+      const updatedComments = [...ticket.comments];
+      updatedComments[index] = {
+        ...comment,
+        message: editingCommentValue,
+        lastEditedAt: new Date(),
+        lastEditedBy: currentUserName,
+      };
+      await updateDoc(ticketRef, { comments: updatedComments });
+      // Refresh ticket
+      const updatedTicketSnap = await getDoc(ticketRef);
+      if (updatedTicketSnap.exists()) {
+        const ticketData = { id: updatedTicketSnap.id, ...updatedTicketSnap.data() };
+        let comments = ticketData.comments || [];
+        comments.sort((a, b) => {
+          const ta = a.timestamp?.seconds ? a.timestamp.seconds : (a.timestamp?._seconds || new Date(a.timestamp).getTime()/1000 || 0);
+          const tb = b.timestamp?.seconds ? b.timestamp.seconds : (b.timestamp?._seconds || new Date(b.timestamp).getTime()/1000 || 0);
+          return ta - tb;
+        });
+        setTicket({ ...ticketData, comments });
+      }
+      setEditingCommentIndex(null);
+      setEditingCommentValue('');
+    } catch (err) {
+      console.error('Error editing comment:', err);
+    } finally {
+      setIsSavingCommentEdit(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-4">
@@ -428,6 +557,15 @@ const TicketDetails = ({ ticketId, onBack }) => {
 
   return (
     <div className="flex flex-col lg:flex-row gap-8">
+      {/* Toast */}
+      {toast.show && (
+        <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg transition-all duration-300 z-[9999] ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}
+        >
+          <div className="flex items-center space-x-2 text-white">
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
       {/* Main Content */}
       <div className="flex-1 min-w-0">
         {/* Go Back Button */}
@@ -440,16 +578,17 @@ const TicketDetails = ({ ticketId, onBack }) => {
             Go Back
           </button>
         </div>
-        <div className="flex flex-col md:flex-row gap-4 mb-8">
-
-
-</div>
-
-
+        {/* Ticket Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 px-2">
+          <div>
+            <div className="text-2xl font-bold text-gray-900">{ticket.subject || 'No Subject'}</div>
+            <div className="text-gray-500 text-sm mt-1">Ticket ID: <span className="font-mono">{ticket.ticketNumber}</span></div>
+          </div>
+        </div>
         {/* Tabs */}
         <div className="border-b mb-8 px-2">
           <nav className="flex flex-wrap gap-2">
-            {['Commentbox','Details','Resolution','Time Elapsed Analysis'].map(tab => (
+            {['Details','Commentbox','Resolution','Time Elapsed Analysis'].map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -461,7 +600,6 @@ const TicketDetails = ({ ticketId, onBack }) => {
             ))}
           </nav>
         </div>
-
         {/* Tab Content */}
         <div className="px-2 pb-2">
           {activeTab === 'Commentbox' && (
@@ -471,41 +609,82 @@ const TicketDetails = ({ ticketId, onBack }) => {
                 <div className="mb-4 text-base text-gray-700 font-semibold">Comment Box</div>
                 <div className="space-y-6">
                   {ticket.comments && ticket.comments.length > 0 ? (
-                    ticket.comments.map((comment, index) => (
-                      <div key={index} className="flex items-start gap-4">
-                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center font-bold text-blue-700 text-lg shadow-sm">
-                          {comment.authorName ? comment.authorName.charAt(0).toUpperCase() : (comment.authorEmail ? comment.authorEmail.charAt(0).toUpperCase() : '?')}
-                        </div>
-                        <div className="flex-1">
-                          <div className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-semibold text-blue-700">{comment.authorName || comment.authorEmail}</span>
-                              <span className="text-xs text-gray-400">{formatTimestamp(comment.timestamp)}</span>
-                            </div>
-                            <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{comment.message}</div>
-                            {comment.attachments && comment.attachments.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {comment.attachments.map((file, idx) => (
-                                  <div key={idx} className="flex flex-col items-center border rounded p-1 bg-gray-50">
-                                    {file.type.startsWith('image/') ? (
-                                      <a href={file.data} target="_blank" rel="noopener noreferrer">
-                                        <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
-                                      </a>
-                                    ) : file.type === 'application/pdf' ? (
-                                      <a href={file.data} target="_blank" rel="noopener noreferrer" className="text-red-600 underline">PDF: {file.name}</a>
-                                    ) : file.type.startsWith('video/') ? (
-                                      <video src={file.data} controls className="w-16 h-16 mb-1" />
-                                    ) : (
-                                      <a href={file.data} download={file.name} className="text-gray-600 underline">{file.name}</a>
-                                    )}
-                                  </div>
-                                ))}
+                    ticket.comments.map((comment, index) => {
+                      const isEditing = editingCommentIndex === index;
+                      return (
+                        <div key={index} className="flex items-start gap-4">
+                          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center font-bold text-blue-700 text-lg shadow-sm">
+                            {comment.authorName ? comment.authorName.charAt(0).toUpperCase() : (comment.authorEmail ? comment.authorEmail.charAt(0).toUpperCase() : '?')}
+                          </div>
+                          <div className="flex-1">
+                            <div className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-semibold text-blue-700">{comment.authorName || comment.authorEmail}</span>
+                                <span className="text-xs text-gray-400">{formatTimestamp(comment.timestamp)}</span>
                               </div>
-                            )}
+                              {isEditing ? (
+                                <>
+                                  <textarea
+                                    className="w-full border border-gray-300 rounded p-2 mb-2"
+                                    value={editingCommentValue}
+                                    onChange={e => setEditingCommentValue(e.target.value)}
+                                    rows={3}
+                                  />
+                                  <div className="flex gap-2 justify-end">
+                                    <button
+                                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded font-semibold"
+                                      onClick={() => handleSaveEditComment(comment, index)}
+                                      disabled={isSavingCommentEdit || !editingCommentValue.trim()}
+                                    >
+                                      {isSavingCommentEdit ? 'Saving...' : 'Save'}
+                                    </button>
+                                    <button
+                                      className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-1.5 rounded font-semibold"
+                                      onClick={handleCancelEditComment}
+                                      disabled={isSavingCommentEdit}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{comment.message}</div>
+                                  {comment.lastEditedAt && comment.lastEditedBy && (
+                                    <div className="mt-1 text-xs text-gray-500 italic">Last edited by {comment.lastEditedBy} at {formatTimestamp(comment.lastEditedAt)}</div>
+                                  )}
+                                  <button
+                                    className="text-blue-600 hover:underline text-xs mt-2"
+                                    onClick={() => handleEditComment(index, comment.message)}
+                                  >
+                                    Edit
+                                  </button>
+                                </>
+                              )}
+                              {comment.attachments && comment.attachments.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {comment.attachments.map((file, idx) => (
+                                    <div key={idx} className="flex flex-col items-center border rounded p-1 bg-gray-50">
+                                      {file.type.startsWith('image/') ? (
+                                        <a href={file.data} target="_blank" rel="noopener noreferrer">
+                                          <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
+                                        </a>
+                                      ) : file.type === 'application/pdf' ? (
+                                        <a href={file.data} target="_blank" rel="noopener noreferrer" className="text-red-600 underline">PDF: {file.name}</a>
+                                      ) : file.type.startsWith('video/') ? (
+                                        <video src={file.data} controls className="w-16 h-16 mb-1" />
+                                      ) : (
+                                        <a href={file.data} download={file.name} className="text-gray-600 underline">{file.name}</a>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="text-gray-400 text-center py-12">No comments yet.</div>
                   )}
@@ -582,61 +761,117 @@ const TicketDetails = ({ ticketId, onBack }) => {
           {activeTab === 'Details' && (
             <div className="space-y-8">
               <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
+                <div className="flex justify-between items-start mb-6">
+                  <div className="text-lg font-semibold text-gray-800">Ticket Details</div>
+                  {!isEditMode ? (
+                    <button
+                      className="text-blue-600 hover:text-blue-800 text-sm font-medium border border-blue-100 rounded px-4 py-1.5 transition"
+                      onClick={() => setIsEditMode(true)}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div><span className="font-semibold text-gray-700">Request ID:</span> {ticket.ticketNumber}</div>
                   <div>
                     <span className="font-semibold text-gray-700">Status:</span>
-                    <select
-                      className="ml-2 border border-gray-300 rounded px-2 py-1"
-                      value={editFields.status}
-                      onChange={e => setEditFields(f => ({ ...f, status: e.target.value }))}
-                      disabled={isSaving}
-                    >
-                      {statusOptions.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
+                    {isEditMode ? (
+                      <select
+                        className="ml-2 border border-gray-300 rounded px-2 py-1"
+                        value={editFields.status}
+                        onChange={handleStatusChange}
+                        disabled={isSaving}
+                      >
+                        {statusOptions.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="ml-2">{editFields.status}</span>
+                    )}
                   </div>
                   <div>
                     <span className="font-semibold text-gray-700">Priority:</span>
-                    <select
-                      className="ml-2 border border-gray-300 rounded px-2 py-1"
-                      value={editFields.priority}
-                      onChange={e => setEditFields(f => ({ ...f, priority: e.target.value }))}
-                      disabled={isSaving}
-                    >
-                      {priorities.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
+                    {isEditMode ? (
+                      <select
+                        className="ml-2 border border-gray-300 rounded px-2 py-1"
+                        value={editFields.priority}
+                        onChange={e => setEditFields(f => ({ ...f, priority: e.target.value }))}
+                        disabled={isSaving}
+                      >
+                        {priorities.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="ml-2">{editFields.priority}</span>
+                    )}
                   </div>
                   <div>
                     <span className="font-semibold text-gray-700">Category:</span>
-                    <select
-                      className="ml-2 border border-gray-300 rounded px-2 py-1"
-                      value={editFields.category}
-                      onChange={e => setEditFields(f => ({ ...f, category: e.target.value }))}
-                      disabled={isSaving}
-                    >
-                      {categories.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
+                    {isEditMode ? (
+                      <select
+                        className="ml-2 border border-gray-300 rounded px-2 py-1"
+                        value={editFields.category}
+                        onChange={e => setEditFields(f => ({ ...f, category: e.target.value }))}
+                        disabled={isSaving}
+                      >
+                        {categories.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="ml-2">{editFields.category}</span>
+                    )}
                   </div>
                   <div><span className="font-semibold text-gray-700">Project:</span> {ticket.project}</div>
                   <div><span className="font-semibold text-gray-700">Created:</span> {ticket.created ? new Date(ticket.created.toDate()).toLocaleString() : 'N/A'}</div>
-                  <div><span className="font-semibold text-gray-700">Assigned To:</span> {ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Assigned To:</span>
+                    {(currentUserRole === 'employee' || currentUserRole === 'project_manager') ? (
+                      isEditMode ? (
+                        <select
+                          className="ml-2 border border-gray-300 rounded px-2 py-1"
+                          value={selectedAssignee}
+                          onChange={handleAssignChange}
+                          disabled={isSaving || employees.length === 0}
+                        >
+                          <option value="">Unassigned</option>
+                          {employees.map(emp => (
+                            <option key={emp.email} value={emp.email}>{emp.name} ({emp.role})</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="ml-2">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</span>
+                      )
+                    ) : (
+                      <span className="ml-2">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</span>
+                    )}
+                  </div>
                   <div><span className="font-semibold text-gray-700">Requester:</span> {ticket.customer} ({ticket.email})</div>
                 </div>
-                <div className="flex justify-end mt-6">
-                  <button
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-50"
-                    onClick={handleSaveDetails}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
+                {isEditMode && (
+                  <div className="flex justify-end mt-6 gap-2">
+                    <button
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-50"
+                      onClick={async () => {
+                        await handleSaveDetails();
+                        setIsEditMode(false);
+                      }}
+                      disabled={isSaving}
+                    >
+                      {isSaving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                    <button
+                      className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-2 rounded-lg font-semibold"
+                      onClick={() => { resetEditFields(); setIsEditMode(false); }}
+                      disabled={isSaving}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
                 <div className="font-semibold text-gray-700 mb-2">Description</div>
@@ -702,7 +937,6 @@ const TicketDetails = ({ ticketId, onBack }) => {
               )}
             </div>
           )}
-        
           {activeTab === 'Resolution' && (
             <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm space-y-6">
               <div className="font-bold text-lg text-gray-900 mb-4">Resolution</div>
@@ -745,19 +979,6 @@ const TicketDetails = ({ ticketId, onBack }) => {
                 </div>
               )}
               <div className="flex flex-col sm:flex-row gap-4 items-center">
-                <div className="flex-1">
-                  <label className="font-semibold text-gray-700 mr-2">Status:</label>
-                  <select
-                    className="border border-gray-300 rounded px-2 py-1"
-                    value={resolutionStatus}
-                    onChange={e => setResolutionStatus(e.target.value)}
-                    disabled={isSavingResolution}
-                  >
-                    {statusOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
                 <button
                   className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-50"
                   onClick={handleSaveResolution}

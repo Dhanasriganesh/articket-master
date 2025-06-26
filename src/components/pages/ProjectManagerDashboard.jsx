@@ -82,6 +82,9 @@ const ProjectManagerDashboard = () => {
   const mediumCount = useCountUp(tickets.filter(t => t.priority === 'Medium').length);
   const lowCount = useCountUp(tickets.filter(t => t.priority === 'Low').length);
 
+  // Add state to track if a ticket is being viewed in detail
+  const [viewingTicket, setViewingTicket] = useState(false);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
@@ -366,7 +369,8 @@ const ProjectManagerDashboard = () => {
 
         {/* Dashboard Content */}
         <main className="flex-1 overflow-auto p-6 bg-gray-50">
-          {projects.length > 1 && (
+          {/* Only show Select Project dropdown if not viewing a ticket */}
+          {projects.length > 1 && !viewingTicket && (
             <div className="mb-6">
               <label className="mr-2 font-semibold text-gray-700">Select Project:</label>
               <select
@@ -528,6 +532,7 @@ const ProjectManagerDashboard = () => {
               selectedProjectId={selectedProjectId}
               selectedProjectName={projects.find(p => p.id === selectedProjectId)?.name || ''}
               allProjectIds={projects.map(p => p.id)}
+              setViewingTicket={setViewingTicket}
             />
           )}
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs, getFirestore, doc, getDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import {
@@ -17,11 +17,17 @@ import {
 const ProjectTickets = () => {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState('All');
-  const [filterPriority, setFilterPriority] = useState('All');
+  const [filterStatus, setFilterStatus] = useState(['All']);
+  const [filterPriority, setFilterPriority] = useState(['All']);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProject, setSelectedProject] = useState('All');
+  const [selectedProject, setSelectedProject] = useState(['All']);
   const [projects, setProjects] = useState([]);
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false);
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const statusDropdownRef = useRef(null);
+  const priorityDropdownRef = useRef(null);
+  const projectDropdownRef = useRef(null);
 
   const auth = getAuth();
   const db = getFirestore();
@@ -66,6 +72,16 @@ const ProjectTickets = () => {
     fetchTickets();
   }, [auth, db]);
 
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) setStatusDropdownOpen(false);
+      if (priorityDropdownRef.current && !priorityDropdownRef.current.contains(event.target)) setPriorityDropdownOpen(false);
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(event.target)) setProjectDropdownOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const getStatusIcon = (status) => {
     switch (status) {
       case 'Open': return <AlertCircle className="w-5 h-5 text-blue-500" />;
@@ -95,15 +111,38 @@ const ProjectTickets = () => {
     }
   };
 
+  const handleCheckboxFilter = (filter, setFilter, value) => {
+    if (value === 'All') {
+      setFilter(['All']);
+    } else {
+      setFilter(prev => {
+        let next = prev.includes('All') ? [] : [...prev];
+        if (next.includes(value)) {
+          next = next.filter(v => v !== value);
+        } else {
+          next.push(value);
+        }
+        if (next.length === 0) return ['All'];
+        return next;
+      });
+    }
+  };
+
+  const summarize = (arr, allLabel, options) => {
+    if (arr.includes('All')) return allLabel;
+    if (arr.length === 0) return allLabel;
+    return arr.join(', ');
+  };
+
   const filteredTickets = tickets.filter(ticket => {
     const matchesSearch = 
       ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.description?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = filterStatus === 'All' || ticket.status === filterStatus;
-    const matchesPriority = filterPriority === 'All' || ticket.priority === filterPriority;
-    const matchesProject = selectedProject === 'All' || ticket.projectId === selectedProject;
+    const matchesStatus = filterStatus.includes('All') || filterStatus.includes(ticket.status);
+    const matchesPriority = filterPriority.includes('All') || filterPriority.includes(ticket.priority);
+    const matchesProject = selectedProject.includes('All') || selectedProject.includes(ticket.projectId) || selectedProject.includes(ticket.project);
 
     return matchesSearch && matchesStatus && matchesPriority && matchesProject;
   });
@@ -134,51 +173,78 @@ const ProjectTickets = () => {
           </div>
 
           {/* Status Filter */}
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="All">All Status</option>
-            <option value="Open">Open</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Resolved">Resolved</option>
-            <option value="Closed">Closed</option>
-          </select>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mr-2">Status</label>
+            <div className="relative" ref={statusDropdownRef}>
+              <button type="button" className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[120px] text-left" onClick={() => setStatusDropdownOpen(v => !v)}>
+                {summarize(filterStatus, 'All', ['Open', 'In Progress', 'Resolved', 'Closed'])}
+              </button>
+              {statusDropdownOpen && (
+                <div className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 p-2 min-w-[180px]">
+                  <label className="flex items-center text-sm">
+                    <input type="checkbox" checked={filterStatus.includes('All')} onChange={() => handleCheckboxFilter(filterStatus, setFilterStatus, 'All')} /> All
+                  </label>
+                  {['Open', 'In Progress', 'Resolved', 'Closed'].map(status => (
+                    <label key={status} className="flex items-center text-sm">
+                      <input type="checkbox" checked={filterStatus.includes(status)} onChange={() => handleCheckboxFilter(filterStatus, setFilterStatus, status)} /> {status}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Priority Filter */}
-          <select
-            value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="All">All Priority</option>
-            <option value="High">High</option>
-            <option value="Medium">Medium</option>
-            <option value="Low">Low</option>
-          </select>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mr-2">Priority</label>
+            <div className="relative" ref={priorityDropdownRef}>
+              <button type="button" className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[120px] text-left" onClick={() => setPriorityDropdownOpen(v => !v)}>
+                {summarize(filterPriority, 'All', ['High', 'Medium', 'Low'])}
+              </button>
+              {priorityDropdownOpen && (
+                <div className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 p-2 min-w-[180px]">
+                  <label className="flex items-center text-sm">
+                    <input type="checkbox" checked={filterPriority.includes('All')} onChange={() => handleCheckboxFilter(filterPriority, setFilterPriority, 'All')} /> All
+                  </label>
+                  {['High', 'Medium', 'Low'].map(priority => (
+                    <label key={priority} className="flex items-center text-sm">
+                      <input type="checkbox" checked={filterPriority.includes(priority)} onChange={() => handleCheckboxFilter(filterPriority, setFilterPriority, priority)} /> {priority}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Project Filter */}
-          <select
-            value={selectedProject}
-            onChange={(e) => setSelectedProject(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="All">All Projects</option>
-            {projects.map(project => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mr-2">Project</label>
+            <div className="relative" ref={projectDropdownRef}>
+              <button type="button" className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[120px] text-left" onClick={() => setProjectDropdownOpen(v => !v)}>
+                {summarize(selectedProject, 'All', projects.map(p => p.name))}
+              </button>
+              {projectDropdownOpen && (
+                <div className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 p-2 min-w-[180px]">
+                  <label className="flex items-center text-sm">
+                    <input type="checkbox" checked={selectedProject.includes('All')} onChange={() => handleCheckboxFilter(selectedProject, setSelectedProject, 'All')} /> All
+                  </label>
+                  {projects.map(project => (
+                    <label key={project.id} className="flex items-center text-sm">
+                      <input type="checkbox" checked={selectedProject.includes(project.id)} onChange={() => handleCheckboxFilter(selectedProject, setSelectedProject, project.id)} /> {project.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Clear Filters */}
           <button
             onClick={() => {
               setSearchTerm('');
-              setFilterStatus('All');
-              setFilterPriority('All');
-              setSelectedProject('All');
+              setFilterStatus(['All']);
+              setFilterPriority(['All']);
+              setSelectedProject(['All']);
             }}
             className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
           >

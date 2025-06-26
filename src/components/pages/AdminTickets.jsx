@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Paperclip,
   User,
@@ -35,14 +35,20 @@ function AdminTickets() {
   const [error, setError] = useState(null);
   const [selectedTicketId, setSelectedTicketId] = useState(null);
   const [activeTab, setActiveTab] = useState('live');
-  const [filterStatus, setFilterStatus] = useState('All');
-  const [filterPriority, setFilterPriority] = useState('All');
-  const [filterProject, setFilterProject] = useState('All');
+  const [filterStatus, setFilterStatus] = useState(['All']);
+  const [filterPriority, setFilterPriority] = useState(['All']);
+  const [filterProject, setFilterProject] = useState(['All']);
   const [searchTerm, setSearchTerm] = useState('');
   const [filtersApplied, setFiltersApplied] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState({ status: '', priority: '', category: '', subject: '', description: '' });
   const [selectedTicketIds, setSelectedTicketIds] = useState([]);
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false);
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const statusDropdownRef = useRef(null);
+  const priorityDropdownRef = useRef(null);
+  const projectDropdownRef = useRef(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(query(collection(db, 'tickets')), (snapshot) => {
@@ -88,6 +94,24 @@ function AdminTickets() {
       checkDeletedProjects();
     }
   }, [tickets, projects]);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) setStatusDropdownOpen(false);
+      if (priorityDropdownRef.current && !priorityDropdownRef.current.contains(event.target)) setPriorityDropdownOpen(false);
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(event.target)) setProjectDropdownOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Helper to summarize selected options
+  const summarize = (arr, allLabel, options) => {
+    if (arr.includes('All')) return allLabel;
+    if (arr.length === 0) return allLabel;
+    return arr.join(', ');
+  };
 
   const handleTicketClick = (ticketId) => setSelectedTicketId(ticketId);
   const handleBackToTickets = () => setSelectedTicketId(null);
@@ -152,17 +176,30 @@ function AdminTickets() {
     return [];
   };
 
-  const filteredTickets = filtersApplied
-    ? getTicketsForTab().filter(ticket => {
-        const matchesStatus = filterStatus === 'All' || ticket.status === filterStatus;
-        const matchesPriority = filterPriority === 'All' || ticket.priority === filterPriority;
-        const matchesProject = filterProject === 'All' || ticket.projectId === filterProject || ticket.project === filterProject;
-        const matchesSearch =
-          ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase());
-        return matchesStatus && matchesPriority && matchesProject && matchesSearch;
-      })
-    : [];
+  const handleCheckboxFilter = (filter, setFilter, value) => {
+    if (value === 'All') {
+      setFilter(['All']);
+    } else {
+      setFilter(prev => {
+        let next = prev.includes('All') ? [] : [...prev];
+        if (next.includes(value)) {
+          next = next.filter(v => v !== value);
+        } else {
+          next.push(value);
+        }
+        if (next.length === 0) return ['All'];
+        return next;
+      });
+    }
+  };
+
+  const filteredTickets = tickets.filter(ticket => {
+    const matchesStatus = filterStatus.includes('All') || filterStatus.includes(ticket.status);
+    const matchesPriority = filterPriority.includes('All') || filterPriority.includes(ticket.priority);
+    const matchesProject = filterProject.includes('All') || filterProject.includes(ticket.projectId) || filterProject.includes(ticket.project);
+    const matchesSearch = ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) || ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesStatus && matchesPriority && matchesProject && matchesSearch;
+  });
 
   const allSelected = activeTab === 'deleted' && filteredTickets.length > 0 && filteredTickets.every(t => selectedTicketIds.includes(t.id));
   const handleSelectAll = (e) => {
@@ -215,7 +252,7 @@ function AdminTickets() {
     <div className="p-6">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-          <BsTicketFill className="mr-3 text-blue-600" /> Admin Tickets
+          <BsTicketFill className="mr-3 text-blue-600" /> Tickets
         </h1>
         
       </div>
@@ -226,7 +263,7 @@ function AdminTickets() {
               onClick={() => {
                 setActiveTab('live');
                 setFiltersApplied(false);
-                setFilterProject('All');
+                setFilterProject(['All']);
               }}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'live'
@@ -240,7 +277,7 @@ function AdminTickets() {
               onClick={() => {
                 setActiveTab('deleted');
                 setFiltersApplied(false);
-                setFilterProject('All');
+                setFilterProject(['All']);
               }}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'deleted'
@@ -256,45 +293,63 @@ function AdminTickets() {
       <div className="flex flex-wrap items-center gap-4 mb-6 bg-white p-4 rounded-xl shadow border border-gray-100">
         <div>
           <label className="text-xs font-semibold text-gray-500 mr-2">Project</label>
-          <select
-            value={filterProject}
-            onChange={e => setFilterProject(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-          >
-            <option value="All">All</option>
-            {getProjectsForFilter().map(project => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
+          <div className="relative" ref={projectDropdownRef}>
+            <button type="button" className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[120px] text-left" onClick={() => setProjectDropdownOpen(v => !v)}>
+              {summarize(filterProject, 'All', getProjectsForFilter().map(p => p.name))}
+            </button>
+            {projectDropdownOpen && (
+              <div className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 p-2 min-w-[180px]">
+                <label className="flex items-center text-sm">
+                  <input type="checkbox" checked={filterProject.includes('All')} onChange={() => handleCheckboxFilter(filterProject, setFilterProject, 'All')} /> All
+                </label>
+                {getProjectsForFilter().map(project => (
+                  <label key={project.id} className="flex items-center text-sm">
+                    <input type="checkbox" checked={filterProject.includes(project.id)} onChange={() => handleCheckboxFilter(filterProject, setFilterProject, project.id)} /> {project.name}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div>
           <label className="text-xs font-semibold text-gray-500 mr-2">Status</label>
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-          >
-            <option value="All">All</option>
-            <option value="Open">Open</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Resolved">Resolved</option>
-            <option value="Closed">Closed</option>
-          </select>
+          <div className="relative" ref={statusDropdownRef}>
+            <button type="button" className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[120px] text-left" onClick={() => setStatusDropdownOpen(v => !v)}>
+              {summarize(filterStatus, 'All', ['Open', 'In Progress', 'Resolved', 'Closed'])}
+            </button>
+            {statusDropdownOpen && (
+              <div className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 p-2 min-w-[180px]">
+                <label className="flex items-center text-sm">
+                  <input type="checkbox" checked={filterStatus.includes('All')} onChange={() => handleCheckboxFilter(filterStatus, setFilterStatus, 'All')} /> All
+                </label>
+                {['Open', 'In Progress', 'Resolved', 'Closed'].map(status => (
+                  <label key={status} className="flex items-center text-sm">
+                    <input type="checkbox" checked={filterStatus.includes(status)} onChange={() => handleCheckboxFilter(filterStatus, setFilterStatus, status)} /> {status}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div>
           <label className="text-xs font-semibold text-gray-500 mr-2">Priority</label>
-          <select
-            value={filterPriority}
-            onChange={e => setFilterPriority(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-          >
-            <option value="All">All</option>
-            <option value="High">High</option>
-            <option value="Medium">Medium</option>
-            <option value="Low">Low</option>
-          </select>
+          <div className="relative" ref={priorityDropdownRef}>
+            <button type="button" className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[120px] text-left" onClick={() => setPriorityDropdownOpen(v => !v)}>
+              {summarize(filterPriority, 'All', ['High', 'Medium', 'Low'])}
+            </button>
+            {priorityDropdownOpen && (
+              <div className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 p-2 min-w-[180px]">
+                <label className="flex items-center text-sm">
+                  <input type="checkbox" checked={filterPriority.includes('All')} onChange={() => handleCheckboxFilter(filterPriority, setFilterPriority, 'All')} /> All
+                </label>
+                {['High', 'Medium', 'Low'].map(priority => (
+                  <label key={priority} className="flex items-center text-sm">
+                    <input type="checkbox" checked={filterPriority.includes(priority)} onChange={() => handleCheckboxFilter(filterPriority, setFilterPriority, priority)} /> {priority}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex-1 min-w-[180px]">
           <input
@@ -317,9 +372,9 @@ function AdminTickets() {
         </button>
         <button
           onClick={() => {
-            setFilterStatus('All');
-            setFilterPriority('All');
-            setFilterProject('All');
+            setFilterStatus(['All']);
+            setFilterPriority(['All']);
+            setFilterProject(['All']);
             setSearchTerm('');
             setFiltersApplied(false);
           }}

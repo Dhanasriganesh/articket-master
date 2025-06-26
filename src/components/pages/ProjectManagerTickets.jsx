@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot, doc, getDoc, getDocs, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../firebase/config';
 import { Link, useNavigate } from 'react-router-dom';
@@ -19,13 +19,13 @@ function formatTimestamp(ts) {
   return '';
 }
  
-const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjectName, allProjectIds = [] }) => {
+const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjectName, allProjectIds = [], setViewingTicket }) => {
   const [ticketsData, setTicketsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedTicketId, setSelectedTicketId] = useState(null);
-  const [filterStatus, setFilterStatus] = useState('All');
-  const [filterPriority, setFilterPriority] = useState('All');
+  const [filterStatus, setFilterStatus] = useState(['All']);
+  const [filterPriority, setFilterPriority] = useState(['All']);
   const [searchTerm, setSearchTerm] = useState('');
   const [teamMembers, setTeamMembers] = useState([]);
   const [filterRaisedByEmployee, setFilterRaisedByEmployee] = useState('all');
@@ -37,6 +37,10 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
   const [currentUserData, setCurrentUserData] = useState(null);
   const [filtersApplied, setFiltersApplied] = useState(false);
   const [sortOrder, setSortOrder] = useState('desc'); // 'desc' for Newest, 'asc' for Oldest
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false);
+  const statusDropdownRef = useRef(null);
+  const priorityDropdownRef = useRef(null);
  
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
@@ -220,12 +224,29 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
     return () => unsubscribeAuth();
   }, [selectedProjectId, selectedProjectName, allProjectIds]);
  
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) setStatusDropdownOpen(false);
+      if (priorityDropdownRef.current && !priorityDropdownRef.current.contains(event.target)) setPriorityDropdownOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+ 
+  const summarize = (arr, allLabel, options) => {
+    if (arr.includes('All')) return allLabel;
+    if (arr.length === 0) return allLabel;
+    return arr.join(', ');
+  };
+ 
   const handleTicketClick = (ticketId) => {
     setSelectedTicketId(ticketId);
+    if (setViewingTicket) setViewingTicket(true);
   };
  
   const handleBackToTickets = () => {
     setSelectedTicketId(null);
+    if (setViewingTicket) setViewingTicket(false);
   };
  
   const handleAssignTicket = async (ticketId, selectedUserEmail) => {
@@ -294,10 +315,27 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
     }
   };
  
+  const handleCheckboxFilter = (filter, setFilter, value) => {
+    if (value === 'All') {
+      setFilter(['All']);
+    } else {
+      setFilter(prev => {
+        let next = prev.includes('All') ? [] : [...prev];
+        if (next.includes(value)) {
+          next = next.filter(v => v !== value);
+        } else {
+          next.push(value);
+        }
+        if (next.length === 0) return ['All'];
+        return next;
+      });
+    }
+  };
+ 
   // Compute filtered tickets
   const filteredTickets = ticketsData.filter(ticket => {
-    const matchesStatus = filterStatus === 'All' || ticket.status === filterStatus;
-    const matchesPriority = filterPriority === 'All' || ticket.priority === filterPriority;
+    const matchesStatus = filterStatus.includes('All') || filterStatus.includes(ticket.status);
+    const matchesPriority = filterPriority.includes('All') || filterPriority.includes(ticket.priority);
     const matchesSearch =
       ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -361,7 +399,7 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-            <BsTicketFill className="mr-3 text-blue-600" /> Project Tickets
+            <BsTicketFill className="mr-3 text-blue-600" />Tickets
           </h1>
           <p className="text-gray-600 mt-2">Project: {selectedProjectId === 'all' ? 'All Projects' : selectedProjectName}</p>
         </div>
@@ -388,30 +426,43 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
       <div className="flex flex-wrap items-center gap-4 mb-6 bg-white p-4 rounded-xl shadow border border-gray-100">
         <div>
           <label className="text-xs font-semibold text-gray-500 mr-2">Status</label>
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-          >
-            <option value="All">All</option>
-            <option value="Open">Open</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Resolved">Resolved</option>
-            <option value="Closed">Closed</option>
-          </select>
+          <div className="relative" ref={statusDropdownRef}>
+            <button type="button" className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[120px] text-left" onClick={() => setStatusDropdownOpen(v => !v)}>
+              {summarize(filterStatus, 'All', ['Open', 'In Progress', 'Resolved', 'Closed'])}
+            </button>
+            {statusDropdownOpen && (
+              <div className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 p-2 min-w-[180px]">
+                <label className="flex items-center text-sm">
+                  <input type="checkbox" checked={filterStatus.includes('All')} onChange={() => handleCheckboxFilter(filterStatus, setFilterStatus, 'All')} /> All
+                </label>
+                {['Open', 'In Progress', 'Resolved', 'Closed'].map(status => (
+                  <label key={status} className="flex items-center text-sm">
+                    <input type="checkbox" checked={filterStatus.includes(status)} onChange={() => handleCheckboxFilter(filterStatus, setFilterStatus, status)} /> {status}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div>
           <label className="text-xs font-semibold text-gray-500 mr-2">Priority</label>
-          <select
-            value={filterPriority}
-            onChange={e => setFilterPriority(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-          >
-            <option value="All">All</option>
-            <option value="High">High</option>
-            <option value="Medium">Medium</option>
-            <option value="Low">Low</option>
-          </select>
+          <div className="relative" ref={priorityDropdownRef}>
+            <button type="button" className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[120px] text-left" onClick={() => setPriorityDropdownOpen(v => !v)}>
+              {summarize(filterPriority, 'All', ['High', 'Medium', 'Low'])}
+            </button>
+            {priorityDropdownOpen && (
+              <div className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 p-2 min-w-[180px]">
+                <label className="flex items-center text-sm">
+                  <input type="checkbox" checked={filterPriority.includes('All')} onChange={() => handleCheckboxFilter(filterPriority, setFilterPriority, 'All')} /> All
+                </label>
+                {['High', 'Medium', 'Low'].map(priority => (
+                  <label key={priority} className="flex items-center text-sm">
+                    <input type="checkbox" checked={filterPriority.includes(priority)} onChange={() => handleCheckboxFilter(filterPriority, setFilterPriority, priority)} /> {priority}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div>
           <label className="text-xs font-semibold text-gray-500 mr-2">Raised By Employee</label>
@@ -479,8 +530,8 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
         </button>
         <button
           onClick={() => {
-            setFilterStatus('All');
-            setFilterPriority('All');
+            setFilterStatus(['All']);
+            setFilterPriority(['All']);
             setFilterRaisedByEmployee('all');
             setFilterRaisedByClient('all');
             setSearchTerm('');
@@ -556,50 +607,7 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
                       {ticket.customer}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {(() => {
-                        const creatorIsClient = clients.some(c => c.email === ticket.email);
-                        const isProjectManager = currentUserData?.role === 'project_manager';
-                        // Only show assign dropdown if ticket is raised by a client
-                        if (creatorIsClient) {
-                          const assignable = isProjectManager
-                            ? [{ email: currentUserEmail, id: 'pm', name: currentUserData?.firstName ? `${currentUserData.firstName} ${currentUserData.lastName}` : currentUserEmail.split('@')[0] }, ...employees]
-                            : employees;
-                          return (
-                            <div className="flex items-center gap-2">
-                              <select
-                                value={ticket.assignedTo?.email || ''}
-                                onChange={e => handleAssignTicket(ticket.id, e.target.value)}
-                                onClick={e => e.stopPropagation()}
-                                className="border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                disabled={assignable.length === 0}
-                              >
-                                <option value="" disabled>
-                                  {ticket.assignedTo ? ticket.assignedTo.name : 'Assign...'}
-                                </option>
-                                {assignable.map(user => (
-                                  <option key={user.id} value={user.email}>
-                                    {user.name || user.email.split('@')[0]}
-                                  </option>
-                                ))}
-                              </select>
-                              {ticket.assignedTo && (
-                                <button
-                                  type="button"
-                                  className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    handleUnassignTicket(ticket.id);
-                                  }}
-                                >
-                                  Unassign
-                                </button>
-                              )}
-                            </div>
-                          );
-                        }
-                        // Otherwise, just show the assignee or '-'
-                        return ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-';
-                      })()}
+                      {ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {ticket.assignedBy || '-'}
