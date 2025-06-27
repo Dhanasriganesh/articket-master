@@ -138,9 +138,10 @@ function AdminTickets() {
   const filteredTickets = tickets.filter(ticket => {
     const matchesStatus = filterStatus.includes('All') || filterStatus.includes(ticket.status);
     const matchesPriority = filterPriority.includes('All') || filterPriority.includes(ticket.priority);
-    const matchesProject = filterProject.includes('All') || filterProject.includes(ticket.projectId) || filterProject.includes(ticket.project);
+    const projectName = projects.find(p => p.id === ticket.projectId)?.name || ticket.project || ticket.projectId;
+    const matchesProject = filterProject.includes('All') || filterProject.includes(projectName);
     const matchesSearch = ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) || ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase());
-        return matchesStatus && matchesPriority && matchesProject && matchesSearch;
+    return matchesStatus && matchesPriority && matchesProject && matchesSearch;
   });
 
   const allSelected = activeTab === 'deleted' && filteredTickets.length > 0 && filteredTickets.every(t => selectedTicketIds.includes(t.id));
@@ -246,20 +247,6 @@ function AdminTickets() {
             >
               Live Tickets
             </button>
-            <button
-              onClick={() => {
-                setActiveTab('deleted');
-                setFiltersApplied(false);
-                setFilterProject(['All']);
-              }}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'deleted'
-                  ? 'border-red-500 text-red-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Deleted Projects
-            </button>
           </nav>
         </div>
       </div>
@@ -268,7 +255,7 @@ function AdminTickets() {
           <label className="text-xs font-semibold text-gray-500 mr-2">Project</label>
           <div className="relative" ref={projectDropdownRef}>
             <button type="button" className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[120px] text-left" onClick={() => setProjectDropdownOpen(v => !v)}>
-              {summarize(filterProject, 'All', projects.map(p => p.name))}
+              {summarize(filterProject, 'All')}
             </button>
             {projectDropdownOpen && (
               <div className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 p-2 min-w-[180px]">
@@ -277,9 +264,9 @@ function AdminTickets() {
                 </label>
                 {projects.map(project => (
                   <label key={project.id} className="flex items-center text-sm">
-                    <input type="checkbox" checked={filterProject.includes(project.id)} onChange={() => handleCheckboxFilter(filterProject, setFilterProject, project.id)} /> {project.name}
+                    <input type="checkbox" checked={filterProject.includes(project.name)} onChange={() => handleCheckboxFilter(filterProject, setFilterProject, project.name)} /> {project.name}
                   </label>
-            ))}
+                ))}
               </div>
             )}
           </div>
@@ -362,11 +349,6 @@ function AdminTickets() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {activeTab === 'deleted' && (
-                    <th className="px-6 py-3">
-                      <input type="checkbox" checked={allSelected} onChange={handleSelectAll} />
-                    </th>
-                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -384,11 +366,6 @@ function AdminTickets() {
                     onClick={() => handleTicketClick(ticket.id)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                   >
-                    {activeTab === 'deleted' && (
-                      <td className="px-6 py-4">
-                        <input type="checkbox" checked={selectedTicketIds.includes(ticket.id)} onChange={e => { e.stopPropagation(); handleSelectTicket(ticket.id, e.target.checked); }} />
-                      </td>
-                    )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -423,11 +400,11 @@ function AdminTickets() {
         </div>
       ) : filtersApplied ? (
         <div className="text-center text-gray-500 py-12">
-          {activeTab === 'live' ? 'No live tickets found.' : 'No tickets from deleted projects found.'}
+          No live tickets found.
         </div>
       ) : (
         <div className="text-center text-gray-500 py-12">
-          {activeTab === 'live' ? 'Set filters and click "Go" to view live tickets.' : 'Set filters and click "Go" to view tickets from deleted projects.'}
+          Set filters and click "Go" to view live tickets.
         </div>
       )}
       {showEditModal && (
@@ -505,9 +482,6 @@ function AdminTickets() {
             </form>
           </div>
         </div>
-      )}
-      {activeTab === 'deleted' && selectedTicketIds.length > 0 && (
-        <button onClick={handleBulkDelete} className="bg-red-600 text-white px-4 py-2 rounded-lg mb-2">Delete Selected</button>
       )}
     </div>
   );

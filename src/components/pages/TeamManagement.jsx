@@ -417,9 +417,7 @@ const TeamManagement = () => {
                     )}
                   </div>
  
-                  <div className="mt-6 flex items-center space-x-4">
-                    <span className="flex-1 bg-gray-50 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium cursor-default">Message</span>
-                  </div>
+                  
                 </button>
               );
             })}
