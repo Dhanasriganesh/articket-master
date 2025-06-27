@@ -564,7 +564,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8">
+    <div className="flex flex-col gap-8 lg:flex-row">
       {/* Toast */}
       {toast.show && (
         <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg transition-all duration-300 z-[9999] ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}
@@ -591,7 +591,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
           <div>
             <div className="text-2xl font-bold text-gray-900">{ticket.subject || 'No Subject'}</div>
             <div className="text-gray-500 text-sm mt-1">Ticket ID: <span className="font-mono">{ticket.ticketNumber}</span></div>
-          </div>
+</div>
         </div>
         {/* Tabs */}
         <div className="border-b mb-8 px-2">
@@ -609,7 +609,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
           </nav>
         </div>
         {/* Tab Content */}
-        <div className="px-2 pb-2">
+        <div className="px-2 pb-2 sm:px-1 xs:px-0">
           {activeTab === 'Commentbox' && (
             <>
               {/* Comments List */}
@@ -620,16 +620,16 @@ const TicketDetails = ({ ticketId, onBack }) => {
                     ticket.comments.map((comment, index) => {
                       const isEditing = editingCommentIndex === index;
                       return (
-                        <div key={index} className="flex items-start gap-4">
-                          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center font-bold text-blue-700 text-lg shadow-sm">
-                            {comment.authorName ? comment.authorName.charAt(0).toUpperCase() : (comment.authorEmail ? comment.authorEmail.charAt(0).toUpperCase() : '?')}
-                          </div>
-                          <div className="flex-1">
-                            <div className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="font-semibold text-blue-700">{comment.authorName || comment.authorEmail}</span>
-                                <span className="text-xs text-gray-400">{formatTimestamp(comment.timestamp)}</span>
-                              </div>
+                      <div key={index} className="flex items-start gap-4">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center font-bold text-blue-700 text-lg shadow-sm">
+                          {comment.authorName ? comment.authorName.charAt(0).toUpperCase() : (comment.authorEmail ? comment.authorEmail.charAt(0).toUpperCase() : '?')}
+                        </div>
+                        <div className="flex-1">
+                          <div className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-semibold text-blue-700">{comment.authorName || comment.authorEmail}</span>
+                              <span className="text-xs text-gray-400">{formatTimestamp(comment.timestamp)}</span>
+                            </div>
                               {isEditing ? (
                                 <>
                                   <textarea
@@ -657,7 +657,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
                                 </>
                               ) : (
                                 <>
-                                  <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{comment.message}</div>
+                            <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{comment.message}</div>
                                   {comment.lastEditedAt && comment.lastEditedBy && (
                                     <div className="mt-1 text-xs text-gray-500 italic">Last edited by {comment.lastEditedBy} at {formatTimestamp(comment.lastEditedAt)}</div>
                                   )}
@@ -669,28 +669,28 @@ const TicketDetails = ({ ticketId, onBack }) => {
                                   </button>
                                 </>
                               )}
-                              {comment.attachments && comment.attachments.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                  {comment.attachments.map((file, idx) => (
-                                    <div key={idx} className="flex flex-col items-center border rounded p-1 bg-gray-50">
-                                      {file.type.startsWith('image/') ? (
-                                        <a href={file.data} target="_blank" rel="noopener noreferrer">
-                                          <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
-                                        </a>
-                                      ) : file.type === 'application/pdf' ? (
-                                        <a href={file.data} target="_blank" rel="noopener noreferrer" className="text-red-600 underline">PDF: {file.name}</a>
-                                      ) : file.type.startsWith('video/') ? (
-                                        <video src={file.data} controls className="w-16 h-16 mb-1" />
-                                      ) : (
-                                        <a href={file.data} download={file.name} className="text-gray-600 underline">{file.name}</a>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
+                            {comment.attachments && comment.attachments.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {comment.attachments.map((file, idx) => (
+                                  <div key={idx} className="flex flex-col items-center border rounded p-1 bg-gray-50">
+                                    {file.type.startsWith('image/') ? (
+                                      <a href={file.data} target="_blank" rel="noopener noreferrer">
+                                        <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
+                                      </a>
+                                    ) : file.type === 'application/pdf' ? (
+                                      <a href={file.data} target="_blank" rel="noopener noreferrer" className="text-red-600 underline">PDF: {file.name}</a>
+                                    ) : file.type.startsWith('video/') ? (
+                                      <video src={file.data} controls className="w-16 h-16 mb-1" />
+                                    ) : (
+                                      <a href={file.data} download={file.name} className="text-gray-600 underline">{file.name}</a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
+                      </div>
                       );
                     })
                   ) : (
@@ -785,16 +785,16 @@ const TicketDetails = ({ ticketId, onBack }) => {
                   <div>
                     <span className="font-semibold text-gray-700">Status:</span>
                     {isEditMode ? (
-                      <select
-                        className="ml-2 border border-gray-300 rounded px-2 py-1"
-                        value={editFields.status}
+                    <select
+                      className="ml-2 border border-gray-300 rounded px-2 py-1"
+                      value={editFields.status}
                         onChange={handleStatusChange}
-                        disabled={isSaving}
-                      >
-                        {statusOptions.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
+                      disabled={isSaving}
+                    >
+                      {statusOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
                     ) : (
                       <span className="ml-2">{editFields.status}</span>
                     )}
@@ -802,16 +802,16 @@ const TicketDetails = ({ ticketId, onBack }) => {
                   <div>
                     <span className="font-semibold text-gray-700">Priority:</span>
                     {isEditMode ? (
-                      <select
-                        className="ml-2 border border-gray-300 rounded px-2 py-1"
-                        value={editFields.priority}
-                        onChange={e => setEditFields(f => ({ ...f, priority: e.target.value }))}
-                        disabled={isSaving}
-                      >
-                        {priorities.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
+                    <select
+                      className="ml-2 border border-gray-300 rounded px-2 py-1"
+                      value={editFields.priority}
+                      onChange={e => setEditFields(f => ({ ...f, priority: e.target.value }))}
+                      disabled={isSaving}
+                    >
+                      {priorities.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
                     ) : (
                       <span className="ml-2">{editFields.priority}</span>
                     )}
@@ -819,16 +819,16 @@ const TicketDetails = ({ ticketId, onBack }) => {
                   <div>
                     <span className="font-semibold text-gray-700">Category:</span>
                     {isEditMode ? (
-                      <select
-                        className="ml-2 border border-gray-300 rounded px-2 py-1"
-                        value={editFields.category}
-                        onChange={e => setEditFields(f => ({ ...f, category: e.target.value }))}
-                        disabled={isSaving}
-                      >
-                        {categories.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
+                    <select
+                      className="ml-2 border border-gray-300 rounded px-2 py-1"
+                      value={editFields.category}
+                      onChange={e => setEditFields(f => ({ ...f, category: e.target.value }))}
+                      disabled={isSaving}
+                    >
+                      {categories.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
                     ) : (
                       <span className="ml-2">{editFields.category}</span>
                     )}
@@ -839,17 +839,17 @@ const TicketDetails = ({ ticketId, onBack }) => {
                     <span className="font-semibold text-gray-700">Assigned To:</span>
                     {(currentUserRole === 'employee' || currentUserRole === 'project_manager') ? (
                       isEditMode ? (
-                        <select
-                          className="ml-2 border border-gray-300 rounded px-2 py-1"
-                          value={selectedAssignee}
-                          onChange={handleAssignChange}
-                          disabled={isSaving || employees.length === 0}
-                        >
-                          <option value="">Unassigned</option>
-                          {employees.map(emp => (
-                            <option key={emp.email} value={emp.email}>{emp.name} ({emp.role})</option>
-                          ))}
-                        </select>
+                      <select
+                        className="ml-2 border border-gray-300 rounded px-2 py-1"
+                        value={selectedAssignee}
+                        onChange={handleAssignChange}
+                        disabled={isSaving || employees.length === 0}
+                      >
+                        <option value="">Unassigned</option>
+                        {employees.map(emp => (
+                          <option key={emp.email} value={emp.email}>{emp.name} ({emp.role})</option>
+                        ))}
+                      </select>
                       ) : (
                         <span className="ml-2">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</span>
                       )
@@ -861,20 +861,20 @@ const TicketDetails = ({ ticketId, onBack }) => {
                   <div>
                   
                    
-                  </div>
+                </div>
                 </div>
                 {isEditMode && (
                   <div className="flex justify-end mt-6 gap-2">
-                    <button
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-50"
+                  <button
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-50"
                       onClick={async () => {
                         await handleSaveDetails();
                         setIsEditMode(false);
                       }}
-                      disabled={isSaving}
-                    >
-                      {isSaving ? 'Saving...' : 'Save Changes'}
-                    </button>
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  </button>
                     <button
                       className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-2 rounded-lg font-semibold"
                       onClick={() => { resetEditFields(); setIsEditMode(false); }}
@@ -882,7 +882,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
                     >
                       Cancel
                     </button>
-                  </div>
+                </div>
                 )}
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
@@ -894,7 +894,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
               {ticket.attachments && ticket.attachments.length > 0 && (
                 <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
                   <div className="font-semibold text-gray-700 mb-2">Attachments ({ticket.attachments.length})</div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 overflow-x-auto">
                     {ticket.attachments.map((file, index) => (
                       <div key={index} className="flex flex-col items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-3 shadow-sm">
                         <span>

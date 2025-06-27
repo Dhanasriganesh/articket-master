@@ -289,6 +289,7 @@ const ProjectManagerDashboard = () => {
   const [searchParams] = useSearchParams();
   const auth = getAuth();
   const db = getFirestore();
+  const [roleChangeToast, setRoleChangeToast] = useState({ show: false, message: '' });
 
   // Animated counts for priorities
   const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
@@ -415,20 +416,21 @@ const ProjectManagerDashboard = () => {
         if (userDoc.exists()) {
           const role = userDoc.data().role;
           if (role === 'employee') {
-            navigate('/employeedashboard');
+            setRoleChangeToast({ show: true, message: 'Your role has changed. Redirecting...' });
+            setTimeout(() => navigate('/employeedashboard'), 2000);
           } else if (role === 'admin') {
-            navigate('/admin');
+            setRoleChangeToast({ show: true, message: 'Your role has changed. Redirecting...' });
+            setTimeout(() => navigate('/admin'), 2000);
           } else if (role === 'client') {
-            navigate('/clientdashboard');
+            setRoleChangeToast({ show: true, message: 'Your role has changed. Redirecting...' });
+            setTimeout(() => navigate('/clientdashboard'), 2000);
           } else if (role !== 'project_manager') {
-            // If role is removed or unknown, sign out
-            auth.signOut();
-            navigate('/login');
+            setRoleChangeToast({ show: true, message: 'Your access has been removed. Signing out...' });
+            setTimeout(() => { auth.signOut(); navigate('/login'); }, 2000);
           }
         } else {
-          // User doc deleted, sign out
-          auth.signOut();
-          navigate('/login');
+          setRoleChangeToast({ show: true, message: 'Your access has been removed. Signing out...' });
+          setTimeout(() => { auth.signOut(); navigate('/login'); }, 2000);
         }
       });
     }
@@ -611,7 +613,7 @@ const ProjectManagerDashboard = () => {
         </header>
 
         {/* Dashboard Content */}
-        <main className="flex-1 overflow-auto p-6 bg-gray-50">
+        <main className="flex-1 overflow-auto p-6 sm:p-4 xs:p-2">
           {/* Only show Select Project dropdown if not viewing a ticket */}
           {projects.length > 1 && !viewingTicket && (
             <div className="mb-6">
@@ -662,7 +664,7 @@ const ProjectManagerDashboard = () => {
               </div>
 
               {/* Charts and Analytics Section */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
                 {/* Status Distribution Line Chart */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                   <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
@@ -816,30 +818,32 @@ const ProjectManagerDashboard = () => {
                           Export to Excel
                         </button>
                       </div>
-                      <table className="min-w-full text-xs text-left text-gray-700 border">
-                        <thead>
-                          <tr>
-                            <th className="py-1 px-2">Ticket #</th>
-                            <th className="py-1 px-2">Subject</th>
-                            <th className="py-1 px-2">Assignee</th>
-                            <th className="py-1 px-2">Response Time</th>
-                            <th className="py-1 px-2">Resolution Time</th>
-                            <th className="py-1 px-2">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {kpi.details.map((row, idx) => (
-                            <tr key={idx} className="border-t">
-                              <td className="py-1 px-2">{row.ticketNumber}</td>
-                              <td className="py-1 px-2">{row.subject}</td>
-                              <td className="py-1 px-2">{row.assignee}</td>
-                              <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                              <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                              <td className="py-1 px-2">{row.status}</td>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-xs text-left text-gray-700 border">
+                          <thead>
+                            <tr>
+                              <th className="py-1 px-2">Ticket #</th>
+                              <th className="py-1 px-2">Subject</th>
+                              <th className="py-1 px-2">Assignee</th>
+                              <th className="py-1 px-2">Response Time</th>
+                              <th className="py-1 px-2">Resolution Time</th>
+                              <th className="py-1 px-2">Status</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {kpi.details.map((row, idx) => (
+                              <tr key={idx} className="border-t">
+                                <td className="py-1 px-2">{row.ticketNumber}</td>
+                                <td className="py-1 px-2">{row.subject}</td>
+                                <td className="py-1 px-2">{row.assignee}</td>
+                                <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                <td className="py-1 px-2">{row.status}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </>
                   );
                 })()
@@ -848,6 +852,12 @@ const ProjectManagerDashboard = () => {
           )}
         </main>
       </div>
+      {/* Add toast UI */}
+      {roleChangeToast.show && (
+        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg z-[9999] bg-blue-600 text-white font-semibold">
+          {roleChangeToast.message}
+        </div>
+      )}
     </div>
   );
 };

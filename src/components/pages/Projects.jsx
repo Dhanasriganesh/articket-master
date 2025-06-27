@@ -65,6 +65,14 @@ function Projects() {
 
   const handleAddProject = async (e) => {
     e.preventDefault();
+    // Check for duplicate project name (case-insensitive)
+    const duplicate = projects.some(
+      (p) => p.name.trim().toLowerCase() === formData.name.trim().toLowerCase()
+    );
+    if (duplicate) {
+      showNotification('This project already exists', 'error');
+      return;
+    }
     try {
       const docRef = await addDoc(collection(db, 'projects'), {
         name: formData.name,
@@ -72,7 +80,6 @@ function Projects() {
         members: [],
         createdAt: new Date().toISOString()
       });
-      
       setProjects([...projects, { id: docRef.id, ...formData, members: [] }]);
       setShowAddProjectModal(false);
       setFormData({ name: '', description: '', email: '', password: '', role: 'client', userType: 'client' });
@@ -526,7 +533,7 @@ function Projects() {
         </div>
 
         {/* Team Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Employees Section */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200">
             <div className="p-4 border-b border-gray-100">

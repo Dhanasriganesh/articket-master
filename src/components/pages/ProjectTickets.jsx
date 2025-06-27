@@ -228,11 +228,11 @@ const ProjectTickets = () => {
                   <label className="flex items-center text-sm">
                     <input type="checkbox" checked={selectedProject.includes('All')} onChange={() => handleCheckboxFilter(selectedProject, setSelectedProject, 'All')} /> All
                   </label>
-                  {projects.map(project => (
+            {projects.map(project => (
                     <label key={project.id} className="flex items-center text-sm">
                       <input type="checkbox" checked={selectedProject.includes(project.id)} onChange={() => handleCheckboxFilter(selectedProject, setSelectedProject, project.id)} /> {project.name}
                     </label>
-                  ))}
+            ))}
                 </div>
               )}
             </div>

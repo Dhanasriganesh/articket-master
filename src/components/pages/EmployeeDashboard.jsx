@@ -42,6 +42,7 @@ function EmployeeDashboard() {
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [searchParams] = useSearchParams();
+  const [roleChangeToast, setRoleChangeToast] = useState({ show: false, message: '' });
  
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
@@ -283,26 +284,27 @@ function EmployeeDashboard() {
   // Replace the fetchRole useEffect with a real-time listener for role changes
   useEffect(() => {
     let unsubscribe;
-    if (auth.currentUser) {
+      if (auth.currentUser) {
       const userDocRef = doc(db, 'users', auth.currentUser.uid);
       unsubscribe = onSnapshot(userDocRef, (userDoc) => {
         if (userDoc.exists()) {
           const role = userDoc.data().role;
           if (role === 'client') {
-            navigate('/clientdashboard');
+            setRoleChangeToast({ show: true, message: 'Your role has changed. Redirecting...' });
+            setTimeout(() => navigate('/clientdashboard'), 2000);
           } else if (role === 'admin') {
-            navigate('/admin');
+            setRoleChangeToast({ show: true, message: 'Your role has changed. Redirecting...' });
+            setTimeout(() => navigate('/admin'), 2000);
           } else if (role === 'project_manager') {
-            navigate('/projectmanagerdashboard');
+            setRoleChangeToast({ show: true, message: 'Your role has changed. Redirecting...' });
+            setTimeout(() => navigate('/projectmanagerdashboard'), 2000);
           } else if (role !== 'employee') {
-            // If role is removed or unknown, sign out
-            auth.signOut();
-            navigate('/login');
+            setRoleChangeToast({ show: true, message: 'Your access has been removed. Signing out...' });
+            setTimeout(() => { auth.signOut(); navigate('/login'); }, 2000);
           }
         } else {
-          // User doc deleted, sign out
-          auth.signOut();
-          navigate('/login');
+          setRoleChangeToast({ show: true, message: 'Your access has been removed. Signing out...' });
+          setTimeout(() => { auth.signOut(); navigate('/login'); }, 2000);
         }
       });
     }
@@ -444,7 +446,7 @@ function EmployeeDashboard() {
         </header>
  
         {/* Dashboard Content */}
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-6 sm:p-4 xs:p-2">
           {projects.length > 1 && (
             <div className="mb-6">
               <label className="mr-2 font-semibold text-gray-700">Select Project:</label>
@@ -554,6 +556,12 @@ function EmployeeDashboard() {
          
         </main>
       </div>
+      {/* Add toast UI */}
+      {roleChangeToast.show && (
+        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg z-[9999] bg-blue-600 text-white font-semibold">
+          {roleChangeToast.message}
+        </div>
+      )}
     </div>
   );
 }

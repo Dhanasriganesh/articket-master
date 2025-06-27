@@ -140,7 +140,7 @@ function AdminTickets() {
     const matchesPriority = filterPriority.includes('All') || filterPriority.includes(ticket.priority);
     const matchesProject = filterProject.includes('All') || filterProject.includes(ticket.projectId) || filterProject.includes(ticket.project);
     const matchesSearch = ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) || ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesStatus && matchesPriority && matchesProject && matchesSearch;
+        return matchesStatus && matchesPriority && matchesProject && matchesSearch;
   });
 
   const allSelected = activeTab === 'deleted' && filteredTickets.length > 0 && filteredTickets.every(t => selectedTicketIds.includes(t.id));
@@ -201,9 +201,9 @@ function AdminTickets() {
     <div className="p-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
         <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+        <h1 className="text-3xl font-bold text-gray-900 flex items-center">
             <BsTicketFill className="mr-3 text-blue-600" /> Tickets
-          </h1>
+        </h1>
           {/* Ticket Stats Cards */}
           <div className="flex gap-2">
             <div className="bg-white rounded-lg shadow border border-gray-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
@@ -279,7 +279,7 @@ function AdminTickets() {
                   <label key={project.id} className="flex items-center text-sm">
                     <input type="checkbox" checked={filterProject.includes(project.id)} onChange={() => handleCheckboxFilter(filterProject, setFilterProject, project.id)} /> {project.name}
                   </label>
-                ))}
+            ))}
               </div>
             )}
           </div>
