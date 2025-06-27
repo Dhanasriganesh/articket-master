@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import { Modal } from 'react-responsive-modal';
 import 'react-responsive-modal/styles.css';
-import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
  
 // Utility to compute KPI metrics from ticket data
@@ -100,45 +99,38 @@ function downloadKpiCsv(kpiData, member) {
  
 const TeamManagement = () => {
   const [teamMembers, setTeamMembers] = useState([]);
+  const [allTeamMembers, setAllTeamMembers] = useState([]); // Store all employees for 'All Projects'
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProject, setSelectedProject] = useState('All');
   const [selectedRole, setSelectedRole] = useState('All');
   const [projects, setProjects] = useState([]);
-  const [kpiModalOpen, setKpiModalOpen] = useState(false);
   const [kpiLoading, setKpiLoading] = useState(false);
   const [kpiData, setKpiData] = useState(null);
-  const [selectedMember, setSelectedMember] = useState(null);
   const [currentUserRole, setCurrentUserRole] = useState('');
   const [dashboardEmployee, setDashboardEmployee] = useState(null);
  
   const auth = getAuth();
   const db = getFirestore();
-  const navigate = useNavigate();
  
   useEffect(() => {
     const fetchTeamMembers = async () => {
-      console.log('fetchTeamMembers called');
+      // Fetch all users with role 'employee' or 'project_manager' for 'All Projects'
       try {
         const currentUser = auth.currentUser;
-        console.log('Current user:', currentUser);
-        if (!currentUser) {
-          console.log('No current user, returning early');
-          return;
-        }
-        // Directly fetch all users with role 'employee'
+        if (!currentUser) return;
         const usersRef = collection(db, 'users');
         const teamQuery = query(
           usersRef,
-          where('role', '==', 'employee')
+          where('role', 'in', ['employee', 'project_manager'])
         );
         const teamSnapshot = await getDocs(teamQuery);
         const teamData = teamSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
-        console.log('Fetched teamData from Firestore:', teamData);
         setTeamMembers(teamData);
+        setAllTeamMembers(teamData);
         setLoading(false);
       } catch (error) {
         console.error('Error fetching team members:', error);
@@ -158,37 +150,61 @@ const TeamManagement = () => {
       }
     };
     fetchCurrentUserRole();
+ 
+    // Fetch projects from Firestore
+    const fetchProjects = async () => {
+      try {
+        const projectsRef = collection(db, 'projects');
+        const projectsSnapshot = await getDocs(projectsRef);
+        const projectsData = projectsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setProjects(projectsData);
+      } catch (error) {
+        console.error('Error fetching projects:', error);
+      }
+    };
+    fetchProjects();
   }, [auth, db]);
  
+  // Effect to fetch project members when selectedProject changes
+  useEffect(() => {
+    const fetchProjectMembers = async () => {
+      if (selectedProject === 'All') {
+        setTeamMembers(allTeamMembers);
+        return;
+      }
+      try {
+        const projectDocRef = doc(db, 'projects', selectedProject);
+        const projectDocSnap = await getDoc(projectDocRef);
+        if (projectDocSnap.exists()) {
+          const projectData = projectDocSnap.data();
+          // Only show members with role 'employee' or 'project_manager'
+          const filteredMembers = (projectData.members || []).filter(m => m.role === 'employee' || m.role === 'project_manager');
+          setTeamMembers(filteredMembers);
+        } else {
+          setTeamMembers([]);
+        }
+      } catch (error) {
+        console.error('Error fetching project members:', error);
+        setTeamMembers([]);
+      }
+    };
+    fetchProjectMembers();
+  }, [selectedProject, allTeamMembers, db]);
+ 
+  // Update filteredTeamMembers to just filter by search and role (not project)
   const filteredTeamMembers = teamMembers.filter(member => {
     const matchesSearch =
-      `${member.firstName} ${member.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      `${member.firstName ? member.firstName : ''} ${member.lastName ? member.lastName : ''}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.email?.toLowerCase().includes(searchTerm.toLowerCase());
-   
-    const matchesProject = selectedProject === 'All' || member.projectId === selectedProject;
     const matchesRole = selectedRole === 'All' || member.role === selectedRole;
- 
-    return matchesSearch && matchesProject && matchesRole;
+    return matchesSearch && matchesRole;
   });
  
   // Debug log before rendering grid
   console.log("Rendering TeamManagement, filteredTeamMembers:", filteredTeamMembers);
- 
-  // Handler to open KPI modal for a member
-  const handleViewKPI = async (member) => {
-    setSelectedMember(member);
-    setKpiModalOpen(true);
-    setKpiLoading(true);
-    // Fetch tickets assigned to this member
-    const ticketsRef = collection(db, 'tickets');
-    const q = query(ticketsRef, where('assignedTo.email', '==', member.email));
-    const snapshot = await getDocs(q);
-    const tickets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    // Compute KPIs
-    const kpi = computeKPIsForTickets(tickets, member.email);
-    setKpiData(kpi);
-    setKpiLoading(false);
-  };
  
   // Handler for employee card click
   const handleEmployeeClick = async (member) => {
@@ -198,7 +214,6 @@ const TeamManagement = () => {
     }
     setDashboardEmployee(null);
     setKpiLoading(true);
-    setSelectedMember(member);
     // Fetch tickets assigned to this member
     const ticketsRef = collection(db, 'tickets');
     const q = query(ticketsRef, where('assignedTo.email', '==', member.email));
@@ -344,7 +359,6 @@ const TeamManagement = () => {
               >
                 <option value="All">All Roles</option>
                 <option value="employee">Employee</option>
-                <option value="client">Client</option>
                 <option value="project_manager">Project Manager</option>
               </select>
  
@@ -366,7 +380,6 @@ const TeamManagement = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredTeamMembers.map((member) => {
               console.log("Rendering tile for", member);
-              const project = projects.find(p => p.id === member.projectId);
               return (
                 <button
                   key={member.id}
@@ -405,10 +418,7 @@ const TeamManagement = () => {
                         {member.phone}
                       </div>
                     )}
-                    <div className="flex items-center text-sm text-gray-500">
-                      <Building className="w-4 h-4 mr-2" />
-                      {project?.name || 'Unassigned'}
-                    </div>
+                   
                     {member.joinDate && (
                       <div className="flex items-center text-sm text-gray-500">
                         <Calendar className="w-4 h-4 mr-2" />
@@ -417,7 +427,7 @@ const TeamManagement = () => {
                     )}
                   </div>
  
-                  
+                 
                 </button>
               );
             })}
@@ -429,4 +439,3 @@ const TeamManagement = () => {
 };
  
 export default TeamManagement;
- 

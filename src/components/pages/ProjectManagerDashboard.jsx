@@ -290,6 +290,7 @@ const ProjectManagerDashboard = () => {
   const auth = getAuth();
   const db = getFirestore();
   const [roleChangeToast, setRoleChangeToast] = useState({ show: false, message: '' });
+  const [showMobilePopup, setShowMobilePopup] = useState(false);
 
   // Animated counts for priorities
   const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
@@ -478,6 +479,19 @@ const ProjectManagerDashboard = () => {
     );
   };
 
+  useEffect(() => {
+    const checkMobile = () => {
+      if (window.innerWidth < 768) {
+        setShowMobilePopup(true);
+      } else {
+        setShowMobilePopup(false);
+      }
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   if (!authChecked || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -487,377 +501,393 @@ const ProjectManagerDashboard = () => {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Logout Confirmation Modal */}
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-lg p-8 max-w-xs w-full text-center">
-            <h2 className="text-lg font-semibold mb-4">Confirm Logout</h2>
-            <p className="mb-6 text-gray-700">Are you sure you want to log out?</p>
-            <div className="flex justify-center gap-4">
-              <button
-                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
-                onClick={() => setShowLogoutConfirm(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-                onClick={() => {
-                  setShowLogoutConfirm(false);
-                  handleLogout();
-                }}
-              >
-                Yes, Log Out
-              </button>
-            </div>
+    <div className="relative">
+      {showMobilePopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+          <div className="bg-white rounded-xl shadow-lg p-8 max-w-xs text-center">
+            <h2 className="text-lg font-bold mb-4">Please use desktop for better use</h2>
+            <p className="text-gray-600 mb-4">This dashboard is best experienced on a desktop device.</p>
+            <button
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
+              onClick={() => setShowMobilePopup(false)}
+            >
+              Dismiss
+            </button>
           </div>
         </div>
       )}
-      {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out ${
-        sidebarCollapsed ? 'w-20' : 'w-64'
-      } bg-white shadow-xl lg:translate-x-0 lg:static ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
-        <div className="flex flex-col h-full">
-          {/* Sidebar Header */}
-          <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-            {!sidebarCollapsed && (
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
-                  <Briefcase className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-l font-bold text-gray-900">Project Head</h1>
-                  <p className="text-sm text-gray-500">Manager Portal</p>
-                </div>
+      <div className="flex h-screen bg-gray-50">
+        {/* Logout Confirmation Modal */}
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="bg-white rounded-lg shadow-lg p-8 max-w-xs w-full text-center">
+              <h2 className="text-lg font-semibold mb-4">Confirm Logout</h2>
+              <p className="mb-6 text-gray-700">Are you sure you want to log out?</p>
+              <div className="flex justify-center gap-4">
+                <button
+                  className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+                  onClick={() => setShowLogoutConfirm(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                  onClick={() => {
+                    setShowLogoutConfirm(false);
+                    handleLogout();
+                  }}
+                >
+                  Yes, Log Out
+                </button>
               </div>
-            )}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
-            >
-              {sidebarCollapsed ? (
-                <ChevronsRight className="w-6 h-6" />
-              ) : (
-                <ChevronsLeft className="w-6 h-6" />
+            </div>
+          </div>
+        )}
+        {/* Mobile Sidebar Overlay */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar */}
+        <aside className={`fixed inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out ${
+          sidebarCollapsed ? 'w-20' : 'w-64'
+        } bg-white shadow-xl lg:translate-x-0 lg:static ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}>
+          <div className="flex flex-col h-full">
+            {/* Sidebar Header */}
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              {!sidebarCollapsed && (
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
+                    <Briefcase className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-l font-bold text-gray-900">Project Head</h1>
+                    <p className="text-sm text-gray-500">Manager Portal</p>
+                  </div>
+                </div>
               )}
-            </button>
-          </div>
-
-          {/* Sidebar Navigation */}
-          <nav className="flex-1 p-6 space-y-2">
-            {sidebarItems.map(renderSidebarItem)}
-          </nav>
-
-          {/* Sidebar Footer */}
-          <div className="p-6 border-t border-gray-200">
-            {!sidebarCollapsed && (
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full flex items-center justify-center">
-                  <User className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{managerName.toUpperCase()}</p>
-                  <p className="text-xs text-gray-500">Project Manager</p>
-                </div>
-              </div>
-            )}
-            <button
-              onClick={() => setShowLogoutConfirm(true)}
-              className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200`}
-            >
-              <LogOut className="w-4 h-4" />
-              {!sidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="flex items-center justify-between px-6 py-4">
-            <div className="flex items-center space-x-4">
               <button
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
               >
-                <Menu className="w-6 h-6 text-gray-600" />
+                {sidebarCollapsed ? (
+                  <ChevronsRight className="w-6 h-6" />
+                ) : (
+                  <ChevronsLeft className="w-6 h-6" />
+                )}
               </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Welcome, {managerName.toUpperCase()}!</h1>
-                <p className="text-gray-600">Manage your projects </p>
-              </div>
             </div>
-            <div className="flex items-center space-x-4">
+
+            {/* Sidebar Navigation */}
+            <nav className="flex-1 p-6 space-y-2">
+              {sidebarItems.map(renderSidebarItem)}
+            </nav>
+
+            {/* Sidebar Footer */}
+            <div className="p-6 border-t border-gray-200">
+              {!sidebarCollapsed && (
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full flex items-center justify-center">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{managerName.toUpperCase()}</p>
+                    <p className="text-xs text-gray-500">Project Manager</p>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={() => setShowLogoutConfirm(true)}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200`}
               >
                 <LogOut className="w-4 h-4" />
-                <span className="font-medium">Sign Out</span>
+                {!sidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
               </button>
             </div>
           </div>
-        </header>
+        </aside>
 
-        {/* Dashboard Content */}
-        <main className="flex-1 overflow-auto p-6 sm:p-4 xs:p-2">
-          {/* Only show Select Project dropdown if not viewing a ticket */}
-          {projects.length > 1 && !viewingTicket && (
-            <div className="mb-6">
-              <label className="mr-2 font-semibold text-gray-700">Select Project:</label>
-              <select
-                value={selectedProjectId}
-                onChange={e => setSelectedProjectId(e.target.value)}
-                className="border border-gray-300 rounded px-3 py-2"
-              >
-                <option value="all">All Projects</option>
-                {projects.map(project => (
-                  <option key={project.id} value={project.id}>{project.name}</option>
-                ))}
-              </select>
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <header className="bg-white shadow-sm border-b border-gray-200">
+            <div className="flex items-center justify-between px-6 py-4">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <Menu className="w-6 h-6 text-gray-600" />
+                </button>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Welcome, {managerName.toUpperCase()}!</h1>
+                  <p className="text-gray-600">Manage your projects </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setShowLogoutConfirm(true)}
+                  className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="font-medium">Sign Out</span>
+                </button>
+              </div>
             </div>
-          )}
-          {activeTab === 'dashboard' && (
-            <div className="space-y-8">
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                
+          </header>
 
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Active Tickets</p>
-                      <p className="text-2xl font-bold text-gray-900">{stats.activeTickets}</p>
-                    </div>
-                    <div className="bg-yellow-100 rounded-lg p-3">
-                      <AlertCircle className="w-6 h-6 text-yellow-600" />
-                    </div>
-                  </div>
-                </div>
-
-                
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Completed Tickets</p>
-                      <p className="text-2xl font-bold text-gray-900">{stats.completedTickets}</p>
-                    </div>
-                    <div className="bg-purple-100 rounded-lg p-3">
-                      <CheckCircle className="w-6 h-6 text-purple-600" />
-                    </div>
-                  </div>
-                </div>
+          {/* Dashboard Content */}
+          <main className="flex-1 overflow-auto p-6 sm:p-4 xs:p-2">
+            {/* Only show Select Project dropdown if not viewing a ticket and not on team tab */}
+            {projects.length > 1 && !viewingTicket && activeTab !== 'team' && (
+              <div className="mb-6">
+                <label className="mr-2 font-semibold text-gray-700">Select Project:</label>
+                <select
+                  value={selectedProjectId}
+                  onChange={e => setSelectedProjectId(e.target.value)}
+                  className="border border-gray-300 rounded px-3 py-2"
+                >
+                  <option value="all">All Projects</option>
+                  {projects.map(project => (
+                    <option key={project.id} value={project.id}>{project.name}</option>
+                  ))}
+                </select>
               </div>
-
-              {/* Charts and Analytics Section */}
-              <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-                {/* Status Distribution Line Chart */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                    <TrendingUp className="w-5 h-5 mr-2 text-blue-600" />
-                    Ticket Status Trends
-                  </h3>
-                  <div className="h-64 bg-gray-50 rounded-lg p-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={[
-                          { name: 'Open', value: tickets.filter(t => t.status === 'Open').length },
-                          { name: 'In Progress', value: tickets.filter(t => t.status === 'In Progress').length },
-                          { name: 'Resolved', value: tickets.filter(t => t.status === 'Resolved').length },
-                          { name: 'Closed', value: tickets.filter(t => t.status === 'Closed').length }
-                        ]}
-                        margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                        <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                        <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
-                        <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={3} dot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Priority Distribution */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                    <BarChart3 className="w-5 h-5 mr-2 text-blue-600" />
-                    Ticket Priority Distribution
-                  </h3>
-                  <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
-                    <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center">
-                      <Flag className="w-8 h-8 text-red-500 mb-2" />
-                      <span className="text-2xl font-bold text-red-600">{highCount}</span>
-                      <span className="text-sm font-medium text-red-700 mt-1">High Priority</span>
-                    </div>
-                    <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex flex-col items-center">
-                      <Flag className="w-8 h-8 text-yellow-500 mb-2" />
-                      <span className="text-2xl font-bold text-yellow-600">{mediumCount}</span>
-                      <span className="text-sm font-medium text-yellow-700 mt-1">Medium Priority</span>
-                    </div>
-                    <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col items-center">
-                      <Flag className="w-8 h-8 text-green-500 mb-2" />
-                      <span className="text-2xl font-bold text-green-600">{lowCount}</span>
-                      <span className="text-sm font-medium text-green-700 mt-1">Low Priority</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
-                <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
-                  <Zap className="w-6 h-6 mr-3 text-blue-600" />
-                  Quick Actions
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            )}
+            {activeTab === 'dashboard' && (
+              <div className="space-y-8">
+                {/* Stats Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   
-                 
 
-                  <button
-                    onClick={() => setActiveTab('tickets')}
-                    className="group bg-white p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 text-left"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                        <MessageSquare className="w-6 h-6 text-blue-600" />
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Active Tickets</p>
+                        <p className="text-2xl font-bold text-gray-900">{stats.activeTickets}</p>
                       </div>
-                      <div className="text-left">
-                        <p className="font-semibold text-gray-900 text-lg">View Tickets</p>
-                        <p className="text-gray-600 text-sm">Manage support tickets</p>
+                      <div className="bg-yellow-100 rounded-lg p-3">
+                        <AlertCircle className="w-6 h-6 text-yellow-600" />
                       </div>
                     </div>
-                  </button>
+                  </div>
+
+                  
+
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Completed Tickets</p>
+                        <p className="text-2xl font-bold text-gray-900">{stats.completedTickets}</p>
+                      </div>
+                      <div className="bg-purple-100 rounded-lg p-3">
+                        <CheckCircle className="w-6 h-6 text-purple-600" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
+
+                {/* Charts and Analytics Section */}
+                <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+                  {/* Status Distribution Line Chart */}
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                      <TrendingUp className="w-5 h-5 mr-2 text-blue-600" />
+                      Ticket Status Trends
+                    </h3>
+                    <div className="h-64 bg-gray-50 rounded-lg p-4">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={[
+                            { name: 'Open', value: tickets.filter(t => t.status === 'Open').length },
+                            { name: 'In Progress', value: tickets.filter(t => t.status === 'In Progress').length },
+                            { name: 'Resolved', value: tickets.filter(t => t.status === 'Resolved').length },
+                            { name: 'Closed', value: tickets.filter(t => t.status === 'Closed').length }
+                          ]}
+                          margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
+                          <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
+                          <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
+                          <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={3} dot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Priority Distribution */}
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                      <BarChart3 className="w-5 h-5 mr-2 text-blue-600" />
+                      Ticket Priority Distribution
+                    </h3>
+                    <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
+                      <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center">
+                        <Flag className="w-8 h-8 text-red-500 mb-2" />
+                        <span className="text-2xl font-bold text-red-600">{highCount}</span>
+                        <span className="text-sm font-medium text-red-700 mt-1">High Priority</span>
+                      </div>
+                      <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex flex-col items-center">
+                        <Flag className="w-8 h-8 text-yellow-500 mb-2" />
+                        <span className="text-2xl font-bold text-yellow-600">{mediumCount}</span>
+                        <span className="text-sm font-medium text-yellow-700 mt-1">Medium Priority</span>
+                      </div>
+                      <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col items-center">
+                        <Flag className="w-8 h-8 text-green-500 mb-2" />
+                        <span className="text-2xl font-bold text-green-600">{lowCount}</span>
+                        <span className="text-sm font-medium text-green-700 mt-1">Low Priority</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+                    <Zap className="w-6 h-6 mr-3 text-blue-600" />
+                    Quick Actions
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    
+                   
+
+                    <button
+                      onClick={() => setActiveTab('tickets')}
+                      className="group bg-white p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 text-left"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                          <MessageSquare className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-gray-900 text-lg">View Tickets</p>
+                          <p className="text-gray-600 text-sm">Manage support tickets</p>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                
               </div>
+            )}
 
-              
-            </div>
-          )}
+            {activeTab === 'team' && (
+              <TeamManagement />
+            )}
 
-          {activeTab === 'team' && (
-            <TeamManagement />
-          )}
+            {activeTab === 'tickets' && (
+              <ProjectTickets
+                setActiveTab={setActiveTab}
+                selectedProjectId={selectedProjectId}
+                selectedProjectName={projects.find(p => p.id === selectedProjectId)?.name || ''}
+                allProjectIds={projects.map(p => p.id)}
+                setViewingTicket={setViewingTicket}
+              />
+            )}
 
-          {activeTab === 'tickets' && (
-            <ProjectTickets
-              setActiveTab={setActiveTab}
-              selectedProjectId={selectedProjectId}
-              selectedProjectName={projects.find(p => p.id === selectedProjectId)?.name || ''}
-              allProjectIds={projects.map(p => p.id)}
-              setViewingTicket={setViewingTicket}
-            />
-          )}
+            {activeTab === 'create' && (
+              <div className="max-w-auto mx-auto">
+                 <Ticketing onTicketCreated={() => setActiveTab('tickets')} />
+              </div>
+            )}
 
-          {activeTab === 'create' && (
-            <div className="max-w-auto mx-auto">
-               <Ticketing onTicketCreated={() => setActiveTab('tickets')} />
-            </div>
-          )}
-
-          {activeTab === 'kpi' && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-blue-600" />KPI Reports</h2>
-              {/* Compute KPIs for all tickets in the selected project(s) */}
-              {tickets.length === 0 ? (
-                <div className="text-gray-500">No tickets found for KPI analysis.</div>
-              ) : (
-                (() => {
-                  const kpi = computeKPIsForTickets(tickets);
-                  return (
-                    <>
-                      <div className="mb-4">
-                        <div><b>Total Tickets Assigned:</b> {kpi.count}</div>
-                        <div><b>Avg. Response Time:</b> {kpi.avgResponse ? (kpi.avgResponse/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
-                        <div><b>Avg. Resolution Time:</b> {kpi.avgResolution ? (kpi.avgResolution/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
-                      </div>
-                      {/* KPI Bar Chart */}
-                      <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart">
-                        <h3 className="text-lg font-semibold mb-2">KPI Bar Chart</h3>
-                        <ResponsiveContainer width="100%" height={250}>
-                          <BarChart data={kpi.details.map(row => ({
-                            name: row.ticketNumber,
-                            'Response Time (min)': row.responseTime ? (row.responseTime/1000/60) : 0,
-                            'Resolution Time (min)': row.resolutionTime ? (row.resolutionTime/1000/60) : 0,
-                          }))}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip />
-                            <Legend />
-                            <Bar dataKey="Response Time (min)" fill="#8884d8" />
-                            <Bar dataKey="Resolution Time (min)" fill="#82ca9d" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="flex gap-4 mb-4">
-                        {/* <button
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
-                          onClick={() => downloadKpiCsv(kpi, projects.find(p => p.id === selectedProjectId)?.name || '')}
-                        >
-                          Download CSV
-                        </button> */}
-                        <button
-                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
-                          onClick={() => exportKpiToExcelWithChartImage(kpi, 'kpi-bar-chart', projects.find(p => p.id === selectedProjectId)?.name || '')}
-                        >
-                          Export to Excel
-                        </button>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-xs text-left text-gray-700 border">
-                          <thead>
-                            <tr>
-                              <th className="py-1 px-2">Ticket #</th>
-                              <th className="py-1 px-2">Subject</th>
-                              <th className="py-1 px-2">Assignee</th>
-                              <th className="py-1 px-2">Response Time</th>
-                              <th className="py-1 px-2">Resolution Time</th>
-                              <th className="py-1 px-2">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {kpi.details.map((row, idx) => (
-                              <tr key={idx} className="border-t">
-                                <td className="py-1 px-2">{row.ticketNumber}</td>
-                                <td className="py-1 px-2">{row.subject}</td>
-                                <td className="py-1 px-2">{row.assignee}</td>
-                                <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                                <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                                <td className="py-1 px-2">{row.status}</td>
+            {activeTab === 'kpi' && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-blue-600" />KPI Reports</h2>
+                {/* Compute KPIs for all tickets in the selected project(s) */}
+                {tickets.length === 0 ? (
+                  <div className="text-gray-500">No tickets found for KPI analysis.</div>
+                ) : (
+                  (() => {
+                    const kpi = computeKPIsForTickets(tickets);
+                    return (
+                      <>
+                        <div className="mb-4">
+                          <div><b>Total Tickets Assigned:</b> {kpi.count}</div>
+                          <div><b>Avg. Response Time:</b> {kpi.avgResponse ? (kpi.avgResponse/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
+                          <div><b>Avg. Resolution Time:</b> {kpi.avgResolution ? (kpi.avgResolution/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
+                        </div>
+                        {/* KPI Bar Chart */}
+                        <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart">
+                          <h3 className="text-lg font-semibold mb-2">KPI Bar Chart</h3>
+                          <ResponsiveContainer width="100%" height={250}>
+                            <BarChart data={kpi.details.map(row => ({
+                              name: row.ticketNumber,
+                              'Response Time (min)': row.responseTime ? (row.responseTime/1000/60) : 0,
+                              'Resolution Time (min)': row.resolutionTime ? (row.resolutionTime/1000/60) : 0,
+                            }))}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" />
+                              <YAxis />
+                              <Tooltip />
+                              <Legend />
+                              <Bar dataKey="Response Time (min)" fill="#8884d8" />
+                              <Bar dataKey="Resolution Time (min)" fill="#82ca9d" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="flex gap-4 mb-4">
+                          {/* <button
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
+                            onClick={() => downloadKpiCsv(kpi, projects.find(p => p.id === selectedProjectId)?.name || '')}
+                          >
+                            Download CSV
+                          </button> */}
+                          <button
+                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+                            onClick={() => exportKpiToExcelWithChartImage(kpi, 'kpi-bar-chart', projects.find(p => p.id === selectedProjectId)?.name || '')}
+                          >
+                            Export to Excel
+                          </button>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-xs text-left text-gray-700 border">
+                            <thead>
+                              <tr>
+                                <th className="py-1 px-2">Ticket #</th>
+                                <th className="py-1 px-2">Subject</th>
+                                <th className="py-1 px-2">Assignee</th>
+                                <th className="py-1 px-2">Response Time</th>
+                                <th className="py-1 px-2">Resolution Time</th>
+                                <th className="py-1 px-2">Status</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </>
-                  );
-                })()
-              )}
-            </div>
-          )}
-        </main>
-      </div>
-      {/* Add toast UI */}
-      {roleChangeToast.show && (
-        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg z-[9999] bg-blue-600 text-white font-semibold">
-          {roleChangeToast.message}
+                            </thead>
+                            <tbody>
+                              {kpi.details.map((row, idx) => (
+                                <tr key={idx} className="border-t">
+                                  <td className="py-1 px-2">{row.ticketNumber}</td>
+                                  <td className="py-1 px-2">{row.subject}</td>
+                                  <td className="py-1 px-2">{row.assignee}</td>
+                                  <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                  <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                  <td className="py-1 px-2">{row.status}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    );
+                  })()
+                )}
+              </div>
+            )}
+          </main>
         </div>
-      )}
+        {/* Add toast UI */}
+        {roleChangeToast.show && (
+          <div className="fixed top-6 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg z-[9999] bg-blue-600 text-white font-semibold">
+            {roleChangeToast.message}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
