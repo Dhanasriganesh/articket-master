@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation } from "react-router-dom";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail } from "firebase/auth";
 import { getFirestore, collection, query, where, getDocs, updateDoc, deleteField, doc, setDoc, deleteDoc, getDoc } from "firebase/firestore";
-import artihcusLogo from '../../assets/Articket-Logo.png';
+import artihcusLogo from '../../assets/artihcus-logo1.svg';
  
 const Login = () => {
   const [email, setEmail] = useState("");

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot, getDocs, doc, updateDoc, arrayUnion, serverTimestamp, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../firebase/config';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { BsTicketFill, BsFolderFill } from 'react-icons/bs';
 import TicketDetails from './TicketDetails';
 import { sendEmail } from '../../utils/sendEmail';
@@ -40,6 +40,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
   const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false);
   const statusDropdownRef = useRef(null);
   const priorityDropdownRef = useRef(null);
+  const navigate = useNavigate();
  
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
@@ -386,23 +387,13 @@ const ClientHeadTickets = ({ setActiveTab }) => {
  
       <div className="flex justify-between items-center mb-8">
         <div>
-          {setActiveTab ? (
-            <button
-              onClick={() => setActiveTab('create')}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
-            >
-              <BsFolderFill className="mr-2" />
-              Create New Ticket
-            </button>
-          ) : (
-            <Link
-              to="/client-head-dashboard?tab=create"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
-            >
-              <BsFolderFill className="mr-2" />
-              Create New Ticket
-            </Link>
-          )}
+          <button
+            onClick={() => navigate('/client-head-dashboard?tab=create')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
+          >
+            <BsFolderFill className="mr-2" />
+            Create New Ticket
+          </button>
         </div>
       </div>
  
@@ -553,9 +544,9 @@ const ClientHeadTickets = ({ setActiveTab }) => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Assigned To
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Assigned By
-                  </th>
+                  </th> */}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Last Updated
                   </th>

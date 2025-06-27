@@ -41,6 +41,7 @@ function Client({ onTicketCreated = null }) {
   const [previewFile, setPreviewFile] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const [attachmentError, setAttachmentError] = useState('');
  
   const priorities = [
     { value: 'Low', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200', description: 'Non-urgent, can wait', icon: '🟢' },
@@ -192,15 +193,20 @@ function Client({ onTicketCreated = null }) {
  
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    const maxSize = 1 * 1024 * 1024; // 1MB
+    let tooLarge = false;
     const validFiles = files.filter(file => {
       if (file.size > maxSize) {
-        alert(`File ${file.name} is too large. Maximum size is 10MB.`);
+        tooLarge = true;
         return false;
       }
       return true;
     });
-
+    if (tooLarge) {
+      setAttachmentError('Each attachment must be less than 1MB.');
+    } else {
+      setAttachmentError('');
+    }
     // Read each file as Data URL and add to attachments
     validFiles.forEach(file => {
       const reader = new FileReader();
@@ -217,7 +223,6 @@ function Client({ onTicketCreated = null }) {
       };
       reader.readAsDataURL(file);
     });
-
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -289,6 +294,7 @@ function Client({ onTicketCreated = null }) {
  
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (attachmentError) return;
     if (!await validateForm()) return;
    
     setIsSubmitting(true);
@@ -655,6 +661,9 @@ function Client({ onTicketCreated = null }) {
                             </div>
                           ))}
                         </div>
+                      )}
+                      {attachmentError && (
+                        <div className="text-red-600 text-sm mt-2">{attachmentError}</div>
                       )}
                     </div>
                   </div>

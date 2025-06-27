@@ -109,6 +109,7 @@ const ClientHeadDashboard = () => {
         // Get client head's name
         const userDocRef = doc(db, 'users', user.uid);
         const userDocSnap = await getDoc(userDocRef);
+        let clientHeadProject = null;
         if (userDocSnap.exists()) {
           const userData = userDocSnap.data();
           let displayName = '';
@@ -122,6 +123,7 @@ const ClientHeadDashboard = () => {
             displayName = userData.email.split('@')[0];
           }
           setClientHeadName(displayName);
+          clientHeadProject = userData.project || null;
         }
         // Fetch clients
         const clientsQuery = query(
@@ -142,13 +144,16 @@ const ClientHeadDashboard = () => {
           ...doc.data()
         }));
         setProjects(projectsData);
-        // Fetch tickets
-        const ticketsQuery = query(collection(db, 'tickets'));
-        const ticketsSnapshot = await getDocs(ticketsQuery);
-        const ticketsData = ticketsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        // Fetch tickets for the client head's project only
+        let ticketsData = [];
+        if (clientHeadProject) {
+          const ticketsQuery = query(collection(db, 'tickets'), where('project', '==', clientHeadProject));
+          const ticketsSnapshot = await getDocs(ticketsQuery);
+          ticketsData = ticketsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+        }
         setTickets(ticketsData);
         // Update stats
         setStats({

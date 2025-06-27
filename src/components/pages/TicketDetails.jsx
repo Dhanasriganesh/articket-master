@@ -81,6 +81,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
   const [isSavingCommentEdit, setIsSavingCommentEdit] = useState(false);
   const [detailsError, setDetailsError] = useState('');
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
+  const [currentUserEmail, setCurrentUserEmail] = useState('');
 
   // Toast helper
   const showToast = (message, type = 'error') => {
@@ -183,10 +184,24 @@ const TicketDetails = ({ ticketId, onBack }) => {
       const snapshot = await getDocs(q);
       const emps = snapshot.docs.map(doc => {
         const data = doc.data();
+        let name = '';
+        if (data.firstName && data.lastName) {
+          name = `${data.firstName} ${data.lastName}`.trim();
+        } else if (data.firstName) {
+          name = data.firstName;
+        } else if (data.lastName) {
+          name = data.lastName;
+        } else {
+          name = data.email.split('@')[0];
+        }
+        // Add a label for project managers
+        if (data.role === 'project_manager') {
+          name += ' (Project Manager)';
+        }
         return {
           id: doc.id,
           email: data.email,
-          name: data.firstName && data.lastName ? `${data.firstName} ${data.lastName}`.trim() : data.email.split('@')[0],
+          name,
           role: data.role
         };
       });
@@ -195,6 +210,7 @@ const TicketDetails = ({ ticketId, onBack }) => {
     const fetchCurrentUserRole = async () => {
       const currentUser = auth.currentUser;
       if (currentUser) {
+        setCurrentUserEmail(currentUser.email);
         const userDocRef = doc(db, 'users', currentUser.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
@@ -313,7 +329,33 @@ const TicketDetails = ({ ticketId, onBack }) => {
       }
       // Assignment
       if (selectedAssignee && (!ticket.assignedTo || ticket.assignedTo.email !== selectedAssignee)) {
-        const assignee = employees.find(emp => emp.email === selectedAssignee);
+        let assignee = employees.find(emp => emp.email === selectedAssignee);
+        if (!assignee && selectedAssignee === currentUserEmail) {
+          // Fetch current user's name and role from Firestore
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            const userDocSnap = await getDoc(userDocRef);
+            if (userDocSnap.exists()) {
+              const data = userDocSnap.data();
+              let name = '';
+              if (data.firstName && data.lastName) {
+                name = `${data.firstName} ${data.lastName}`.trim();
+              } else if (data.firstName) {
+                name = data.firstName;
+              } else if (data.lastName) {
+                name = data.lastName;
+              } else {
+                name = data.email.split('@')[0];
+              }
+              assignee = {
+                email: data.email,
+                name,
+                role: data.role || 'project_manager',
+              };
+            }
+          }
+        }
         if (assignee) {
           updates.assignedTo = { email: assignee.email, name: assignee.name, role: assignee.role };
           commentMsg.push(`Assigned to ${assignee.name}`);
@@ -846,6 +888,10 @@ const TicketDetails = ({ ticketId, onBack }) => {
                         disabled={isSaving || employees.length === 0}
                       >
                         <option value="">Unassigned</option>
+                        {/* 'Assign to Me' option if not already in employees list */}
+                        {currentUserEmail && !employees.some(emp => emp.email === currentUserEmail) && (
+                          <option value={currentUserEmail}>Assign to Me</option>
+                        )}
                         {employees.map(emp => (
                           <option key={emp.email} value={emp.email}>{emp.name} ({emp.role})</option>
                         ))}

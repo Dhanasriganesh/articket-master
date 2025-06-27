@@ -1,21 +1,15 @@
 console.log("TeamManagement component file loaded");
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, getFirestore, doc, getDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import {
-  Users,
   Mail,
   Phone,
-  Building,
   Calendar,
-  Tag,
   Search,
   Filter,
-  RefreshCw,
-  User,
-  X
+  RefreshCw
 } from 'lucide-react';
-import { Modal } from 'react-responsive-modal';
 import 'react-responsive-modal/styles.css';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
  
@@ -28,17 +22,13 @@ function computeKPIsForTickets(tickets, employeeEmail) {
     // Find assignment time (first comment with 'Assigned to <name>' and authorRole 'user' or 'system')
     let assigned = null;
     let resolved = null;
-    let assignedComment = null;
-    let resolvedComment = null;
     if (ticket.comments && Array.isArray(ticket.comments)) {
       for (const c of ticket.comments) {
         if (!assigned && c.message && c.message.toLowerCase().includes('assigned to') && c.authorRole && (c.authorRole === 'user' || c.authorRole === 'system')) {
           assigned = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
-          assignedComment = c;
         }
         if (!resolved && c.message && c.message.toLowerCase().includes('resolution updated') && c.authorRole && c.authorRole === 'resolver') {
           resolved = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
-          resolvedComment = c;
         }
       }
     }
@@ -156,11 +146,21 @@ const TeamManagement = () => {
       try {
         const projectsRef = collection(db, 'projects');
         const projectsSnapshot = await getDocs(projectsRef);
-        const projectsData = projectsSnapshot.docs.map(doc => ({
+        const allProjectsData = projectsSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
-        setProjects(projectsData);
+        // If current user is a project manager, only show projects where they are a manager
+        const currentUser = auth.currentUser;
+        let filteredProjects = allProjectsData;
+        if (currentUserRole === 'project_manager' && currentUser) {
+          filteredProjects = allProjectsData.filter(project =>
+            (project.members || []).some(
+              m => m.email === currentUser.email && m.role === 'project_manager'
+            )
+          );
+        }
+        setProjects(filteredProjects);
       } catch (error) {
         console.error('Error fetching projects:', error);
       }
@@ -180,6 +180,21 @@ const TeamManagement = () => {
         const projectDocSnap = await getDoc(projectDocRef);
         if (projectDocSnap.exists()) {
           const projectData = projectDocSnap.data();
+          // Get current user info
+          const currentUser = auth.currentUser;
+          if (!currentUser) {
+            setTeamMembers([]);
+            return;
+          }
+          // Check if current user is a project manager in this project
+          const isManagerInProject = (projectData.members || []).some(
+            m => m.email === currentUser.email && m.role === 'project_manager'
+          );
+          if (!isManagerInProject && currentUserRole === 'project_manager') {
+            // Not a manager in this project, show nothing
+            setTeamMembers([]);
+            return;
+          }
           // Only show members with role 'employee' or 'project_manager'
           const filteredMembers = (projectData.members || []).filter(m => m.role === 'employee' || m.role === 'project_manager');
           setTeamMembers(filteredMembers);
@@ -192,7 +207,7 @@ const TeamManagement = () => {
       }
     };
     fetchProjectMembers();
-  }, [selectedProject, allTeamMembers, db]);
+  }, [selectedProject, allTeamMembers, db, auth, currentUserRole]);
  
   // Update filteredTeamMembers to just filter by search and role (not project)
   const filteredTeamMembers = teamMembers.filter(member => {
