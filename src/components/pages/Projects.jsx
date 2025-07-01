@@ -1014,7 +1014,7 @@ function Projects() {
                               : 'border-gray-200 hover:border-purple-200 bg-white/50'
                           }`}
                         >
-                          Client Head
+                          Client Manager
                         </button>
                       </>
                     )}
@@ -1201,7 +1201,7 @@ function Projects() {
                               : 'border-gray-200 hover:border-purple-200 bg-white/50'
                           }`}
                         >
-                          Client Head
+                          Client Manager
                         </button>
                       </>
                     )}

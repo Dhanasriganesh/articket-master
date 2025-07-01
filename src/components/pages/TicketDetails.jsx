@@ -19,11 +19,14 @@ import {
   Home,
   FileText,
   MessageSquare,
-  FolderOpen
-
+  FolderOpen,
+  X
 } from 'lucide-react';
 import { sendEmail } from '../../utils/sendEmail';
 import { fetchProjectMemberEmails } from '../../utils/emailUtils';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
+import parse from 'html-react-parser';
 
 // Helper to safely format timestamps
 function formatTimestamp(ts) {
@@ -55,6 +58,42 @@ const statusOptions = [
   { value: 'Closed', label: 'Closed' },
 ];
 
+// Module and Category options (should match Ticketing.jsx)
+const moduleOptions = [
+  { value: '', label: 'Select Module' },
+  { value: 'EWM', label: 'EWM' },
+  { value: 'BTP', label: 'BTP' },
+  { value: 'TM', label: 'TM' },
+  { value: 'Yl', label: 'Yl' },
+  { value: 'MFS', label: 'MFS' },
+];
+const categoryOptionsMap = {
+  EWM: [
+    { value: 'Inbound', label: 'Inbound' },
+    { value: 'Internal', label: 'Internal' },
+    { value: 'Outbound', label: 'Outbound' },
+  ],
+  BTP: [
+    { value: 'd', label: 'd' },
+    { value: 'e', label: 'e' },
+    { value: 'f', label: 'f' },
+  ],
+  TM: [
+    { value: 'g', label: 'g' },
+    { value: 'h', label: 'h' },
+    { value: 'i', label: 'i' },
+  ],
+  Yl: [
+    { value: 'Gate Management', label: 'Gate Management' },
+    { value: 'Yard Dispatching', label: 'Yard Dispatching' },
+  ],
+  MFS: [
+    { value: 'm', label: 'm' },
+    { value: 'n', label: 'n' },
+    { value: 'o', label: 'o' },
+  ],
+};
+
 const TicketDetails = ({ ticketId, onBack, onAssign }) => {
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -82,11 +121,36 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
   const [detailsError, setDetailsError] = useState('');
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
   const [currentUserEmail, setCurrentUserEmail] = useState('');
+  const [clientMembers, setClientMembers] = useState([]);
+  const [selectedRequester, setSelectedRequester] = useState('');
+  const [editModule, setEditModule] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editSubCategory, setEditSubCategory] = useState('');
+  const [editTypeOfIssue, setEditTypeOfIssue] = useState('');
+  const [previewImageSrc, setPreviewImageSrc] = useState(null);
 
   // Toast helper
   const showToast = (message, type = 'error') => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: '', type }), 2500);
+  };
+
+  // Helper to render Quill HTML with image preview overlays
+  const renderQuillWithPreview = (html) => {
+    return parse(html, {
+      replace: domNode => {
+        if (domNode.name === 'img' && domNode.attribs && domNode.attribs.src) {
+          return (
+            <img
+              {...domNode.attribs}
+              style={{ maxWidth: 40, maxHeight: 40, width: 40, height: 40, objectFit: 'cover', borderRadius: '0.5rem', cursor: 'pointer', display: 'inline-block', verticalAlign: 'middle', margin: '0 4px', border: '2px solid #d1d5db' }}
+              onClick={() => setPreviewImageSrc(domNode.attribs.src)}
+              alt={domNode.attribs.alt || 'image'}
+            />
+          );
+        }
+      }
+    });
   };
 
   useEffect(() => {
@@ -222,6 +286,39 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       fetchEmployees();
       setSelectedAssignee(ticket.assignedTo?.email || '');
       fetchCurrentUserRole();
+    }
+  }, [ticket]);
+
+  useEffect(() => {
+    // Fetch client members for requester dropdown
+    const fetchClientMembers = async () => {
+      if (!ticket?.project) return;
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('project', '==', ticket.project), where('role', '==', 'client'));
+      const snapshot = await getDocs(q);
+      const clients = snapshot.docs.map(doc => {
+        const data = doc.data();
+        let name = '';
+        if (data.firstName && data.lastName) {
+          name = `${data.firstName} ${data.lastName}`.trim();
+        } else if (data.firstName) {
+          name = data.firstName;
+        } else if (data.lastName) {
+          name = data.lastName;
+        } else {
+          name = data.email.split('@')[0];
+        }
+        return { email: data.email, name };
+      });
+      setClientMembers(clients);
+    };
+    if (ticket) {
+      fetchClientMembers();
+      setSelectedRequester(ticket.email || '');
+      setEditModule(ticket.module || '');
+      setEditCategory(ticket.category || '');
+      setEditSubCategory(ticket.subCategory || '');
+      setEditTypeOfIssue(ticket.typeOfIssue || '');
     }
   }, [ticket]);
 
@@ -367,6 +464,25 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         await onAssign(ticket.id, updates.assignedTo.email);
         setIsSaving(false);
         return;
+      }
+      // Module, Category, Sub-Category, Type of Issue, Requester
+      if (editModule !== ticket.module) {
+        updates.module = editModule;
+      }
+      if (editCategory !== ticket.category) {
+        updates.category = editCategory;
+      }
+      if (editSubCategory !== ticket.subCategory) {
+        updates.subCategory = editSubCategory;
+      }
+      if (editTypeOfIssue !== ticket.typeOfIssue) {
+        updates.typeOfIssue = editTypeOfIssue;
+      }
+      if (selectedRequester !== ticket.email) {
+        updates.email = selectedRequester;
+        // Optionally update customer name if you want:
+        const req = clientMembers.find(c => c.email === selectedRequester);
+        if (req) updates.customer = req.name;
       }
       if (Object.keys(updates).length > 0) {
         updates.lastUpdated = serverTimestamp();
@@ -665,7 +781,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
     );
   }
 
-  return (
+  const mainContent = (
     <div className="flex flex-col gap-8 lg:flex-row">
       {/* Toast */}
       {toast.show && (
@@ -693,7 +809,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           <div>
             <div className="text-2xl font-bold text-gray-900">{ticket.subject || 'No Subject'}</div>
             <div className="text-gray-500 text-sm mt-1">Ticket ID: <span className="font-mono">{ticket.ticketNumber}</span></div>
-</div>
+          </div>
         </div>
         {/* Tabs */}
         <div className="border-b mb-8 px-2">
@@ -759,7 +875,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                                 </>
                               ) : (
                                 <>
-                            <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{comment.message}</div>
+                            <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{comment.message ? renderQuillWithPreview(comment.message) : null}</div>
                                   {comment.lastEditedAt && comment.lastEditedBy && (
                                     <div className="mt-1 text-xs text-gray-500 italic">Last edited by {comment.lastEditedBy} at {formatTimestamp(comment.lastEditedAt)}</div>
                                   )}
@@ -805,13 +921,28 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
               <div className="bg-white rounded-2xl p-8 shadow border border-gray-100">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Add a comment</h3>
                 <div className="flex flex-col space-y-4">
-                  <textarea
-                    className="w-full p-4 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[100px] bg-gray-50 shadow-sm"
-                    placeholder="Type your comment here..."
+                  <ReactQuill
                     value={newResponse}
-                    onChange={(e) => setNewResponse(e.target.value)}
-                    rows="4"
-                  ></textarea>
+                    onChange={setNewResponse}
+                    modules={{
+                      toolbar: [
+                        [{ 'header': [1, 2, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        ['link', 'image'],
+                        ['clean']
+                      ]
+                    }}
+                    formats={['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet', 'link', 'image']}
+                    className="bg-white rounded-xl border-2 border-gray-200 focus:border-blue-500 min-h-[120px]"
+                    placeholder="Add a comment... (You can paste screenshots directly here)"
+                  />
+                  {/* Render preview thumbnails for images in the comment */}
+                  {newResponse && (
+                    <div className="mt-2 prose prose-sm max-w-none">
+                      {renderQuillWithPreview(newResponse)}
+                    </div>
+                  )}
                   <input
                     id="comment-attachment-input"
                     type="file"
@@ -890,7 +1021,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                     <select
                       className="ml-2 border border-gray-300 rounded px-2 py-1"
                       value={editFields.status}
-                        onChange={handleStatusChange}
+                      onChange={handleStatusChange}
                       disabled={isSaving}
                     >
                       {statusOptions.map(opt => (
@@ -919,28 +1050,78 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                     )}
                   </div>
                   <div>
-                    <span className="font-semibold text-gray-700">Category:</span>
+                    <span className="font-semibold text-gray-700">Module:</span>
                     {isEditMode ? (
-                    <select
-                      className="ml-2 border border-gray-300 rounded px-2 py-1"
-                      value={editFields.category}
-                      onChange={e => setEditFields(f => ({ ...f, category: e.target.value }))}
-                      disabled={isSaving}
-                    >
-                      {categories.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
+                      <select
+                        className="ml-2 border border-gray-300 rounded px-2 py-1"
+                        value={editModule}
+                        onChange={e => {
+                          setEditModule(e.target.value);
+                          setEditCategory('');
+                        }}
+                        disabled={isSaving}
+                      >
+                        {moduleOptions.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
                     ) : (
-                      <span className="ml-2">{editFields.category}</span>
+                      <span className="ml-2">{ticket.module || '-'}</span>
                     )}
                   </div>
-                  <div><span className="font-semibold text-gray-700">Project:</span> {ticket.project}</div>
-                  <div><span className="font-semibold text-gray-700">Created:</span> {ticket.created ? new Date(ticket.created.toDate()).toLocaleString() : 'N/A'}</div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Category:</span>
+                    {isEditMode ? (
+                      <select
+                        className="ml-2 border border-gray-300 rounded px-2 py-1"
+                        value={editCategory}
+                        onChange={e => setEditCategory(e.target.value)}
+                        disabled={isSaving || !editModule}
+                      >
+                        {!editModule && <option value="">Please select the module</option>}
+                        {editModule && categoryOptionsMap[editModule]?.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="ml-2">{ticket.category || '-'}</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Sub-Category:</span>
+                    {isEditMode ? (
+                      <input
+                        className="ml-2 border border-gray-300 rounded px-2 py-1"
+                        value={editSubCategory}
+                        onChange={e => setEditSubCategory(e.target.value)}
+                        disabled={isSaving}
+                        placeholder="Enter sub-category (if any)"
+                      />
+                    ) : (
+                      <span className="ml-2">{ticket.subCategory || '-'}</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Type of Issue:</span>
+                    {isEditMode ? (
+                      <select
+                        className="ml-2 border border-gray-300 rounded px-2 py-1"
+                        value={editTypeOfIssue}
+                        onChange={e => setEditTypeOfIssue(e.target.value)}
+                        disabled={isSaving}
+                      >
+                        <option value="">Select Type of Issue</option>
+                        {categories.map(category => (
+                          <option key={category.value} value={category.value}>{category.value}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="ml-2">{ticket.typeOfIssue || '-'}</span>
+                    )}
+                  </div>
                   <div>
                     <span className="font-semibold text-gray-700">Assigned To:</span>
-                    {(currentUserRole === 'employee' || currentUserRole === 'project_manager') ? (
-                      isEditMode ? (
+                    {isEditMode ? (
                       <select
                         className="ml-2 border border-gray-300 rounded px-2 py-1"
                         value={selectedAssignee}
@@ -948,7 +1129,6 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                         disabled={isSaving || employees.length === 0}
                       >
                         <option value="">Unassigned</option>
-                        {/* 'Assign to Me' option if not already in employees list */}
                         {currentUserEmail && !employees.some(emp => emp.email === currentUserEmail) && (
                           <option value={currentUserEmail}>Assign to Me</option>
                         )}
@@ -956,18 +1136,28 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                           <option key={emp.email} value={emp.email}>{emp.name} ({emp.role})</option>
                         ))}
                       </select>
-                      ) : (
-                        <span className="ml-2">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</span>
-                      )
                     ) : (
                       <span className="ml-2">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</span>
                     )}
                   </div>
-                  <div><span className="font-semibold text-gray-700">Requester:</span> {ticket.customer} ({ticket.email})</div>
                   <div>
-                  
-                   
-                </div>
+                    <span className="font-semibold text-gray-700">Requester:</span>
+                    {isEditMode ? (
+                      <select
+                        className="ml-2 border border-gray-300 rounded px-2 py-1"
+                        value={selectedRequester}
+                        onChange={e => setSelectedRequester(e.target.value)}
+                        disabled={isSaving || clientMembers.length === 0}
+                      >
+                        <option value="">Select Requester</option>
+                        {clientMembers.map(client => (
+                          <option key={client.email} value={client.email}>{client.name} ({client.email})</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="ml-2">{ticket.customer} ({ticket.email})</span>
+                    )}
+                  </div>
                 </div>
                 {isEditMode && (
                   <div className="flex justify-end mt-6 gap-2">
@@ -994,7 +1184,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
               <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
                 <div className="font-semibold text-gray-700 mb-2">Description</div>
                 <div className="whitespace-pre-wrap break-words text-gray-900 border border-gray-100 rounded-lg p-4 bg-gray-50" style={{ fontFamily: 'inherit', fontSize: '1rem', minHeight: '80px' }}>
-                  {ticket.description || <span className="text-gray-400">No description provided.</span>}
+                  {ticket.description ? renderQuillWithPreview(ticket.description) : <span className="text-gray-400">No description provided.</span>}
                 </div>
               </div>
               {ticket.attachments && ticket.attachments.length > 0 && (
@@ -1003,33 +1193,11 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                   <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 overflow-x-auto">
                     {ticket.attachments.map((file, index) => (
                       <div key={index} className="flex flex-col items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-3 shadow-sm">
-                        <span>
-                          {file.type.startsWith('image/') ? (
-                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                          ) : file.type === 'application/pdf' ? (
-                            <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                          ) : (
-                            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                          )}
-                        </span>
                         <span className="text-xs font-medium text-gray-700 text-center truncate w-full" title={file.name}>{file.name}</span>
                         <span className="text-xs text-gray-400">({(file.size / 1024).toFixed(1)} KB)</span>
                         {/* Preview/Download Button */}
                         {file.type.startsWith('image/') ? (
-                          <a
-                            href={file.data}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800 text-xs font-medium"
-                          >
-                            Preview
-                          </a>
+                          <img src={file.data} alt={file.name} className="w-24 h-24 object-contain rounded mb-1 border" />
                         ) : file.type === 'application/pdf' ? (
                           <a
                             href={file.data}
@@ -1059,13 +1227,28 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
             <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm space-y-6">
               <div className="font-bold text-lg text-gray-900 mb-4">Resolution</div>
               <div className="mb-2 text-gray-700">Explain the problem, steps taken, and how the issue was resolved:</div>
-              <textarea
-                className="w-full p-4 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[120px] bg-gray-50 shadow-sm"
-                placeholder="Describe the resolution..."
+              <ReactQuill
                 value={resolutionText}
-                onChange={e => setResolutionText(e.target.value)}
-                disabled={isSavingResolution}
+                onChange={setResolutionText}
+                modules={{
+                  toolbar: [
+                    [{ 'header': [1, 2, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    ['link', 'image'],
+                    ['clean']
+                  ]
+                }}
+                formats={['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet', 'link', 'image']}
+                className="bg-white rounded-xl border-2 border-gray-200 focus:border-blue-500 min-h-[120px]"
+                placeholder="Add a resolution... (You can paste screenshots directly here)"
               />
+              {/* Render preview thumbnails for images in the resolution */}
+              {resolutionText && (
+                <div className="mt-2 prose prose-sm max-w-none">
+                  {renderQuillWithPreview(resolutionText)}
+                </div>
+              )}
               <input
                 id="resolution-attachment-input"
                 type="file"
@@ -1078,24 +1261,6 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                 <Paperclip className="w-5 h-5 mr-1" />
                 <span>Choose file(s)</span>
               </label>
-              {/* Preview selected attachments for resolution */}
-              {resolutionAttachments.length > 0 && (
-                <div className="flex flex-wrap gap-4 mb-2">
-                  {resolutionAttachments.map((file, idx) => (
-                    <div key={idx} className="flex flex-col items-center border rounded p-2 bg-gray-50">
-                      {file.type.startsWith('image/') ? (
-                        <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
-                      ) : file.type === 'application/pdf' ? (
-                        <span className="text-red-600">PDF: {file.name}</span>
-                      ) : file.type.startsWith('video/') ? (
-                        <video src={file.data} controls className="w-16 h-16 mb-1" />
-                      ) : (
-                        <span className="text-gray-600">{file.name}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
               <div className="flex flex-col sm:flex-row gap-4 items-center">
                 <button
                   className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-50"
@@ -1107,7 +1272,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
               </div>
               {ticket.resolution && (
                 <div className="mt-4 text-gray-600 text-sm">
-                  <span className="font-semibold">Last Resolution:</span> {ticket.resolution}
+                  <span className="font-semibold">Last Resolution:</span> {renderQuillWithPreview(ticket.resolution)}
                 </div>
               )}
               {/* Show previous resolution attachments if any */}
@@ -1178,10 +1343,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         </div>
       </div>
       {/* Sidebar */}
-    {/* Sidebar */}
-    <div className="w-full lg:w-80 space-y-6">
-       
- 
+      <div className="w-full lg:w-80 space-y-6">
         {/* Fields Card */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Fields</h3>
@@ -1236,7 +1398,6 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
             </div>
           </div>
         </div>
- 
         {/* Attachments Card */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Attachments</h3>
@@ -1264,6 +1425,46 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {mainContent}
+      {previewImageSrc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+          <div className="bg-white rounded-xl shadow-lg p-6 max-w-lg w-full relative flex flex-col items-center">
+            <button
+              className="absolute top-2 right-2 text-gray-500 hover:text-red-500"
+              onClick={() => setPreviewImageSrc(null)}
+              aria-label="Close preview"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img
+              src={previewImageSrc}
+              alt="Preview"
+              className="max-h-[60vh] w-auto mx-auto rounded-lg border border-gray-200 bg-gray-100"
+              onError={e => {
+                e.target.onerror = null;
+                e.target.style.display = 'none';
+                const fallback = document.getElementById('img-fallback');
+                if (fallback) fallback.style.display = 'block';
+              }}
+            />
+            <a
+              href={previewImageSrc}
+              download="image.png"
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+            >
+              Download
+            </a>
+            <div id="img-fallback" style={{display:'none'}} className="text-red-500 text-center mt-8">
+              Unable to preview this image.<br/>Please make sure the file is a valid image.
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

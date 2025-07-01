@@ -492,8 +492,7 @@ function ClientDashboard() {
                   <MessageSquare className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-l font-bold text-gray-900">Support Hub</h1>
-                  <p className="text-sm text-gray-500">Client Portal</p>
+                  <h1 className="text-l font-bold text-gray-900">Client Portal</h1>
                 </div>
               </div>
             )}

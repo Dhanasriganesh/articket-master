@@ -570,7 +570,7 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
           type="button"
         >
-          Apply Filters
+          Search
         </button>
         <button
           onClick={() => {

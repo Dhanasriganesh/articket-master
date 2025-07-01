@@ -18,6 +18,7 @@ import { db, auth } from '../../firebase/config';
 import { sendEmail } from '../../utils/sendEmail';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
+import parse from 'html-react-parser';
  
 function Client({ onTicketCreated = null }) {
   const [formData, setFormData] = useState({
@@ -42,6 +43,7 @@ function Client({ onTicketCreated = null }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [attachmentError, setAttachmentError] = useState('');
+  const [previewImageSrc, setPreviewImageSrc] = useState(null);
  
   const priorities = [
     { value: 'Low', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200',  icon: '🟢' },
@@ -111,7 +113,7 @@ function Client({ onTicketCreated = null }) {
     setAttachments([]);
   };
 
-  // Fetch user data on component mount
+  // Fetch user data on component mount (restore logic)
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -120,6 +122,8 @@ function Client({ onTicketCreated = null }) {
           const userDocRef = doc(db, 'users', currentUser.uid);
           const userDocSnap = await getDoc(userDocRef);
           let name = '';
+          let project = 'General';
+          let email = currentUser.email || '';
           if (userDocSnap.exists()) {
             const data = userDocSnap.data();
             if (data.firstName || data.lastName) {
@@ -129,22 +133,20 @@ function Client({ onTicketCreated = null }) {
               name = (data.email || currentUser.email || '').split('@')[0];
             }
             name = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            project = data.project || 'General';
+            email = data.email || currentUser.email || '';
             setUserData(data);
-            setFormData(prev => ({
-              ...prev,
-              name: prev.name || name,
-              email: data.email || currentUser.email || '',
-              project: data.project || 'General'
-            }));
           } else {
             name = currentUser.displayName || (currentUser.email?.split('@')[0] || '');
             name = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-            setFormData(prev => ({
-              ...prev,
-              email: currentUser.email || '',
-              name: prev.name || name
-            }));
           }
+          // Set initial form data for dynamic fields
+          setFormData(prev => ({
+            ...prev,
+            name,
+            email,
+            project
+          }));
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
@@ -152,7 +154,6 @@ function Client({ onTicketCreated = null }) {
         setIsLoading(false);
       }
     };
-
     fetchUserData();
   }, []);
 
@@ -328,13 +329,16 @@ function Client({ onTicketCreated = null }) {
         email: formData.email,
         project: formData.project,
         projectId: projectId || '',
-        category: formData.category === 'Others' ? (formData.otherIssue || 'Others') : formData.category,
+        module: formData.module || '',
+        category: formData.category || '',
+        subCategory: formData.subCategory || '',
+        typeOfIssue: formData.typeOfIssue || '',
         priority: formData.priority,
-        description: formData.description,
+        description: formData.description, // This is HTML from Quill, may contain <img src="data:...">
         status: 'Open',
         created: serverTimestamp(),
         starred: false,
-        attachments: processedFiles, // Always include attachments
+        attachments: processedFiles, // Always include attachments as base64
         ticketNumber, // Use the generated ticket number
         lastUpdated: serverTimestamp(),
         userId: auth.currentUser?.uid || null
@@ -357,9 +361,12 @@ function Client({ onTicketCreated = null }) {
         name: ticketData.customer || '',
         email: ticketData.email,
         project: ticketData.project,
+        module: ticketData.module,
+        category: ticketData.category,
+        subCategory: ticketData.subCategory,
         typeOfIssue: ticketData.typeOfIssue,
         priority: ticketData.priority,
-        description: ticketData.description,
+        description: ticketData.description, // HTML, may contain <img src="data:...">
         attachments: ticketData.attachments?.map(a => a.name).join(', ') || '',
         ticket_link: `https://articket.vercel.app/tickets/${docRef.id}`,
         ticket_number: ticketNumber, // Add ticket number to email params
@@ -436,6 +443,42 @@ function Client({ onTicketCreated = null }) {
     }
   };
 
+  // Re-add fetchProjectMemberEmails helper
+  const fetchProjectMemberEmails = async (projectName) => {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('project', '==', projectName));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => doc.data().email).filter(Boolean);
+  };
+
+  // Helper to render description with image preview overlays
+  const renderDescriptionWithPreview = (html) => {
+    return parse(html, {
+      replace: domNode => {
+        if (domNode.name === 'img' && domNode.attribs && domNode.attribs.src) {
+          return (
+            <span className="ql-image-preview-wrapper" style={{ position: 'relative', display: 'inline-block' }}>
+              <img
+                {...domNode.attribs}
+                style={{ maxWidth: 40, maxHeight: 40, width: 40, height: 40, objectFit: 'cover', borderRadius: '0.5rem', cursor: 'pointer' }}
+                onClick={() => setPreviewImageSrc(domNode.attribs.src)}
+                alt={domNode.attribs.alt || 'image'}
+              />
+              <button
+                type="button"
+                className="ql-image-preview-btn"
+                onClick={e => { e.preventDefault(); setPreviewImageSrc(domNode.attribs.src); }}
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', color: '#fff', border: 'none', borderRadius: '0.5rem', fontSize: 10, zIndex: 2 }}
+              >
+                Preview
+              </button>
+            </span>
+          );
+        }
+      }
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
@@ -478,20 +521,6 @@ function Client({ onTicketCreated = null }) {
       <div className="w-full mx-auto px-4 py-10">
         <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 p-0 overflow-hidden">
           <form onSubmit={handleSubmit} className="p-8 md:p-12 space-y-10">
-            {/* Subject */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Subject *</label>
-              <input
-                type="text"
-                name="subject"
-                value={formData.subject}
-                onChange={handleInputChange}
-                className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${errors.subject ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-gray-300'}`}
-                placeholder="Brief summary of your issue"
-              />
-              {errors.subject && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.subject}</p>}
-            </div>
-
             {/* Module and Category */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
@@ -524,17 +553,64 @@ function Client({ onTicketCreated = null }) {
               </div>
             </div>
 
-            {/* Sub-Category (optional) */}
+            {/* Sub-Category and Type of Issue */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Sub-Category (optional)</label>
+                <input
+                  type="text"
+                  name="subCategory"
+                  value={formData.subCategory || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, subCategory: e.target.value }))}
+                  className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
+                  placeholder="Enter sub-category (if any)"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Type of Issue</label>
+                <select
+                  className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
+                  value={formData.typeOfIssue || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, typeOfIssue: e.target.value }))}
+                  required
+                >
+                  <option value="">Select Type of Issue</option>
+                  {categories.map(category => (
+                    <option key={category.value} value={category.value}>{category.value}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Priority */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Sub-Category (optional)</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Priority</label>
+              <select
+                className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
+                value={formData.priority}
+                onChange={e => setFormData(prev => ({ ...prev, priority: e.target.value }))}
+                required
+              >
+                {priorities.map(priority => (
+                  <option key={priority.value} value={priority.value}>
+                    {priority.icon} {priority.value} {priority.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Subject */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Subject *</label>
               <input
                 type="text"
-                name="subCategory"
-                value={formData.subCategory || ''}
-                onChange={e => setFormData(prev => ({ ...prev, subCategory: e.target.value }))}
-                className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
-                placeholder="Enter sub-category (if any)"
+                name="subject"
+                value={formData.subject}
+                onChange={handleInputChange}
+                className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${errors.subject ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-gray-300'}`}
+                placeholder="Brief summary of your issue"
               />
+              {errors.subject && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.subject}</p>}
             </div>
 
             {/* Description */}
@@ -556,24 +632,14 @@ function Client({ onTicketCreated = null }) {
                 className="bg-white rounded-xl border-2 border-gray-200 focus:border-blue-500 min-h-[120px]"
                 placeholder="Please provide detailed information about your issue... (You can paste screenshots directly here)"
               />
+              {/* Render preview thumbnails with overlay for images in the description */}
+              {formData.description && (
+                <div className="mt-2 prose prose-sm max-w-none">
+                  {renderDescriptionWithPreview(formData.description)}
+                </div>
+              )}
               {errors.description && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.description}</p>}
               <p className="text-gray-400 text-xs mt-2">You can paste images/screenshots directly into the box above.</p>
-            </div>
-
-            {/* Priority */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Priority</label>
-              <select
-                className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
-                value={formData.priority}
-                onChange={e => setFormData(prev => ({ ...prev, priority: e.target.value }))}
-              >
-                {priorities.map(priority => (
-                  <option key={priority.value} value={priority.value}>
-                    {priority.icon} {priority.value} {priority.description}
-                  </option>
-                ))}
-              </select>
             </div>
 
             {/* Attachments */}
@@ -607,21 +673,43 @@ function Client({ onTicketCreated = null }) {
                       className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm"
                     >
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
                           {getFileIcon(file)}
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-700">{file.name}</p>
+                          <p className="text-xs font-medium text-gray-700">{file.name}</p>
                           <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeAttachment(index)}
-                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center space-x-2">
+                        {(file.type.startsWith('image/')) && (
+                          <button
+                            type="button"
+                            className="text-xs px-2 py-1 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 text-blue-700 font-medium"
+                            onClick={() => setPreviewFile(file)}
+                          >
+                            Preview
+                          </button>
+                        )}
+                        {(file.type === 'application/pdf') && (
+                          <a
+                            href={file.data}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs px-2 py-1 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 text-blue-700 font-medium"
+                          >
+                            Preview
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(index)}
+                          className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                          aria-label="Remove attachment"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -668,19 +756,19 @@ function Client({ onTicketCreated = null }) {
           </form>
         </div>
         {/* Modal for image preview */}
-        {previewFile && previewFile.type.startsWith('image/') && (
+        {previewImageSrc && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
             <div className="bg-white rounded-xl shadow-lg p-6 max-w-lg w-full relative flex flex-col items-center">
               <button
                 className="absolute top-2 right-2 text-gray-500 hover:text-red-500"
-                onClick={() => setPreviewFile(null)}
+                onClick={() => setPreviewImageSrc(null)}
                 aria-label="Close preview"
               >
                 <X className="w-6 h-6" />
               </button>
               <img
-                src={previewFile.data}
-                alt={previewFile.name}
+                src={previewImageSrc}
+                alt="Preview"
                 className="max-h-[60vh] w-auto mx-auto rounded-lg border border-gray-200 bg-gray-100"
                 onError={e => {
                   e.target.onerror = null;
@@ -692,7 +780,6 @@ function Client({ onTicketCreated = null }) {
               <div id="img-fallback" style={{display:'none'}} className="text-red-500 text-center mt-8">
                 Unable to preview this image.<br/>Please make sure the file is a valid image.
               </div>
-              <div className="mt-4 text-center text-gray-700 text-sm break-all">{previewFile.name}</div>
             </div>
           </div>
         )}
