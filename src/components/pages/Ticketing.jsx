@@ -44,6 +44,7 @@ function Client({ onTicketCreated = null }) {
   const location = useLocation();
   const [attachmentError, setAttachmentError] = useState('');
   const [previewImageSrc, setPreviewImageSrc] = useState(null);
+  const [redirectPath, setRedirectPath] = useState('/client-tickets');
  
   const priorities = [
     { value: 'Low', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200',  icon: '🟢' },
@@ -57,7 +58,7 @@ function Client({ onTicketCreated = null }) {
     { value: 'Service request' },
     { value: 'Change request' },
   ];
-
+ 
   // Module and Category options
   const moduleOptions = [
     { value: '', label: 'Select Module' },
@@ -112,7 +113,7 @@ function Client({ onTicketCreated = null }) {
     setTicketId(null);
     setAttachments([]);
   };
-
+ 
   // Fetch user data on component mount (restore logic)
   useEffect(() => {
     const fetchUserData = async () => {
@@ -156,7 +157,7 @@ function Client({ onTicketCreated = null }) {
     };
     fetchUserData();
   }, []);
-
+ 
   const validateForm = async () => {
     const newErrors = {};
    
@@ -308,9 +309,9 @@ function Client({ onTicketCreated = null }) {
         })
       );
      
-      // Get the next ticket number based on category
-      const ticketNumber = await getNextTicketNumber(formData.category);
-
+      // Get the next ticket number based on typeOfIssue (not category)
+      const ticketNumber = await getNextTicketNumber(formData.typeOfIssue);
+ 
       // Fetch the projectId (Firestore document ID) by project name
       let projectId = null;
       if (formData.project) {
@@ -321,7 +322,7 @@ function Client({ onTicketCreated = null }) {
           projectId = projectSnapshot.docs[0].id;
         }
       }
-
+ 
       // Create the ticket document in Firestore
       const ticketData = {
         subject: formData.subject,
@@ -352,7 +353,7 @@ function Client({ onTicketCreated = null }) {
       await updateDoc(docRef, {
         ticketId: docRef.id
       });
-
+ 
       // Fetch project members' emails
       const memberEmails = await fetchProjectMemberEmails(ticketData.project);
       // Prepare email parameters for EmailJS (ticket creation template)
@@ -367,8 +368,7 @@ function Client({ onTicketCreated = null }) {
         typeOfIssue: ticketData.typeOfIssue,
         priority: ticketData.priority,
         description: ticketData.description, // HTML, may contain <img src="data:...">
-        attachments: ticketData.attachments?.map(a => a.name).join(', ') || '',
-        ticket_link: `https://articket.vercel.app/tickets/${docRef.id}`,
+        ticket_link: `https://articket-master.vercel.app`,
         ticket_number: ticketNumber, // Add ticket number to email params
         subject: ` # ${ticketNumber} - ${ticketData.subject}` // Email subject line with user subject
       };
@@ -378,6 +378,21 @@ function Client({ onTicketCreated = null }) {
       setIsSubmitting(false);
       setSubmitSuccess(true);
       setAttachments([]);
+      // Fetch user role and set redirect path
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const role = userDocSnap.data().role;
+          let path = '/clientdashboard?tab=tickets';
+          if (role === 'client') path = '/clientdashboard?tab=tickets';
+          else if (role === 'client_head') path = '/client-head-dashboard?tab=tickets';
+          else if (role === 'project_manager') path = '/project-manager-dashboard?tab=tickets';
+          else if (role === 'employee') path = '/employeedashboard?tab=tickets';
+          setRedirectPath(path);
+        }
+      }
     } catch (error) {
       console.error('Error adding ticket:', error);
       setIsSubmitting(false);
@@ -411,7 +426,7 @@ function Client({ onTicketCreated = null }) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
   };
-
+ 
   // Handler for pasting images into the description textarea
   const handleDescriptionPaste = (e) => {
     if (e.clipboardData && e.clipboardData.items) {
@@ -450,7 +465,7 @@ function Client({ onTicketCreated = null }) {
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => doc.data().email).filter(Boolean);
   };
-
+ 
   // Helper to render description with image preview overlays
   const renderDescriptionWithPreview = (html) => {
     return parse(html, {
@@ -479,6 +494,16 @@ function Client({ onTicketCreated = null }) {
     });
   };
 
+  // Move this useEffect outside of the conditional
+  useEffect(() => {
+    if (submitSuccess) {
+      const timer = setTimeout(() => {
+        navigate(redirectPath);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [submitSuccess, redirectPath]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
@@ -505,12 +530,7 @@ function Client({ onTicketCreated = null }) {
             <p className="text-sm text-gray-600 mb-2">Ticket ID</p>
             <p className="font-mono text-xl font-bold text-blue-600">{ticketId}</p>
           </div>
-          <button
-            className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-semibold hover:from-blue-700 hover:to-blue-800 transition-all duration-200 mt-4"
-            onClick={() => navigate('/clientdashboard?tab=tickets')}
-          >
-            Go to My Tickets
-          </button>
+          <p className="text-gray-500 text-sm mt-4">Redirecting to your tickets page in 5 seconds...</p>
         </div>
       </div>
     );
@@ -523,20 +543,28 @@ function Client({ onTicketCreated = null }) {
           <form onSubmit={handleSubmit} className="p-8 md:p-12 space-y-10">
             {/* Module and Category */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
+          <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Module *</label>
                 <select
                   className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
                   value={formData.module || ''}
-                  onChange={e => setFormData(prev => ({ ...prev, module: e.target.value, category: '' }))}
+                  onChange={e => {
+                    const selectedModule = e.target.value;
+                    const firstCategory = categoryOptionsMap[selectedModule]?.[0]?.value || '';
+                    setFormData(prev => ({
+                      ...prev,
+                      module: selectedModule,
+                      category: firstCategory
+                    }));
+                  }}
                   required
                 >
                   {moduleOptions.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
-              </div>
-              <div>
+          </div>
+          <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Category *</label>
                 <select
                   className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
@@ -557,16 +585,16 @@ function Client({ onTicketCreated = null }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Sub-Category (optional)</label>
-                <input
+            <input
                   type="text"
                   name="subCategory"
                   value={formData.subCategory || ''}
                   onChange={e => setFormData(prev => ({ ...prev, subCategory: e.target.value }))}
                   className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
                   placeholder="Enter sub-category (if any)"
-                />
-              </div>
-              <div>
+            />
+          </div>
+          <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Type of Issue</label>
                 <select
                   className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
@@ -579,8 +607,8 @@ function Client({ onTicketCreated = null }) {
                     <option key={category.value} value={category.value}>{category.value}</option>
                   ))}
                 </select>
-              </div>
-            </div>
+          </div>
+        </div>
 
             {/* Priority */}
             <div>
@@ -657,13 +685,6 @@ function Client({ onTicketCreated = null }) {
                   className="hidden"
                   accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.mp4,.avi,.mov"
                 />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                >
-                  Add Files
-                </button>
               </div>
               {attachments.length > 0 && (
                 <div className="space-y-3 mt-4">
@@ -714,76 +735,83 @@ function Client({ onTicketCreated = null }) {
                   ))}
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="mt-4 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+              >
+                Add Files
+              </button>
               {attachmentError && (
                 <div className="text-red-600 text-sm mt-2">{attachmentError}</div>
               )}
             </div>
 
-            {/* Error Message */}
-            {errors.submit && (
+        {/* Error Message */}
+        {errors.submit && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 mt-2">
                 <p className="text-red-600 text-sm flex items-center">
-                  <AlertCircle className="w-4 h-4 mr-2" />
-                  {errors.submit}
-                </p>
-              </div>
-            )}
+              <AlertCircle className="w-4 h-4 mr-2" />
+              {errors.submit}
+            </p>
+          </div>
+        )}
 
-            {/* Submit Button */}
+        {/* Submit Button */}
             <div className="flex justify-end mt-4">
-              <button
-                type="submit"
-                disabled={isSubmitting}
+          <button
+            type="submit"
+            disabled={isSubmitting}
                 className={`px-8 py-4 rounded-xl font-semibold text-lg flex items-center space-x-3 transition-all duration-200 transform hover:scale-105 shadow-lg ${
-                  isSubmitting
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'
-                } text-white`}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Creating Ticket...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-5 h-5" />
-                    <span>Create Ticket</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
+              isSubmitting
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'
+            } text-white`}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Creating Ticket...</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-5 h-5" />
+                <span>Create Ticket</span>
+              </>
+            )}
+          </button>
         </div>
-        {/* Modal for image preview */}
+      </form>
+        </div>
+      {/* Modal for image preview */}
         {previewImageSrc && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
-            <div className="bg-white rounded-xl shadow-lg p-6 max-w-lg w-full relative flex flex-col items-center">
-              <button
-                className="absolute top-2 right-2 text-gray-500 hover:text-red-500"
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+          <div className="bg-white rounded-xl shadow-lg p-6 max-w-lg w-full relative flex flex-col items-center">
+            <button
+              className="absolute top-2 right-2 text-gray-500 hover:text-red-500"
                 onClick={() => setPreviewImageSrc(null)}
-                aria-label="Close preview"
-              >
-                <X className="w-6 h-6" />
-              </button>
-              <img
+              aria-label="Close preview"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img
                 src={previewImageSrc}
                 alt="Preview"
-                className="max-h-[60vh] w-auto mx-auto rounded-lg border border-gray-200 bg-gray-100"
-                onError={e => {
-                  e.target.onerror = null;
-                  e.target.style.display = 'none';
-                  const fallback = document.getElementById('img-fallback');
-                  if (fallback) fallback.style.display = 'block';
-                }}
-              />
-              <div id="img-fallback" style={{display:'none'}} className="text-red-500 text-center mt-8">
-                Unable to preview this image.<br/>Please make sure the file is a valid image.
-              </div>
+              className="max-h-[60vh] w-auto mx-auto rounded-lg border border-gray-200 bg-gray-100"
+              onError={e => {
+                e.target.onerror = null;
+                e.target.style.display = 'none';
+                const fallback = document.getElementById('img-fallback');
+                if (fallback) fallback.style.display = 'block';
+              }}
+            />
+            <div id="img-fallback" style={{display:'none'}} className="text-red-500 text-center mt-8">
+              Unable to preview this image.<br/>Please make sure the file is a valid image.
+            </div>
             </div>
           </div>
         )}
-      </div>
+        </div>
     </div>
   );
 }

@@ -227,15 +227,25 @@ const EmployeeTickets = () => {
       : clients.find(client => client.email === ticket.email)
         ? 'client'
         : null;
- 
+
     if (ticketUser === 'employee') {
-      matchesRaisedBy = filterRaisedByEmployee === 'all' ||
-        (filterRaisedByEmployee === 'me' && ticket.email === currentUserEmail) ||
-        employees.find(emp => emp.id === filterRaisedByEmployee)?.email === ticket.email;
+      if (filterRaisedByEmployee === 'all') {
+        matchesRaisedBy = true;
+      } else if (filterRaisedByEmployee === 'me') {
+        matchesRaisedBy = ticket.email === currentUserEmail;
+      } else {
+        const selectedEmployee = employees.find(emp => emp.id === filterRaisedByEmployee);
+        matchesRaisedBy = selectedEmployee ? ticket.email === selectedEmployee.email : false;
+      }
     } else if (ticketUser === 'client') {
-      matchesRaisedBy = filterRaisedByClient === 'all' ||
-        (filterRaisedByClient === 'me' && ticket.email === currentUserEmail) ||
-        clients.find(client => client.id === filterRaisedByClient)?.email === ticket.email;
+      if (filterRaisedByClient === 'all') {
+        matchesRaisedBy = true;
+      } else if (filterRaisedByClient === 'me') {
+        matchesRaisedBy = ticket.email === currentUserEmail;
+      } else {
+        const selectedClient = clients.find(client => client.id === filterRaisedByClient);
+        matchesRaisedBy = selectedClient ? ticket.email === selectedClient.email : false;
+      }
     }
    
     return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy;
