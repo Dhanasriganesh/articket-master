@@ -625,7 +625,11 @@ const ProjectManagerDashboard = () => {
                   <Menu className="w-6 h-6 text-gray-600" />
                 </button>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Welcome, {managerName.toUpperCase()}!</h1>
+                  {projects.length === 1 ? (
+                    <h1 className="text-2xl font-bold text-gray-900">Project: {projects[0].name}</h1>
+                  ) : (
+                    <h1 className="text-2xl font-bold text-gray-900">Welcome, {managerName}</h1>
+                  )}
                   <p className="text-gray-600">Manage your projects </p>
                 </div>
               </div>

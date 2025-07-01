@@ -405,7 +405,7 @@ function ClientDashboard() {
  
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, active: activeTab === 'dashboard' },
-    { id: 'tickets', label: 'My Tickets', icon: FileText, active: activeTab === 'tickets' },
+    { id: 'tickets', label: 'Tickets', icon: FileText, active: activeTab === 'tickets' },
     { id: 'create', label: 'Create Ticket', icon: Plus, active: activeTab === 'create' },
     
   ];
@@ -551,7 +551,7 @@ function ClientDashboard() {
                 <Menu className="w-6 h-6 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Welcome back, {clientName.toUpperCase()}!</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Project: {tickets[0]?.project || 'General'}</h1>
                 <p className="text-gray-600">Manage your support tickets and communications</p>
               </div>
             </div>
@@ -610,7 +610,7 @@ function ClientDashboard() {
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-600 mb-1">My Tickets</p>
+                      <p className="text-sm font-medium text-gray-600 mb-1">Tickets</p>
                       <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.email === auth.currentUser?.email).length}</p>
                       <p className="text-xs text-gray-500 mt-1">Your tickets</p>
                     </div>

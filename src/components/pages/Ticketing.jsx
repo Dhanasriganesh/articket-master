@@ -16,6 +16,8 @@ import {
 import { collection, addDoc, serverTimestamp, query, where, getDocs, updateDoc, doc, getDoc, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../../firebase/config';
 import { sendEmail } from '../../utils/sendEmail';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
  
 function Client({ onTicketCreated = null }) {
   const [formData, setFormData] = useState({
@@ -35,8 +37,6 @@ function Client({ onTicketCreated = null }) {
   const [ticketId, setTicketId] = useState(null);
   const [userData, setUserData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentStep, setCurrentStep] = useState(1);
-  const [countdown, setCountdown] = useState(5);
   const fileInputRef = useRef(null);
   const [previewFile, setPreviewFile] = useState(null);
   const navigate = useNavigate();
@@ -44,16 +44,54 @@ function Client({ onTicketCreated = null }) {
   const [attachmentError, setAttachmentError] = useState('');
  
   const priorities = [
-    { value: 'Low', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200', description: 'Non-urgent, can wait', icon: '🟢' },
-    { value: 'Medium', color: 'text-yellow-600', bgColor: 'bg-yellow-50', borderColor: 'border-yellow-200', description: 'Normal priority', icon: '🟡' },
-    { value: 'High', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-red-200', description: 'Urgent, needs immediate attention', icon: '🔴' }
+    { value: 'Low', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200',  icon: '🟢' },
+    { value: 'Medium', color: 'text-yellow-600', bgColor: 'bg-yellow-50', borderColor: 'border-yellow-200',  icon: '🟡' },
+    { value: 'High', color: 'text-orange-600', bgColor: 'bg-red-50', borderColor: 'border-red-200', icon: '🔴' },
+    { value: 'Critical', color: 'text-red-900', bgColor: 'bg-red-90', borderColor: 'border-red-200', icon: '🔴' }
   ];
  
   const categories = [
-    { value: 'Incident-request'},
-    { value: 'Service-request' },
-    { value: 'Change-request' },
+    { value: 'Incident'},
+    { value: 'Service request' },
+    { value: 'Change request' },
   ];
+
+  // Module and Category options
+  const moduleOptions = [
+    { value: '', label: 'Select Module' },
+    { value: 'EWM', label: 'EWM' },
+    { value: 'BTP', label: 'BTP' },
+    { value: 'TM', label: 'TM' },
+    { value: 'Yl', label: 'Yl' },
+    { value: 'MFS', label: 'MFS' },
+  ];
+  const categoryOptionsMap = {
+    EWM: [
+      { value: 'Inbound', label: 'Inbound' },
+      { value: 'Internal', label: 'Internal' },
+      { value: 'Outbound', label: 'Outbound' },
+    ],
+    BTP: [
+      { value: 'd', label: 'd' },
+      { value: 'e', label: 'e' },
+      { value: 'f', label: 'f' },
+    ],
+    TM: [
+      { value: 'g', label: 'g' },
+      { value: 'h', label: 'h' },
+      { value: 'i', label: 'i' },
+    ],
+    Yl: [
+      { value: 'Gate Management', label: 'Gate Management' },
+      { value: 'Yard Dispatching', label: 'Yard Dispatching' },
+      
+    ],
+    MFS: [
+      { value: 'm', label: 'm' },
+      { value: 'n', label: 'n' },
+      { value: 'o', label: 'o' },
+    ],
+  };
 
   // Function to reset form
   const resetForm = () => {
@@ -70,7 +108,6 @@ function Client({ onTicketCreated = null }) {
     }));
     setSubmitSuccess(false);
     setTicketId(null);
-    setCurrentStep(1);
     setAttachments([]);
   };
 
@@ -119,56 +156,6 @@ function Client({ onTicketCreated = null }) {
     fetchUserData();
   }, []);
 
-  // Countdown effect for redirect
-  useEffect(() => {
-    if (submitSuccess && countdown > 0) {
-      const timer = setTimeout(() => {
-        setCountdown(countdown - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    } else if (submitSuccess && countdown === 0) {
-      // Reset form before redirecting
-      resetForm();
-      
-      // If we have a callback function, use it (for dashboard context)
-      if (onTicketCreated) {
-        onTicketCreated();
-        return;
-      }
-      
-      // Otherwise, use navigation (for standalone context)
-      const redirectToMyTickets = () => {
-        // Check if we're in a dashboard context
-        if (location.pathname.includes('/clientdashboard') || location.search.includes('tab=create')) {
-          // We're in a dashboard, redirect to tickets tab
-          navigate('/clientdashboard?tab=tickets');
-        } else if (location.pathname.includes('/employeedashboard')) {
-          navigate('/employeedashboard?tab=tickets');
-        } else if (location.pathname.includes('/project-manager-dashboard')) {
-          navigate('/project-manager-dashboard?tab=tickets');
-        } else if (location.pathname.includes('/client-head-dashboard')) {
-          navigate('/client-head-dashboard?tab=tickets');
-        } else {
-          // Default fallback - try to determine from user role
-          if (userData?.role === 'client') {
-            navigate('/clientdashboard?tab=tickets');
-          } else if (userData?.role === 'employee') {
-            navigate('/employeedashboard?tab=tickets');
-          } else if (userData?.role === 'project_manager') {
-            navigate('/project-manager-dashboard?tab=tickets');
-          } else if (userData?.role === 'client_head') {
-            navigate('/client-head-dashboard?tab=tickets');
-          } else {
-            // Fallback to client dashboard
-            navigate('/clientdashboard?tab=tickets');
-          }
-        }
-      };
-      
-      redirectToMyTickets();
-    }
-  }, [submitSuccess, countdown, navigate, location, userData, onTicketCreated, resetForm]);
- 
   const validateForm = async () => {
     const newErrors = {};
    
@@ -260,15 +247,15 @@ function Client({ onTicketCreated = null }) {
   // Helper to get the next ticket number for a category
   const getNextTicketNumber = async (category) => {
     let prefix, counterDocId, startValue;
-    if (category === 'Incident-request') {
+    if (category === 'Incident') {
       prefix = 'IN';
       counterDocId = 'incident_counter';
       startValue = 100000;
-    } else if (category === 'Service-request') {
+    } else if (category === 'Service request') {
       prefix = 'SR';
       counterDocId = 'service_counter';
       startValue = 200000;
-    } else if (category === 'Change-request') {
+    } else if (category === 'Change request') {
       prefix = 'CR';
       counterDocId = 'change_counter';
       startValue = 300000;
@@ -364,29 +351,26 @@ function Client({ onTicketCreated = null }) {
 
       // Fetch project members' emails
       const memberEmails = await fetchProjectMemberEmails(ticketData.project);
-      // Prepare email parameters for EmailJS
+      // Prepare email parameters for EmailJS (ticket creation template)
       const emailParams = {
-        to_email: memberEmails.join(','),
-        from_name: 'Articket Support',
-        reply_to: ticketData.email,
-        subject: ticketData.subject,
-        name: ticketData.customer,
+        to_email: memberEmails.join(','), // Send to all team/project members
+        name: ticketData.customer || '',
         email: ticketData.email,
         project: ticketData.project,
-        category: ticketData.category,
+        typeOfIssue: ticketData.typeOfIssue,
         priority: ticketData.priority,
         description: ticketData.description,
-        attachments: ticketData.attachments?.map(a => a.name).join(', '),
+        attachments: ticketData.attachments?.map(a => a.name).join(', ') || '',
         ticket_link: `https://articket.vercel.app/tickets/${docRef.id}`,
-        ticket_number: ticketNumber // Add ticket number to email params
+        ticket_number: ticketNumber, // Add ticket number to email params
+        subject: ` # ${ticketNumber} - ${ticketData.subject}` // Email subject line with user subject
       };
       console.log('Email params:', emailParams);
-      await sendEmail(emailParams);
+      await sendEmail(emailParams, 'template_rorcfae');
      
       setIsSubmitting(false);
       setSubmitSuccess(true);
       setAttachments([]);
-      setCountdown(5); // Reset countdown for new ticket
     } catch (error) {
       console.error('Error adding ticket:', error);
       setIsSubmitting(false);
@@ -421,34 +405,35 @@ function Client({ onTicketCreated = null }) {
     }
   };
 
-  const nextStep = () => {
-    if (currentStep === 2) {
-      if (!formData.subject.trim()) {
-        setErrors(prev => ({ ...prev, subject: 'Subject is required' }));
-        return;
+  // Handler for pasting images into the description textarea
+  const handleDescriptionPaste = (e) => {
+    if (e.clipboardData && e.clipboardData.items) {
+      for (let i = 0; i < e.clipboardData.items.length; i++) {
+        const item = e.clipboardData.items[i];
+        if (item.type.indexOf('image') !== -1) {
+          const file = item.getAsFile();
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              setAttachments(prev => ([
+                ...prev,
+                {
+                  name: file.name || 'pasted-image.png',
+                  type: file.type,
+                  size: file.size,
+                  data: event.target.result
+                }
+              ]));
+            };
+            reader.readAsDataURL(file);
+            // Optionally, show a message to the user
+            setAttachmentError('Screenshot image attached from clipboard!');
+            e.preventDefault(); // Prevent default paste
+            break;
+          }
+        }
       }
-      if (!formData.description.trim() || formData.description.trim().length < 10) {
-        setErrors(prev => ({ ...prev, description: 'Description must be at least 10 characters' }));
-        return;
-      }
     }
-    if (currentStep < 4) {
-      setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const prevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
-  // Helper to fetch all emails of users in the selected project
-  const fetchProjectMemberEmails = async (projectName) => {
-    const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('project', '==', projectName));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => doc.data().email).filter(Boolean);
   };
 
   if (isLoading) {
@@ -477,10 +462,12 @@ function Client({ onTicketCreated = null }) {
             <p className="text-sm text-gray-600 mb-2">Ticket ID</p>
             <p className="font-mono text-xl font-bold text-blue-600">{ticketId}</p>
           </div>
-          <div className="text-gray-600 text-sm mb-6">
-            Redirecting to My Tickets in <span className="font-bold text-blue-600">{countdown}</span> seconds...
-          </div>
-          
+          <button
+            className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-semibold hover:from-blue-700 hover:to-blue-800 transition-all duration-200 mt-4"
+            onClick={() => navigate('/clientdashboard?tab=tickets')}
+          >
+            Go to My Tickets
+          </button>
         </div>
       </div>
     );
@@ -488,410 +475,228 @@ function Client({ onTicketCreated = null }) {
  
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 w-full">
-      <div className="w-full max-w-4xl mx-auto px-4 py-10">
-        {/* Card Container */}
+      <div className="w-full mx-auto px-4 py-10">
         <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 p-0 overflow-hidden">
-          {/* Stepper */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-500 px-8 py-6 flex flex-col md:flex-row md:items-center gap-4">
-            <div className="flex-1 flex items-center gap-0 md:gap-2">
-              {[1, 2, 3, 4].map((step) => (
-                <React.Fragment key={step}>
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-lg transition-all duration-200 border-2 ${
-                    currentStep >= step
-                      ? 'bg-white text-blue-700 border-blue-600 shadow-lg'
-                      : 'bg-blue-200 text-blue-400 border-blue-300'
-                  }`}>
-                    {step}
-                  </div>
-                  {step < 4 && (
-                    <div className={`h-1 w-10 md:w-16 transition-all duration-200 ${
-                      currentStep > step ? 'bg-blue-600' : 'bg-blue-200'
-                    }`} />
-                  )}
-                </React.Fragment>
-              ))}
+          <form onSubmit={handleSubmit} className="p-8 md:p-12 space-y-10">
+            {/* Subject */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Subject *</label>
+              <input
+                type="text"
+                name="subject"
+                value={formData.subject}
+                onChange={handleInputChange}
+                className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${errors.subject ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-gray-300'}`}
+                placeholder="Brief summary of your issue"
+              />
+              {errors.subject && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.subject}</p>}
             </div>
-            <div className="text-white text-sm font-medium text-center md:text-right flex-1">
-              Step {currentStep} of 4: {
-                currentStep === 1 ? 'Basic Information' :
-                currentStep === 2 ? 'Issue Details' :
-                currentStep === 3 ? 'Priority & Category' :
-                'Review & Submit'
-              }
-            </div>
-          </div>
 
-          {/* Form Section */}
-          <form onSubmit={handleSubmit} className="p-8 md:p-12 space-y-12">
-            {/* Step 1: Basic Information */}
-            {currentStep === 1 && (
-              <div className="space-y-8">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 mb-2">Your Details</h2>
-                  <p className="text-gray-500 mb-6">We use this information to contact you about your ticket.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Full Name</label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={formData.name}
-                        readOnly
-                        className="w-full px-4 py-3 border-2 rounded-xl bg-gray-100 text-gray-700 cursor-not-allowed"
-                      />
-                  </div>
-                  <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                        readOnly
-                        className="w-full px-4 py-3 border-2 rounded-xl bg-gray-100 text-gray-700 cursor-not-allowed"
-                    />
-                  </div>
-                  <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Project</label>
-                      <input
-                        type="text"
-                      name="project"
-                      value={formData.project}
-                        readOnly
-                        className="w-full px-4 py-3 border-2 rounded-xl bg-gray-100 text-gray-700 cursor-not-allowed"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={nextStep}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-3 rounded-xl font-semibold hover:from-blue-700 hover:to-blue-800 transition-all duration-200 flex items-center space-x-2 shadow-md"
-                  >
-                    <span>Continue</span>
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
+            {/* Module and Category */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Module *</label>
+                <select
+                  className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
+                  value={formData.module || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, module: e.target.value, category: '' }))}
+                  required
+                >
+                  {moduleOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
               </div>
-            )}
- 
-            {/* Step 2: Issue Details */}
-            {currentStep === 2 && (
-              <div className="space-y-8">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 mb-2">Describe Your Issue</h2>
-                  <p className="text-gray-500 mb-6">Be as detailed as possible to help us resolve it faster.</p>
-                  <div className="space-y-6">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Subject *</label>
-                      <input
-                        type="text"
-                        name="subject"
-                        value={formData.subject}
-                        onChange={handleInputChange}
-                        className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                          errors.subject ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                        placeholder="Brief summary of your issue"
-                      />
-                      {errors.subject && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.subject}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Description *</label>
-                      <textarea
-                        name="description"
-                        value={formData.description}
-                        onChange={handleInputChange}
-                        rows={6}
-                        className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y transition-all duration-200 ${
-                          errors.description ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-                        } max-h-48 min-h-[96px]`}
-                        style={{ overflowY: 'auto', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}
-                        placeholder="Please provide detailed information about your issue..."
-                      />
-                      {errors.description && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.description}</p>}
-                      <p className="text-gray-400 text-xs mt-2">Character count: {formData.description.length} (minimum 10 characters)</p>
-                    </div>
-                    {/* Add Files Section */}
-                    <div className="mt-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2 text-gray-600">
-                          <Paperclip className="w-4 h-4" />
-                          <span className="text-sm font-medium">Attachments (Optional)</span>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Category *</label>
+                <select
+                  className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
+                  value={formData.category || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}
+                  required
+                  disabled={!formData.module}
+                >
+                  {!formData.module && <option value="">Please select the module</option>}
+                  {formData.module && categoryOptionsMap[formData.module]?.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Sub-Category (optional) */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Sub-Category (optional)</label>
+              <input
+                type="text"
+                name="subCategory"
+                value={formData.subCategory || ''}
+                onChange={e => setFormData(prev => ({ ...prev, subCategory: e.target.value }))}
+                className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
+                placeholder="Enter sub-category (if any)"
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Description *</label>
+              <ReactQuill
+                value={formData.description}
+                onChange={value => setFormData(prev => ({ ...prev, description: value }))}
+                modules={{
+                  toolbar: [
+                    [{ 'header': [1, 2, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    ['link', 'image'],
+                    ['clean']
+                  ]
+                }}
+                formats={['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet', 'link', 'image']}
+                className="bg-white rounded-xl border-2 border-gray-200 focus:border-blue-500 min-h-[120px]"
+                placeholder="Please provide detailed information about your issue... (You can paste screenshots directly here)"
+              />
+              {errors.description && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.description}</p>}
+              <p className="text-gray-400 text-xs mt-2">You can paste images/screenshots directly into the box above.</p>
+            </div>
+
+            {/* Priority */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Priority</label>
+              <select
+                className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
+                value={formData.priority}
+                onChange={e => setFormData(prev => ({ ...prev, priority: e.target.value }))}
+              >
+                {priorities.map(priority => (
+                  <option key={priority.value} value={priority.value}>
+                    {priority.icon} {priority.value} {priority.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Attachments */}
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-gray-600">
+                  <Paperclip className="w-4 h-4" />
+                  <span className="text-sm font-medium">Attachments (Optional)</span>
+                </div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  multiple
+                  className="hidden"
+                  accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.mp4,.avi,.mov"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                >
+                  Add Files
+                </button>
+              </div>
+              {attachments.length > 0 && (
+                <div className="space-y-3 mt-4">
+                  {attachments.map((file, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                          {getFileIcon(file)}
                         </div>
-                        <input
-                          type="file"
-                          ref={fileInputRef}
-                          onChange={handleFileChange}
-                          multiple
-                          className="hidden"
-                          accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.mp4,.avi,.mov"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                        >
-                          Add Files
-                        </button>
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">{file.name}</p>
+                          <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+                        </div>
                       </div>
-                      {attachments.length > 0 && (
-                        <div className="space-y-3 mt-4">
-                          {attachments.map((file, index) => (
-                            <div
-                              key={index}
-                              className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm"
-                            >
-                              <div className="flex items-center space-x-3">
-                                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                                  {getFileIcon(file)}
-                                </div>
-                                <div>
-                                  <p className="text-sm font-medium text-gray-700">{file.name}</p>
-                                  <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => removeAttachment(index)}
-                                className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {attachmentError && (
-                        <div className="text-red-600 text-sm mt-2">{attachmentError}</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex justify-between">
-                  <button
-                    type="button"
-                    onClick={prevStep}
-                    className="text-gray-600 hover:text-gray-800 font-medium transition-colors"
-                  >
-                    ← Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={nextStep}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-3 rounded-xl font-semibold hover:from-blue-700 hover:to-blue-800 transition-all duration-200 flex items-center space-x-2 shadow-md"
-                  >
-                    <span>Continue</span>
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-            )}
-            {/* Step 3: Priority & Category */}
-            {currentStep === 3 && (
-              <div className="space-y-8">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 mb-2">Categorize Your Request</h2>
-                  <p className="text-gray-500 mb-6">This helps us route your ticket to the right team.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                      <h3 className="font-semibold text-gray-800 mb-3">Type of Issue</h3>
-                      <select
-                        className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
-                        value={formData.category}
-                        onChange={e => setFormData(prev => ({ ...prev, category: e.target.value, otherIssue: '' }))}
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(index)}
+                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
                       >
-                        {categories.map(category => (
-                          <option key={category.value} value={category.value}>
-                            {category.icon} {category.value}
-                          </option>
-                        ))}
-                      </select>
-                  
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-800 mb-3">Priority</h3>
-                      <select
-                        className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
-                        value={formData.priority}
-                        onChange={e => setFormData(prev => ({ ...prev, priority: e.target.value }))}
-                      >
-                        {priorities.map(priority => (
-                          <option key={priority.value} value={priority.value}>
-                            {priority.icon} {priority.value} - {priority.description}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-                <div className="flex justify-between mt-8">
-                  <button
-                    type="button"
-                    onClick={prevStep}
-                    className="text-gray-600 hover:text-gray-800 font-medium transition-colors"
-                  >
-                    ← Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={nextStep}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-3 rounded-xl font-semibold hover:from-blue-700 hover:to-blue-800 transition-all duration-200 flex items-center space-x-2 shadow-md"
-                  >
-                    <span>Continue</span>
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
+              )}
+              {attachmentError && (
+                <div className="text-red-600 text-sm mt-2">{attachmentError}</div>
+              )}
+            </div>
+
+            {/* Error Message */}
+            {errors.submit && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mt-2">
+                <p className="text-red-600 text-sm flex items-center">
+                  <AlertCircle className="w-4 h-4 mr-2" />
+                  {errors.submit}
+                </p>
               </div>
             )}
-            {/* Step 4: Review & Submit */}
-            {currentStep === 4 && (
-              <div className="space-y-8">
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-0 border border-blue-100 shadow-md">
-                  {/* Subject as header */}
-                  <div className="bg-white rounded-t-2xl px-8 py-6 border-b border-blue-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <h2 className="text-xl font-bold text-gray-900 mb-1 truncate">{formData.subject || 'No Subject'}</h2>
-                      <div className="flex flex-wrap gap-4 text-sm text-gray-600 mt-2">
-                        <span><span className="font-semibold text-gray-800">From:</span> {formData.name} &lt;{formData.email}&gt;</span>
-                        <span><span className="font-semibold text-gray-800">Project:</span> {formData.project}</span>
-                        <span><span className="font-semibold text-gray-800">Category:</span> {formData.category}</span>
-                        <span><span className="font-semibold text-gray-800">Priority:</span> <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                          formData.priority === 'High' ? 'bg-red-100 text-red-700' :
-                          formData.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-green-100 text-green-700'
-                        }`}>{formData.priority}</span></span>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Description as email body */}
-                  <div className="bg-white px-8 py-8 rounded-b-2xl" style={{ minHeight: '120px' }}>
-                    <div className="mb-8">
-                      <div className="font-semibold text-gray-800 mb-2">Description</div>
-                      <div className="whitespace-pre-wrap break-words text-gray-900 max-h-48 overflow-y-auto border border-gray-100 rounded-lg p-4 bg-gray-50" style={{ fontFamily: 'inherit', fontSize: '1rem' }}>
-                        {formData.description || <span className="text-gray-400">No description provided.</span>}
-                      </div>
-                    </div>
-                    {/* Attachments Preview */}
-                    <div className="mt-4">
-                      <div className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                        <Paperclip className="w-4 h-4" /> Attachments
-                      </div>
-                      {attachments.length > 0 ? (
-                        <div className="flex flex-row flex-nowrap gap-4 overflow-x-auto pb-2">
-                          {attachments.map((file, index) => (
-                            <div key={index} className="flex flex-col items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-sm min-w-[140px] max-w-[180px]">
-                              <span>{getFileIcon(file)}</span>
-                              <span className="text-sm font-medium text-gray-700 truncate w-full text-center" title={file.name}>{file.name}</span>
-                              <span className="text-xs text-gray-400">({formatFileSize(file.size)})</span>
-                              {/* Preview Button */}
-                              {file.type.startsWith('image/') ? (
-                                <button
-                                  type="button"
-                                  className="text-blue-600 hover:underline text-xs"
-                                  onClick={() => setPreviewFile(file)}
-                                >
-                                  Preview
-                                </button>
-                              ) : file.type === 'application/pdf' ? (
-                                <a
-                                  href={file.data}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:underline text-xs"
-                                >
-                                  Preview
-                                </a>
-                              ) : (
-                                <a
-                                  href={file.data}
-                                  download={file.name}
-                                  className="text-blue-600 hover:underline text-xs"
-                                >
-                                  Download
-                                </a>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-gray-400 text-sm">No attachments</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                {errors.submit && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 mt-6">
-                    <p className="text-red-600 text-sm flex items-center">
-                      <AlertCircle className="w-4 h-4 mr-2" />
-                      {errors.submit}
-                    </p>
-                  </div>
+
+            {/* Submit Button */}
+            <div className="flex justify-end mt-4">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className={`px-8 py-4 rounded-xl font-semibold text-lg flex items-center space-x-3 transition-all duration-200 transform hover:scale-105 shadow-lg ${
+                  isSubmitting
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'
+                } text-white`}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Creating Ticket...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5" />
+                    <span>Create Ticket</span>
+                  </>
                 )}
-                <div className="flex justify-between mt-8">
-                  <button
-                    type="button"
-                    onClick={prevStep}
-                    className="text-gray-600 hover:text-gray-800 font-medium transition-colors"
-                  >
-                    ← Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className={`px-8 py-4 rounded-xl font-semibold text-lg flex items-center space-x-3 transition-all duration-200 transform hover:scale-105 shadow-lg ${
-                      isSubmitting
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'
-                    } text-white`}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>Creating Ticket...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-5 h-5" />
-                        <span>Create Ticket</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
+              </button>
+            </div>
           </form>
         </div>
-      </div>
-      {/* Modal for image preview */}
-      {previewFile && previewFile.type.startsWith('image/') && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
-          <div className="bg-white rounded-xl shadow-lg p-6 max-w-lg w-full relative flex flex-col items-center">
-            <button
-              className="absolute top-2 right-2 text-gray-500 hover:text-red-500"
-              onClick={() => setPreviewFile(null)}
-              aria-label="Close preview"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <img
-              src={previewFile.data}
-              alt={previewFile.name}
-              className="max-h-[60vh] w-auto mx-auto rounded-lg border border-gray-200 bg-gray-100"
-              onError={e => {
-                e.target.onerror = null;
-                e.target.style.display = 'none';
-                const fallback = document.getElementById('img-fallback');
-                if (fallback) fallback.style.display = 'block';
-              }}
-            />
-            <div id="img-fallback" style={{display:'none'}} className="text-red-500 text-center mt-8">
-              Unable to preview this image.<br/>Please make sure the file is a valid image.
+        {/* Modal for image preview */}
+        {previewFile && previewFile.type.startsWith('image/') && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+            <div className="bg-white rounded-xl shadow-lg p-6 max-w-lg w-full relative flex flex-col items-center">
+              <button
+                className="absolute top-2 right-2 text-gray-500 hover:text-red-500"
+                onClick={() => setPreviewFile(null)}
+                aria-label="Close preview"
+              >
+                <X className="w-6 h-6" />
+              </button>
+              <img
+                src={previewFile.data}
+                alt={previewFile.name}
+                className="max-h-[60vh] w-auto mx-auto rounded-lg border border-gray-200 bg-gray-100"
+                onError={e => {
+                  e.target.onerror = null;
+                  e.target.style.display = 'none';
+                  const fallback = document.getElementById('img-fallback');
+                  if (fallback) fallback.style.display = 'block';
+                }}
+              />
+              <div id="img-fallback" style={{display:'none'}} className="text-red-500 text-center mt-8">
+                Unable to preview this image.<br/>Please make sure the file is a valid image.
+              </div>
+              <div className="mt-4 text-center text-gray-700 text-sm break-all">{previewFile.name}</div>
             </div>
-            <div className="mt-4 text-center text-gray-700 text-sm break-all">{previewFile.name}</div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

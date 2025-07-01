@@ -16,7 +16,7 @@ import { serverTimestamp, updateDoc, doc, onSnapshot, collection, query, deleteD
 import { db } from '../../firebase/config';
 import TicketDetails from './TicketDetails';
 import { BsTicketFill } from 'react-icons/bs';
-
+ 
 function AdminTickets() {
   const [tickets, setTickets] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -38,7 +38,7 @@ function AdminTickets() {
   const statusDropdownRef = useRef(null);
   const priorityDropdownRef = useRef(null);
   const projectDropdownRef = useRef(null);
-
+ 
   useEffect(() => {
     const unsubscribe = onSnapshot(query(collection(db, 'tickets')), (snapshot) => {
       const ticketList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -50,7 +50,7 @@ function AdminTickets() {
     });
     return () => unsubscribe();
   }, []);
-
+ 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'projects'), (snapshot) => {
       const projectList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -58,7 +58,7 @@ function AdminTickets() {
     });
     return () => unsubscribe();
   }, []);
-
+ 
   // Close dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(event) {
@@ -69,17 +69,17 @@ function AdminTickets() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
+ 
   // Helper to summarize selected options
   const summarize = (arr, allLabel) => {
     if (arr.includes('All')) return allLabel;
     if (arr.length === 0) return allLabel;
     return arr.join(', ');
   };
-
+ 
   const handleTicketClick = (ticketId) => setSelectedTicketId(ticketId);
   const handleBackToTickets = () => setSelectedTicketId(null);
-
+ 
   const handleEditTicket = (ticket) => {
     setSelectedTicketId(ticket.id);
     setEditFormData({
@@ -91,7 +91,7 @@ function AdminTickets() {
     });
     setShowEditModal(true);
   };
-
+ 
   const handleDeleteTicket = async (ticketId) => {
     if (window.confirm('Are you sure you want to delete this ticket?')) {
       try {
@@ -102,7 +102,7 @@ function AdminTickets() {
       }
     }
   };
-
+ 
   const handleUpdateTicket = async (e) => {
     e.preventDefault();
     if (!selectedTicketId) return;
@@ -117,7 +117,7 @@ function AdminTickets() {
       alert('Error updating ticket.');
     }
   };
-
+ 
   const handleCheckboxFilter = (filter, setFilter, value) => {
     if (value === 'All') {
       setFilter(['All']);
@@ -134,7 +134,7 @@ function AdminTickets() {
       });
     }
   };
-
+ 
   const filteredTickets = tickets.filter(ticket => {
     const matchesStatus = filterStatus.includes('All') || filterStatus.includes(ticket.status);
     const matchesPriority = filterPriority.includes('All') || filterPriority.includes(ticket.priority);
@@ -143,7 +143,7 @@ function AdminTickets() {
     const matchesSearch = ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) || ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesStatus && matchesPriority && matchesProject && matchesSearch;
   });
-
+ 
   const allSelected = activeTab === 'deleted' && filteredTickets.length > 0 && filteredTickets.every(t => selectedTicketIds.includes(t.id));
   const handleSelectAll = (e) => {
     if (e.target.checked) {
@@ -164,14 +164,14 @@ function AdminTickets() {
       setSelectedTicketIds([]);
     }
   };
-
+ 
   // Ticket counts for cards
   const totalTickets = tickets.length;
   const openTickets = tickets.filter(t => t.status === 'Open').length;
   const inProgressTickets = tickets.filter(t => t.status === 'In Progress').length;
   const resolvedTickets = tickets.filter(t => t.status === 'Resolved').length;
   const closedTickets = tickets.filter(t => t.status === 'Closed').length;
-
+ 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -182,7 +182,7 @@ function AdminTickets() {
       </div>
     );
   }
-
+ 
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -193,11 +193,11 @@ function AdminTickets() {
       </div>
     );
   }
-
+ 
   if (selectedTicketId && !showEditModal) {
-    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} />;
+    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} onAssign={() => {}} />;
   }
-
+ 
   return (
     <div className="p-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
@@ -323,8 +323,8 @@ function AdminTickets() {
         <button
           onClick={() => setFiltersApplied(true)}
           className={`px-4 py-2 text-white rounded-lg transition-colors ${
-            activeTab === 'live' 
-              ? 'bg-blue-600 hover:bg-blue-700' 
+            activeTab === 'live'
+              ? 'bg-blue-600 hover:bg-blue-700'
               : 'bg-red-600 hover:bg-red-700'
           }`}
         >
@@ -486,16 +486,13 @@ function AdminTickets() {
     </div>
   );
 }
-
+ 
 export default AdminTickets;
-
+ 
 function formatTimestamp(ts) {
   if (!ts) return '';
   if (typeof ts === 'string') return new Date(ts).toLocaleString();
   if (typeof ts.toDate === 'function') return ts.toDate().toLocaleString();
   return '';
 }
-
- 
- 
  

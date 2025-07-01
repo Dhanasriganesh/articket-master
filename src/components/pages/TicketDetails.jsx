@@ -55,7 +55,7 @@ const statusOptions = [
   { value: 'Closed', label: 'Closed' },
 ];
 
-const TicketDetails = ({ ticketId, onBack }) => {
+const TicketDetails = ({ ticketId, onBack, onAssign }) => {
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -303,7 +303,6 @@ const TicketDetails = ({ ticketId, onBack }) => {
   const handleSaveDetails = async () => {
     if (!ticket) return;
     setDetailsError('');
-    // No need to revalidate here, as dropdown prevents invalid state
     setIsSaving(true);
     try {
       const ticketRef = doc(db, 'tickets', ticket.id);
@@ -322,16 +321,15 @@ const TicketDetails = ({ ticketId, onBack }) => {
       // Category (and ticket number)
       if (editFields.category !== ticket.category) {
         updates.category = editFields.category;
-        // Get new ticket number
         const newTicketNumber = await getNextTicketNumber(editFields.category);
         updates.ticketNumber = newTicketNumber;
         commentMsg.push(`Category changed to ${editFields.category} and Ticket ID updated to ${newTicketNumber}`);
       }
       // Assignment
+      let assignee = null;
       if (selectedAssignee && (!ticket.assignedTo || ticket.assignedTo.email !== selectedAssignee)) {
-        let assignee = employees.find(emp => emp.email === selectedAssignee);
+        assignee = employees.find(emp => emp.email === selectedAssignee);
         if (!assignee && selectedAssignee === currentUserEmail) {
-          // Fetch current user's name and role from Firestore
           const currentUser = auth.currentUser;
           if (currentUser) {
             const userDocRef = doc(db, 'users', currentUser.uid);
@@ -361,6 +359,15 @@ const TicketDetails = ({ ticketId, onBack }) => {
           commentMsg.push(`Assigned to ${assignee.name}`);
         }
       }
+      // If only the assignee changed, call handleAssignTicket and do not send a comment email
+      const onlyAssigneeChanged = (
+        Object.keys(updates).length === 1 && updates.assignedTo
+      );
+      if (onlyAssigneeChanged) {
+        await onAssign(ticket.id, updates.assignedTo.email);
+        setIsSaving(false);
+        return;
+      }
       if (Object.keys(updates).length > 0) {
         updates.lastUpdated = serverTimestamp();
         await updateDoc(ticketRef, updates);
@@ -387,6 +394,25 @@ const TicketDetails = ({ ticketId, onBack }) => {
             return ta - tb;
           });
           setTicket({ ...ticketData, comments });
+        }
+        // Send email to the client who raised the ticket (for comment)
+        if (ticket && ticket.email) {
+          const recipients = [ticket.email];
+          if (ticket.assignedTo && ticket.assignedTo.email && ticket.assignedTo.email !== ticket.email) {
+            recipients.push(ticket.assignedTo.email);
+          }
+          const emailParams = {
+            to_email: recipients.join(','),
+            to_name: ticket.customer || ticket.name || ticket.email,
+            subject: `New update on Ticket ID: ${ticket.ticketNumber}`,
+            ticket_number: ticket.ticketNumber,
+            message: commentMsg.join('; '),
+            is_comment: true,
+            assigned_by_name: currentUserName,
+            assigned_by_email: currentUser.email,
+            ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+          };
+          await sendEmail(emailParams, 'template_6265t8d');
         }
       }
     } catch (err) {
@@ -428,6 +454,25 @@ const TicketDetails = ({ ticketId, onBack }) => {
       });
       setNewResponse('');
       setCommentAttachments([]);
+      // Send email to the client who raised the ticket (for comment)
+      if (ticket && ticket.email) {
+        const recipients = [ticket.email];
+        if (ticket.assignedTo && ticket.assignedTo.email && ticket.assignedTo.email !== ticket.email) {
+          recipients.push(ticket.assignedTo.email);
+        }
+        const emailParams = {
+          to_email: recipients.join(','),
+          to_name: ticket.customer || ticket.name || ticket.email,
+          subject: `New update on Ticket ID: ${ticket.ticketNumber}`,
+          ticket_number: ticket.ticketNumber,
+          message: newResponse.trim(),
+          is_comment: true,
+          assigned_by_name: currentUserName,
+          assigned_by_email: currentUser.email,
+          ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+        };
+        await sendEmail(emailParams, 'template_6265t8d');
+      }
       // Re-fetch ticket to update UI
       const updatedTicketSnap = await getDoc(ticketRef);
       if (updatedTicketSnap.exists()) {
@@ -497,6 +542,21 @@ const TicketDetails = ({ ticketId, onBack }) => {
         setTicket({ ...ticketData, comments });
       }
       setResolutionAttachments([]);
+      // Send email to the client who raised the ticket (for resolution)
+      if (ticket && ticket.email) {
+        const emailParams = {
+          to_email: ticket.email,
+          to_name: ticket.customer || ticket.name || ticket.email,
+          subject: `Resolution provided for Ticket ID: ${ticket.ticketNumber}`,
+          ticket_number: ticket.ticketNumber,
+          message: resolutionText,
+          is_resolution: true,
+          assigned_by_name: currentUserName,
+          assigned_by_email: currentUser.email,
+          ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+        };
+        await sendEmail(emailParams, 'template_6265t8d');
+      }
     } catch (err) {
       console.error('Error saving resolution:', err);
     } finally {
@@ -1209,7 +1269,8 @@ const TicketDetails = ({ ticketId, onBack }) => {
 
 TicketDetails.propTypes = {
   ticketId: PropTypes.string.isRequired,
-  onBack: PropTypes.func.isRequired
+  onBack: PropTypes.func.isRequired,
+  onAssign: PropTypes.func.isRequired
 };
 
 export default TicketDetails;

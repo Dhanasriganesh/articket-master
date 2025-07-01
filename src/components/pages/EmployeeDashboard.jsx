@@ -249,7 +249,7 @@ function EmployeeDashboard() {
  
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, active: activeTab === 'dashboard' },
-    { id: 'tickets', label: 'My Tickets', icon: FileText, active: activeTab === 'tickets' },
+    { id: 'tickets', label: 'Tickets', icon: FileText, active: activeTab === 'tickets' },
     { id: 'create', label: 'Create Ticket', icon: Plus, active: activeTab === 'create' }
    
    
@@ -428,7 +428,7 @@ function EmployeeDashboard() {
                 <Menu className="w-6 h-6 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Welcome, {employeeName.toUpperCase()}!</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Project: {(projects.find(p => p.id === selectedProjectId)?.name) || projects[0]?.name || 'General'}</h1>
                 <p className="text-gray-600">Manage your assigned support tickets and communications</p>
               </div>
             </div>

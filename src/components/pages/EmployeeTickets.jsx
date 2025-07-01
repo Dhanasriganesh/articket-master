@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc, getDoc, getDocs, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, getDocs, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { auth, db } from '../../firebase/config';
 import { Link, useNavigate } from 'react-router-dom';
 import { BsTicketFill, BsFolderFill } from 'react-icons/bs';
 import TicketDetails from './TicketDetails';
+import { sendEmail } from '../../utils/sendEmail';
  
 const EmployeeTickets = () => {
   const [ticketsData, setTicketsData] = useState([]);
@@ -247,23 +248,50 @@ const EmployeeTickets = () => {
     return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
   });
  
-  const handleAssignTicket = async (ticketId, email) => {
-    if (!ticketId || !email) return;
+  const handleAssignTicket = async (ticketId, selectedUserEmail) => {
+    // Find the ticket
+    const ticket = ticketsData.find(t => t.id === ticketId);
+    if (!ticketId || !auth.currentUser || !selectedUserEmail || !ticket) return;
+
     const ticketRef = doc(db, 'tickets', ticketId);
-    const newAssignee = {
-      name: email.split('@')[0],
-      email: email
-    };
+    // Find the assignee's full name
+    const assignee = employees.find(emp => emp.email === selectedUserEmail) || { name: selectedUserEmail.split('@')[0], email: selectedUserEmail };
     const assignerUsername = currentUserEmail.split('@')[0];
-    try {
-      await updateDoc(ticketRef, {
-        assignedTo: newAssignee,
-        assignedBy: assignerUsername,
-        lastUpdated: serverTimestamp()
-      });
-    } catch (err) {
-      console.error('Error assigning ticket:', err);
-    }
+
+    // Update the ticket assignment in Firestore
+    await updateDoc(ticketRef, {
+      assignedTo: { name: assignee.name, email: assignee.email },
+      assignedBy: assignerUsername,
+      lastUpdated: serverTimestamp()
+    });
+
+    // Log the assignment as a comment (optional)
+    const response = {
+      message: `Ticket assigned to ${assignee.name} by ${assignerUsername}.`,
+      timestamp: new Date().toISOString(),
+      authorEmail: 'system',
+      authorRole: 'system',
+    };
+    await updateDoc(ticketRef, {
+      customerResponses: arrayUnion(response)
+    });
+
+    // Send the assignment email to the client
+    const emailParams = {
+      to_email: ticket.email,
+      to_name: ticket.customer || ticket.name || ticket.email,
+      subject: `Your ticket has been assigned (ID: ${ticket.ticketNumber})`,
+      ticket_number: ticket.ticketNumber,
+      assigned_to: assignee.name,
+      assigned_by_name: assignerUsername,
+      assigned_by_email: currentUserEmail,
+      project: ticket.project,
+      category: ticket.category,
+      priority: ticket.priority,
+      ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+    };
+    console.log('Assignment emailParams:', emailParams);
+    await sendEmail(emailParams, 'template_6265t8d');
   };
  
   const handleUnassignTicket = async (ticketId) => {
@@ -310,7 +338,7 @@ const EmployeeTickets = () => {
   }
  
   if (selectedTicketId) {
-    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} />;
+    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} onAssign={handleAssignTicket} />;
   }
  
   return (
@@ -414,7 +442,7 @@ const EmployeeTickets = () => {
             <option value="all">All Employees</option>
             <option value="me">Me</option>
             {employees.map(employee => (
-              <option key={employee.id} value={employee.id}>
+              <option key={employee.id} value={employee.email}>
                 {employee.displayName}
               </option>
             ))}
@@ -432,7 +460,7 @@ const EmployeeTickets = () => {
           >
             <option value="all">All Clients</option>
             {clients.map(client => (
-              <option key={client.id} value={client.id}>
+              <option key={client.id} value={client.email}>
                 {client.displayName}
               </option>
             ))}

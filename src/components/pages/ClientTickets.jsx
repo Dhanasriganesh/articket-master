@@ -306,7 +306,7 @@ const ClientTickets = ({ setActiveTab }) => {
   }
  
   if (selectedTicketId) {
-    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} />;
+    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} onAssign={() => {}} />;
   }
  
   return (

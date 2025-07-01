@@ -40,3 +40,13 @@
 .read-the-docs {
   color: #888;
 }
+
+.ql-editor img {
+  max-width: 200px;
+  max-height: 200px;
+  height: auto;
+  width: auto;
+  display: inline-block;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}

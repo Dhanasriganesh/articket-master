@@ -193,6 +193,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
   };
  
   const handleAssignTicket = async (ticketId, selectedUserEmail) => {
+    console.log('handleAssignTicket called with:', ticketId, selectedUserEmail);
     const assignable = [...employees, ...clients];
     const selectedUser = assignable.find(u => u.email === selectedUserEmail) || {
       email: currentUserEmail,
@@ -206,7 +207,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
  
     const ticketRef = doc(db, 'tickets', ticketId);
     const newAssignee = {
-      name: selectedUser.email.split('@')[0],
+      name: selectedUser.name || selectedUser.email.split('@')[0],
       email: selectedUser.email
     };
     const assignerUsername = currentUserEmail.split('@')[0];
@@ -224,30 +225,26 @@ const ClientHeadTickets = ({ setActiveTab }) => {
         assignedBy: assignerUsername,
         lastUpdated: serverTimestamp()
       });
+      // Log the assignment as a comment for history, but do NOT send a comment email
       await updateDoc(ticketRef, {
         customerResponses: arrayUnion(response)
       });
- 
-      const memberEmails = await fetchProjectMemberEmails(ticket.project);
+      // Only send the assignment email
       const emailParams = {
-        to_email: memberEmails.join(','),
-        from_name: 'Articket Support',
-        reply_to: 'noreply@yourdomain.com',
-        subject: `[Assigned] ${ticket.subject}`,
-        request_id: ticket.id,
-        status: ticket.status,
-        priority: ticket.priority,
-        category: ticket.category,
-        project: ticket.project,
+        to_email: ticket.email,
+        to_name: ticket.customer || ticket.name || ticket.email,
+        subject: `Your ticket has been assigned (ID: ${ticket.ticketNumber})`,
+        ticket_number: ticket.ticketNumber,
         assigned_to: newAssignee.name,
-        assigned_by: assignerUsername,
-        created: ticket.created ? new Date(ticket.created.seconds * 1000).toLocaleString() : '',
-        requester: ticket.email,
-        description: ticket.description,
-        comment: response.message,
+        assigned_by_name: assignerUsername,
+        assigned_by_email: currentUserEmail,
+        project: ticket.project,
+        category: ticket.category,
+        priority: ticket.priority,
         ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
       };
-      await sendEmail(emailParams);
+      console.log('Assignment emailParams:', emailParams);
+      await sendEmail(emailParams, 'template_6265t8d');
     } catch (err) {
       console.error('Error assigning ticket:', err);
     }
@@ -346,7 +343,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
   }
  
   if (selectedTicketId) {
-    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} />;
+    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} onAssign={handleAssignTicket} />;
   }
  
   return (

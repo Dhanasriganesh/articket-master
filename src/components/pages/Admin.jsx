@@ -28,7 +28,8 @@ import {
   TrendingUp,
   AlertCircle,
   CheckCircle,
-  Clock
+  Clock,
+  Edit2
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../../firebase/config';
@@ -51,6 +52,7 @@ import { format, subDays } from 'date-fns';
 import Projects from './Projects';
 import AdminTickets from './AdminTickets';
 import LogoutModal from './LogoutModal';
+import EditTicketForm from './EditTicketForm';
 
 // Register ChartJS components
 ChartJS.register(
@@ -258,7 +260,8 @@ function Admin() {
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, active: activeTab === 'dashboard' },
     { id: 'projects', label: 'Projects', icon: FolderOpen, active: activeTab === 'projects' },
-    { id: 'admintickets', label: 'Tickets', icon: Ticket, active: activeTab === 'admintickets' }
+    { id: 'admintickets', label: 'Tickets', icon: Ticket, active: activeTab === 'admintickets' },
+    { id: 'editTicketform', label: 'Edit Ticketform', icon: Edit2, active: activeTab === 'editTicketform' },
   ];
 
   const renderSidebarItem = (item) => {
@@ -649,6 +652,8 @@ function Admin() {
         return <Projects />;
       case 'admintickets':
         return <AdminTickets />;
+      case 'editTicketform':
+        return <EditTicketForm />;
       default:
         return renderDashboard();
     }

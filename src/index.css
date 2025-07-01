@@ -3,3 +3,13 @@
 html {
   font-size: 11px;
 }
+
+.ql-editor img {
+  max-width: 200px;
+  max-height: 200px;
+  height: auto;
+  width: auto;
+  display: inline-block;
+  border-radius: 0.5rem; /* rounded-lg */
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}

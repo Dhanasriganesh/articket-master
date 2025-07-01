@@ -250,6 +250,7 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
   };
  
   const handleAssignTicket = async (ticketId, selectedUserEmail) => {
+    console.log('handleAssignTicket called with:', ticketId, selectedUserEmail);
     const assignable = [...employees, ...clients];
     const selectedUser = assignable.find(u => u.email === selectedUserEmail) || {
       email: currentUserEmail,
@@ -263,7 +264,7 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
  
     const ticketRef = doc(db, 'tickets', ticketId);
     const newAssignee = {
-      name: selectedUser.email.split('@')[0],
+      name: selectedUser.name || selectedUser.email.split('@')[0],
       email: selectedUser.email
     };
     const assignerUsername = currentUserEmail.split('@')[0];
@@ -281,20 +282,26 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
         assignedBy: assignerUsername,
         lastUpdated: serverTimestamp()
       });
+      // Log the assignment as a comment for history, but do NOT send a comment email
       await updateDoc(ticketRef, {
         customerResponses: arrayUnion(response)
       });
- 
-      const memberEmails = await fetchProjectMemberEmails(selectedProjectName);
+      // Only send the assignment email
       const emailParams = {
-        name: newAssignee.name,
-        email: newAssignee.email,
+        to_email: ticket.email,
+        to_name: ticket.customer || ticket.name || ticket.email,
+        subject: `Your ticket has been assigned (ID: ${ticket.ticketNumber})`,
+        ticket_number: ticket.ticketNumber,
+        assigned_to: newAssignee.name,
+        assigned_by_name: assignerUsername,
+        assigned_by_email: currentUserEmail,
         project: selectedProjectName,
-        subject: ticket.subject,
         category: ticket.category,
         priority: ticket.priority,
+        ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
       };
-      await sendEmail(emailParams);
+      console.log('Assignment emailParams:', emailParams);
+      await sendEmail(emailParams, 'template_6265t8d');
     } catch (err) {
       console.error('Error assigning ticket:', err);
     }
@@ -398,7 +405,7 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
   }
  
   if (selectedTicketId) {
-    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} />;
+    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} onAssign={handleAssignTicket} />;
   }
  
   return (

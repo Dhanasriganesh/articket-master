@@ -148,11 +148,11 @@ const ClientHeadDashboard = () => {
         let ticketsData = [];
         if (clientHeadProject) {
           const ticketsQuery = query(collection(db, 'tickets'), where('project', '==', clientHeadProject));
-          const ticketsSnapshot = await getDocs(ticketsQuery);
+        const ticketsSnapshot = await getDocs(ticketsQuery);
           ticketsData = ticketsSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
+          id: doc.id,
+          ...doc.data()
+        }));
         }
         setTickets(ticketsData);
         // Update stats
@@ -318,7 +318,7 @@ const ClientHeadDashboard = () => {
                 <Menu className="w-6 h-6 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Welcome, {clientHeadName.toUpperCase()}!</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Project: {myProject?.name || 'General'}</h1>
                 <p className="text-gray-600">Monitor client activities and project progress</p>
               </div>
             </div>
