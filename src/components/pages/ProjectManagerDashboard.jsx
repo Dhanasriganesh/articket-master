@@ -19,7 +19,8 @@ import {
   User,
   Loader2,
   RefreshCw,
-  FileText
+  FileText,
+  X
 } from 'lucide-react';
 import { collection, query, where, getDocs, getFirestore, doc, getDoc,onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -291,6 +292,7 @@ const ProjectManagerDashboard = () => {
   const db = getFirestore();
   const [roleChangeToast, setRoleChangeToast] = useState({ show: false, message: '' });
   const [showMobilePopup, setShowMobilePopup] = useState(false);
+  const [showSwitchProjectModal, setShowSwitchProjectModal] = useState(false);
 
   // Animated counts for priorities
   const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
@@ -492,6 +494,11 @@ const ProjectManagerDashboard = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  const handleSwitchProject = (projectId) => {
+    setSelectedProjectId(projectId);
+    setShowSwitchProjectModal(false);
+  };
+
   if (!authChecked || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -586,6 +593,16 @@ const ProjectManagerDashboard = () => {
             {/* Sidebar Navigation */}
             <nav className="flex-1 p-6 space-y-2">
               {sidebarItems.map(renderSidebarItem)}
+              {/* Switch Project button if more than one project */}
+              {projects.length > 1 && (
+                <button
+                  onClick={() => setShowSwitchProjectModal(true)}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-3'} px-4 py-3 rounded-xl transition-all duration-200 font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 mt-2`}
+                >
+                  <Briefcase className="w-5 h-5 mr-2" />
+                  {!sidebarCollapsed && <span>Switch Project</span>}
+                </button>
+              )}
             </nav>
 
             {/* Sidebar Footer */}
@@ -889,6 +906,32 @@ const ProjectManagerDashboard = () => {
         {roleChangeToast.show && (
           <div className="fixed top-6 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg z-[9999] bg-blue-600 text-white font-semibold">
             {roleChangeToast.message}
+          </div>
+        )}
+        {/* Switch Project Modal */}
+        {showSwitchProjectModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+            <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full relative">
+              <button
+                className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
+                onClick={() => setShowSwitchProjectModal(false)}
+              >
+                <X className="w-6 h-6" />
+              </button>
+              <h2 className="text-xl font-bold mb-4">Switch Project</h2>
+              <ul className="space-y-2">
+                {projects.map(project => (
+                  <li key={project.id}>
+                    <button
+                      className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${selectedProjectId === project.id ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100'}`}
+                      onClick={() => handleSwitchProject(project.id)}
+                    >
+                      {project.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         )}
       </div>

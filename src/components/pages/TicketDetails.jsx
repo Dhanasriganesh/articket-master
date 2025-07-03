@@ -1141,7 +1141,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                     )}
                   </div>
                   <div>
-                    <span className="font-semibold text-gray-700">Requester:</span>
+                    <span className="font-semibold text-gray-700">Created By:</span>
                     {isEditMode ? (
                       <select
                         className="ml-2 border border-gray-300 rounded px-2 py-1"

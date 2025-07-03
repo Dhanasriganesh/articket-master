@@ -14,7 +14,9 @@ import {
   FileText,
   Menu,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Briefcase,
+  X
 } from 'lucide-react';
 import { collection, query, onSnapshot, doc, where, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase/config';
@@ -22,6 +24,7 @@ import { auth } from '../../firebase/config';
 import Ticketing from './Ticketing'; // Import the Ticketing component
 import EmployeeTickets from './EmployeeTickets'; // Import the EmployeeTickets component
 import LogoutModal from './LogoutModal';
+import { Modal } from 'antd'; // Add this import if you use Ant Design, or use a custom modal
  
 function EmployeeDashboard() {
   const [tickets, setTickets] = useState([]);
@@ -43,6 +46,7 @@ function EmployeeDashboard() {
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [searchParams] = useSearchParams();
   const [roleChangeToast, setRoleChangeToast] = useState({ show: false, message: '' });
+  const [showSwitchProjectModal, setShowSwitchProjectModal] = useState(false);
  
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
@@ -311,6 +315,11 @@ function EmployeeDashboard() {
     return () => { if (unsubscribe) unsubscribe(); };
   }, [navigate]);
  
+  const handleSwitchProject = (projectId) => {
+    setSelectedProjectId(projectId);
+    setShowSwitchProjectModal(false);
+  };
+ 
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
@@ -389,6 +398,16 @@ function EmployeeDashboard() {
           {/* Sidebar Navigation */}
           <nav className="flex-1 p-6 space-y-2">
             {sidebarItems.map(renderSidebarItem)}
+            {/* Switch Project button if more than one project */}
+            {projects.length > 1 && (
+              <button
+                onClick={() => setShowSwitchProjectModal(true)}
+                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-3'} px-4 py-3 rounded-xl transition-all duration-200 font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 mt-2`}
+              >
+                <Briefcase className="w-5 h-5 mr-2" />
+                {!sidebarCollapsed && <span>Switch Project</span>}
+              </button>
+            )}
           </nav>
  
           {/* Sidebar Footer */}
@@ -447,21 +466,6 @@ function EmployeeDashboard() {
  
         {/* Dashboard Content */}
         <main className="flex-1 overflow-auto p-6 sm:p-4 xs:p-2">
-          {projects.length > 1 && (
-            <div className="mb-6">
-              <label className="mr-2 font-semibold text-gray-700">Select Project:</label>
-              <select
-                value={selectedProjectId}
-                onChange={e => setSelectedProjectId(e.target.value)}
-                className="border border-gray-300 rounded px-3 py-2"
-              >
-                <option value="all">All Projects</option>
-                {projects.map(project => (
-                  <option key={project.id} value={project.id}>{project.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
               {/* Stats Cards */}
@@ -560,6 +564,32 @@ function EmployeeDashboard() {
       {roleChangeToast.show && (
         <div className="fixed top-6 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg z-[9999] bg-blue-600 text-white font-semibold">
           {roleChangeToast.message}
+        </div>
+      )}
+      {/* Switch Project Modal */}
+      {showSwitchProjectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full relative">
+            <button
+              className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
+              onClick={() => setShowSwitchProjectModal(false)}
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <h2 className="text-xl font-bold mb-4">Switch Project</h2>
+            <ul className="space-y-2">
+              {projects.map(project => (
+                <li key={project.id}>
+                  <button
+                    className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${selectedProjectId === project.id ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100'}`}
+                    onClick={() => handleSwitchProject(project.id)}
+                  >
+                    {project.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
     </div>

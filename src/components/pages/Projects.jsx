@@ -126,16 +126,6 @@ function Projects() {
     if (!selectedProject) {
       return;
     }
-    // Prevent adding an employee to multiple projects (but allow project managers in multiple projects)
-    if (formData.userType === 'employee' && formData.role === 'employee') {
-      // Check all projects for this email as employee
-      for (const project of projects) {
-        if (project.members && project.members.some(m => m.userType === 'employee' && m.role === 'employee' && m.email.toLowerCase() === email.toLowerCase())) {
-          showNotification(`Employee already exists in ${project.name}.`, 'error');
-          return;
-        }
-      }
-    }
     // Allow project managers to be added to multiple projects
     // Only prevent employees from being in multiple projects
     try {

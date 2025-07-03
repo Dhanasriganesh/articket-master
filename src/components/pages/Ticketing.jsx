@@ -745,7 +745,7 @@ function Client({ onTicketCreated = null }) {
               {attachmentError && (
                 <div className="text-red-600 text-sm mt-2">{attachmentError}</div>
               )}
-            </div>
+          </div>
 
         {/* Error Message */}
         {errors.submit && (
