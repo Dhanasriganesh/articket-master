@@ -128,6 +128,9 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
   const [editSubCategory, setEditSubCategory] = useState('');
   const [editTypeOfIssue, setEditTypeOfIssue] = useState('');
   const [previewImageSrc, setPreviewImageSrc] = useState(null);
+  const [editReportedBy, setEditReportedBy] = useState('');
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [projectMembersLoading, setProjectMembersLoading] = useState(false);
 
   // Toast helper
   const showToast = (message, type = 'error') => {
@@ -484,6 +487,9 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         const req = clientMembers.find(c => c.email === selectedRequester);
         if (req) updates.customer = req.name;
       }
+      if (editReportedBy !== (ticket.reportedBy || '')) {
+        updates.reportedBy = editReportedBy;
+      }
       if (Object.keys(updates).length > 0) {
         updates.lastUpdated = serverTimestamp();
         await updateDoc(ticketRef, updates);
@@ -516,6 +522,25 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           const recipients = [ticket.email];
           if (ticket.assignedTo && ticket.assignedTo.email && ticket.assignedTo.email !== ticket.email) {
             recipients.push(ticket.assignedTo.email);
+          }
+          if (ticket && ticket.reportedBy) {
+            let reportedByEmail = '';
+            const member = projectMembers.find(m => m.name === ticket.reportedBy);
+            if (member && member.email) {
+              reportedByEmail = member.email;
+            }
+            if (!reportedByEmail && ticket.reportedBy) {
+              // Fallback: fetch from users collection
+              const usersRef = collection(db, 'users');
+              const q = query(usersRef, where('project', '==', ticket.project), where('firstName', '==', ticket.reportedBy));
+              const snapshot = await getDocs(q);
+              if (!snapshot.empty) {
+                reportedByEmail = snapshot.docs[0].data().email;
+              }
+            }
+            if (reportedByEmail && !recipients.includes(reportedByEmail)) {
+              recipients.push(reportedByEmail);
+            }
           }
           const emailParams = {
             to_email: recipients.join(','),
@@ -575,6 +600,25 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         const recipients = [ticket.email];
         if (ticket.assignedTo && ticket.assignedTo.email && ticket.assignedTo.email !== ticket.email) {
           recipients.push(ticket.assignedTo.email);
+        }
+        if (ticket && ticket.reportedBy) {
+          let reportedByEmail = '';
+          const member = projectMembers.find(m => m.name === ticket.reportedBy);
+          if (member && member.email) {
+            reportedByEmail = member.email;
+          }
+          if (!reportedByEmail && ticket.reportedBy) {
+            // Fallback: fetch from users collection
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('project', '==', ticket.project), where('firstName', '==', ticket.reportedBy));
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) {
+              reportedByEmail = snapshot.docs[0].data().email;
+            }
+          }
+          if (reportedByEmail && !recipients.includes(reportedByEmail)) {
+            recipients.push(reportedByEmail);
+          }
         }
         const emailParams = {
           to_email: recipients.join(','),
@@ -735,6 +779,31 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       setIsSavingCommentEdit(false);
     }
   };
+
+  // Fetch project members for reportedBy dropdown when entering edit mode
+  useEffect(() => {
+    if (isEditMode && ticket?.projectId) {
+      const fetchProjectMembers = async () => {
+        setProjectMembersLoading(true);
+        try {
+          const projectRef = doc(db, 'projects', ticket.projectId);
+          const projectSnap = await getDoc(projectRef);
+          if (projectSnap.exists()) {
+            const members = projectSnap.data().members || [];
+            setProjectMembers(members);
+          } else {
+            setProjectMembers([]);
+          }
+        } catch (err) {
+          setProjectMembers([]);
+        } finally {
+          setProjectMembersLoading(false);
+        }
+      };
+      fetchProjectMembers();
+      setEditReportedBy(ticket.reportedBy || '');
+    }
+  }, [isEditMode, ticket]);
 
   if (loading) {
     return (
@@ -1156,6 +1225,28 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                       </select>
                     ) : (
                       <span className="ml-2">{ticket.customer} ({ticket.email})</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Reported by:</span>
+                    {isEditMode ? (
+                      projectMembersLoading ? (
+                        <span className="ml-2 text-gray-400">Loading members...</span>
+                      ) : (
+                        <select
+                          className="ml-2 border border-gray-300 rounded px-2 py-1"
+                          value={editReportedBy}
+                          onChange={e => setEditReportedBy(e.target.value)}
+                          disabled={isSaving || projectMembers.length === 0}
+                        >
+                          <option value="">Select member</option>
+                          {projectMembers.map(member => (
+                            <option key={member.email || member.uid || member.name} value={member.name}>{member.name}{member.email ? ` (${member.email})` : ''}</option>
+                          ))}
+                        </select>
+                      )
+                    ) : (
+                      <span className="ml-2">{ticket.reportedBy || '-'}</span>
                     )}
                   </div>
                 </div>

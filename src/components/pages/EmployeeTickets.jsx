@@ -227,7 +227,7 @@ const EmployeeTickets = () => {
       : clients.find(client => client.email === ticket.email)
         ? 'client'
         : null;
-
+ 
     if (ticketUser === 'employee') {
       if (filterRaisedByEmployee === 'all') {
         matchesRaisedBy = true;

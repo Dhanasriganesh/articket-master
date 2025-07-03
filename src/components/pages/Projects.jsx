@@ -490,18 +490,50 @@ function Projects() {
 
   const handleEditProject = async (e) => {
     e.preventDefault();
+    // Check for duplicate project name (case-insensitive, excluding current project)
+    const duplicate = projects.some(
+      (p) => p.id !== editProjectData.id && p.name.trim().toLowerCase() === editProjectData.name.trim().toLowerCase()
+    );
+    if (duplicate) {
+      showNotification('This project already exists', 'error');
+      return;
+    }
     try {
+      // Save old project name for reference
+      const oldProject = projects.find(p => p.id === editProjectData.id);
+      const oldProjectName = oldProject?.name;
+      const newProjectName = editProjectData.name;
       await updateDoc(doc(db, 'projects', editProjectData.id), {
-        name: editProjectData.name,
+        name: newProjectName,
         description: editProjectData.description
       });
       // Update local state
       const updatedProjects = projects.map(p =>
         p.id === editProjectData.id
-          ? { ...p, name: editProjectData.name, description: editProjectData.description }
+          ? { ...p, name: newProjectName, description: editProjectData.description }
           : p
       );
       setProjects(updatedProjects);
+      // Batch update all users with this project name
+      if (oldProjectName && oldProjectName !== newProjectName) {
+        // Update users
+        const usersRef = collection(db, 'users');
+        const usersQuery = query(usersRef, where('project', '==', oldProjectName));
+        const usersSnapshot = await getDocs(usersQuery);
+        const userUpdates = usersSnapshot.docs.map(docSnap =>
+          updateDoc(doc(db, 'users', docSnap.id), { project: newProjectName })
+        );
+        // Also update users' projects array if it contains the project ID (optional, if you want to keep names in sync)
+        // Update tickets
+        const ticketsRef = collection(db, 'tickets');
+        const ticketsQuery = query(ticketsRef, where('project', '==', oldProjectName));
+        const ticketsSnapshot = await getDocs(ticketsQuery);
+        const ticketUpdates = ticketsSnapshot.docs.map(docSnap =>
+          updateDoc(doc(db, 'tickets', docSnap.id), { project: newProjectName })
+        );
+        await Promise.all([...userUpdates, ...ticketUpdates]);
+        showNotification('Project name updated everywhere.');
+      }
       setShowEditProjectModal(false);
       setEditProjectData({ id: '', name: '', description: '' });
       showNotification('Project details updated successfully');

@@ -320,95 +320,31 @@ const ProjectManagerDashboard = () => {
   }
 }, [searchParams]);
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        if (!user) return;
-        // Get manager's name
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        if (userDocSnap.exists()) {
-          const userData = userDocSnap.data();
-          let displayName = '';
-          if (userData.firstName && userData.lastName) {
-            displayName = `${userData.firstName} ${userData.lastName}`;
-          } else if (userData.firstName) {
-            displayName = userData.firstName;
-          } else if (userData.lastName) {
-            displayName = userData.lastName;
-          } else {
-            displayName = userData.email.split('@')[0];
-          }
-          setManagerName(displayName);
-        }
-        // Fetch all projects where user is a project manager
-        const projectsQuery = query(
-          collection(db, 'projects')
+    if (!authChecked || !user) return;
+    setLoading(true);
+    let unsubscribe;
+    // Real-time listener for projects
+    const projectsQuery = query(collection(db, 'projects'));
+    unsubscribe = onSnapshot(projectsQuery, (projectsSnapshot) => {
+      const projectsData = projectsSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(project =>
+          (project.members || []).some(
+            m => m.email === user.email && m.role === 'project_manager'
+          )
         );
-        const projectsSnapshot = await getDocs(projectsQuery);
-        const projectsData = projectsSnapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter(project =>
-            (project.members || []).some(
-              m => m.email === user.email && m.role === 'project_manager'
-            )
-          );
-        setProjects(projectsData);
-        // Set default selected project
-        if (projectsData.length > 0 && !selectedProjectId) {
-          setSelectedProjectId(projectsData[0].id);
-        }
-        // Fetch tickets for selected project or all projects
-        if (selectedProjectId && selectedProjectId !== 'all') {
-          const ticketsQuery = query(
-            collection(db, 'tickets'),
-            where('projectId', '==', selectedProjectId)
-          );
-          const ticketsSnapshot = await getDocs(ticketsQuery);
-          const ticketsData = ticketsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setTickets(ticketsData);
-          setStats({
-            totalProjects: projectsData.length,
-            activeTickets: ticketsData.filter(ticket => ticket.status === 'Open').length,
-            teamMembers: 0, // Optionally update with team count if needed
-            completedTickets: ticketsData.filter(ticket => ticket.status === 'Closed').length
-          });
-        } else if (selectedProjectId === 'all' && projectsData.length > 0) {
-          // Firestore 'in' query limit is 10, so batch if needed
-          const projectIds = projectsData.map(p => p.id);
-          let allTickets = [];
-          const batchSize = 10;
-          for (let i = 0; i < projectIds.length; i += batchSize) {
-            const batchIds = projectIds.slice(i, i + batchSize);
-            const ticketsQuery = query(
-              collection(db, 'tickets'),
-              where('projectId', 'in', batchIds)
-            );
-            const ticketsSnapshot = await getDocs(ticketsQuery);
-            const ticketsData = ticketsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            allTickets = allTickets.concat(ticketsData);
-          }
-          setTickets(allTickets);
-          setStats({
-            totalProjects: projectsData.length,
-            activeTickets: allTickets.filter(ticket => ticket.status === 'Open').length,
-            teamMembers: 0, // Optionally update with team count if needed
-            completedTickets: allTickets.filter(ticket => ticket.status === 'Closed').length
-          });
-        } else {
-          setTickets([]);
-        }
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-        setLoading(false);
+      setProjects(projectsData);
+      // Set default selected project
+      if (projectsData.length > 0 && !selectedProjectId) {
+        setSelectedProjectId(projectsData[0].id);
       }
-    };
-    if (authChecked && user) {
-      setLoading(true);
-      fetchDashboardData();
-    }
-    // eslint-disable-next-line
-  }, [authChecked, user, db, selectedProjectId]);
+      setLoading(false);
+    }, (error) => {
+      console.error('Error fetching projects:', error);
+      setLoading(false);
+    });
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, [authChecked, user, db]);
 
   // Add a real-time listener for role changes
   useEffect(() => {

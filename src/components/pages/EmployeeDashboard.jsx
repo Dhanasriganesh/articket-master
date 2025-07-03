@@ -70,32 +70,30 @@ function EmployeeDashboard() {
  
   // Fetch projects when user is authenticated
   useEffect(() => {
-    if (authChecked && user) {
-      setIsLoading(true);
-      setError(null);
-      const fetchProjects = async () => {
-        try {
-          const projectsQuery = query(collection(db, 'projects'));
-          const projectsSnapshot = await getDocs(projectsQuery);
-          const projectsData = projectsSnapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(project =>
-              (project.members || []).some(
-                m => m.email === user.email && m.role === 'employee'
-              )
-            );
-          setProjects(projectsData);
-          if (projectsData.length > 0 && !selectedProjectId) {
-            setSelectedProjectId(projectsData[0].id);
-          }
-          setIsLoading(false);
-        } catch {
-          setError('Failed to load projects.');
-          setIsLoading(false);
-        }
-      };
-      fetchProjects();
-    }
+    if (!authChecked || !user) return;
+    setIsLoading(true);
+    setError(null);
+    let unsubscribe;
+    // Real-time listener for projects
+    const projectsQuery = query(collection(db, 'projects'));
+    unsubscribe = onSnapshot(projectsQuery, (projectsSnapshot) => {
+      const projectsData = projectsSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(project =>
+          (project.members || []).some(
+            m => m.email === user.email && m.role === 'employee'
+          )
+        );
+      setProjects(projectsData);
+      if (projectsData.length > 0 && !selectedProjectId) {
+        setSelectedProjectId(projectsData[0].id);
+      }
+      setIsLoading(false);
+    }, (error) => {
+      setError('Failed to load projects.');
+      setIsLoading(false);
+    });
+    return () => { if (unsubscribe) unsubscribe(); };
   }, [authChecked, user, db]);
  
   // Ticket listener updates when selectedProjectId, projects, or user changes

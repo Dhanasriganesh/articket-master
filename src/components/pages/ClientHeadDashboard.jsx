@@ -79,6 +79,9 @@ const ClientHeadDashboard = () => {
   const [searchParams] = useSearchParams();
   const auth = getAuth();
   const db = getFirestore();
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
  
   // Animated counts for priorities
   const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
@@ -102,6 +105,33 @@ const ClientHeadDashboard = () => {
       setActiveTab(tabParam);
     }
   }, [searchParams]);
+  useEffect(() => {
+    if (!authChecked || !user) return;
+    setIsLoading(true);
+    setError(null);
+    let unsubscribe;
+    // Real-time listener for projects
+    const projectsQuery = query(collection(db, 'projects'));
+    unsubscribe = onSnapshot(projectsQuery, (projectsSnapshot) => {
+      const projectsData = projectsSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(project =>
+          (project.members || []).some(
+            m => m.email === user.email && (m.role === 'client_head' || m.role === 'client')
+          )
+        );
+      setProjects(projectsData);
+      if (projectsData.length > 0 && !selectedProjectId) {
+        setSelectedProjectId(projectsData[0].id);
+      }
+      setIsLoading(false);
+    }, (error) => {
+      setError('Failed to load projects.');
+      setIsLoading(false);
+    });
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, [authChecked, user, db]);
+ 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
@@ -136,14 +166,6 @@ const ClientHeadDashboard = () => {
           ...doc.data()
         }));
         setClients(clientsData);
-        // Fetch projects
-        const projectsQuery = query(collection(db, 'projects'));
-        const projectsSnapshot = await getDocs(projectsQuery);
-        const projectsData = projectsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setProjects(projectsData);
         // Fetch tickets for the client head's project only
         let ticketsData = [];
         if (clientHeadProject) {

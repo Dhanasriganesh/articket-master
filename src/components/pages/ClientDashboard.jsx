@@ -100,6 +100,8 @@ function ClientDashboard() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [searchParams] = useSearchParams();
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
  
   // Animated counts for priorities (must be at top level, not inside JSX)
   const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
@@ -435,6 +437,33 @@ function ClientDashboard() {
       </button>
     );
   };
+ 
+  useEffect(() => {
+    if (!authChecked || !user) return;
+    setIsLoading(true);
+    setError(null);
+    let unsubscribe;
+    // Real-time listener for projects
+    const projectsQuery = query(collection(db, 'projects'));
+    unsubscribe = onSnapshot(projectsQuery, (projectsSnapshot) => {
+      const projectsData = projectsSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(project =>
+          (project.members || []).some(
+            m => m.email === user.email && m.role === 'client'
+          )
+        );
+      setProjects(projectsData);
+      if (projectsData.length > 0 && !selectedProjectId) {
+        setSelectedProjectId(projectsData[0].id);
+      }
+      setIsLoading(false);
+    }, (error) => {
+      setError('Failed to load projects.');
+      setIsLoading(false);
+    });
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, [authChecked, user, db]);
  
   if (error) {
     return (
