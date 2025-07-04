@@ -604,7 +604,7 @@ function ClientDashboard() {
           <main className="flex-1 overflow-auto p-6 bg-gray-50">
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
-                {/* Stats Cards */}
+                {/* Stats Cards
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                   <button 
                     onClick={() => {
@@ -717,7 +717,7 @@ function ClientDashboard() {
                       </div>
                     </div>
                   </button>
-                </div>
+                </div> */}
 
                 {/* Filtered Tickets Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">

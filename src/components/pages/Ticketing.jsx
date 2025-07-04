@@ -595,6 +595,17 @@ function Client({ selectedProjectId, selectedProjectName }) {
         <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 p-0 overflow-hidden">
           <form onSubmit={handleSubmit} className="p-8 md:p-12 space-y-10">
             <div className="space-y-6">
+                 {/* Project field */}
+          <div className="mb-4">
+                <label className="block text-gray-700 font-semibold mb-2">Project</label>
+            <input
+              type="text"
+              className="w-full px-4 py-3 border-2 rounded-xl bg-gray-100 text-gray-700 border-gray-200 cursor-not-allowed"
+              value={formData.project}
+              disabled
+              readOnly
+            />
+          </div>
               {/* Module Dropdown */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Module *</label>
@@ -659,17 +670,7 @@ function Client({ selectedProjectId, selectedProjectName }) {
             />
           </div>
               )}
-              {/* Project field */}
-          <div className="mb-4">
-                <label className="block text-gray-700 font-semibold mb-2">Project</label>
-            <input
-              type="text"
-              className="w-full px-4 py-3 border-2 rounded-xl bg-gray-100 text-gray-700 border-gray-200 cursor-not-allowed"
-              value={formData.project}
-              disabled
-              readOnly
-            />
-          </div>
+           
               {/* Debug log for clientMembers at render time */}
               {console.log('Dropdown clientMembers:', clientMembers)}
               {/* Reported by dropdown (unstyled for debugging) */}
