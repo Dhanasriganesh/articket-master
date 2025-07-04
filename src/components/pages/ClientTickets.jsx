@@ -297,7 +297,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
             <BsTicketFill className="mr-3 text-blue-600" />Tickets
           </h1>
           {/* Ticket Stats Cards */}
-          <div className="flex gap-2">
+          {/* <div className="flex gap-2">
             <div className="bg-white rounded-lg shadow border border-gray-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
               <span className="text-xs text-gray-500">Total</span>
               <span className="text-lg font-bold text-gray-900">{totalTickets}</span>
@@ -318,7 +318,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
               <span className="text-xs text-gray-600">Closed</span>
               <span className="text-lg font-bold text-gray-700">{closedTickets}</span>
             </div>
-          </div>
+          </div> */}
         </div>
        
       </div>

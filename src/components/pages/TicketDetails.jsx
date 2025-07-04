@@ -466,6 +466,18 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       if (editFields.status !== ticket.status) {
         updates.status = editFields.status;
         commentMsg.push(`Status changed to ${editFields.status}`);
+        // If status is being set to Resolved, always add a resolution comment for KPI
+        if (editFields.status === 'Resolved') {
+          await updateDoc(ticketRef, {
+            comments: arrayUnion({
+              message: `Resolution updated`,
+              timestamp: new Date(),
+              authorEmail: auth.currentUser?.email,
+              authorName: currentUserName,
+              authorRole: 'resolver',
+            })
+          });
+        }
       }
       // Assignment
       let assignee = null;
@@ -499,6 +511,16 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         if (assignee) {
           updates.assignedTo = { email: assignee.email, name: assignee.name, role: assignee.role };
           commentMsg.push(`Assigned to ${assignee.name}`);
+          // Always add an assignment comment for KPI
+          await updateDoc(ticketRef, {
+            comments: arrayUnion({
+              message: `Assigned to ${assignee.name}`,
+              timestamp: new Date(),
+              authorEmail: auth.currentUser?.email,
+              authorName: currentUserName,
+              authorRole: 'system',
+            })
+          });
         }
       }
       // If only the assignee changed, call handleAssignTicket and do not send a comment email
