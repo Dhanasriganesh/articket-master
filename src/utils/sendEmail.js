@@ -10,8 +10,10 @@ import emailjs from 'emailjs-com';
  *   [{{project}}] Ticket #{{request_id}} - {{subject}} ({{status}})
  */
 export const sendEmail = async (params, templateId) => {
-  const SERVICE_ID = 'service_f257b23';
-  const PUBLIC_KEY = 'ra7gO6IdJA5dC3cH4';
+  const SERVICE_ID = 'service_knwvnzo';
+  const PUBLIC_KEY = 'pW77ZZ67pUHwzHIRa';
+ 
+  console.log('[DEBUG] sendEmail called with:', { SERVICE_ID, templateId, params });
  
   // Example of how to build the params object for EmailJS
   // (Fill these fields when calling sendEmail)
@@ -35,6 +37,7 @@ export const sendEmail = async (params, templateId) => {
  
   try {
     await emailjs.send(SERVICE_ID, templateId, params, PUBLIC_KEY);
+    console.log('[DEBUG] sendEmail success');
     return true;
   } catch (error) {
     console.error('Failed to send email:', error);

@@ -298,10 +298,10 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
         project: selectedProjectName,
         category: ticket.category,
         priority: ticket.priority,
-        ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+        ticket_link: `https://articket.vercel.app`,
       };
       console.log('Assignment emailParams:', emailParams);
-      await sendEmail(emailParams, 'template_6265t8d');
+      await sendEmail(emailParams, 'template_igl3oxn');
     } catch (err) {
       console.error('Error assigning ticket:', err);
     }
@@ -421,58 +421,50 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
   return (
     <>
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
-        <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-            <BsTicketFill className="mr-3 text-blue-600" />Tickets
-          </h1>
-          {/* Ticket Stats Cards */}
-          <div className="flex gap-2">
-            <div className="bg-white rounded-lg shadow border border-gray-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-gray-500">Total</span>
-              <span className="text-lg font-bold text-gray-900">{totalTickets}</span>
-            </div>
-            <div className="bg-blue-50 rounded-lg shadow border border-blue-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-blue-600">Open</span>
-              <span className="text-lg font-bold text-blue-700">{openTickets}</span>
-            </div>
-            <div className="bg-yellow-50 rounded-lg shadow border border-yellow-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-yellow-600">In Progress</span>
-              <span className="text-lg font-bold text-yellow-700">{inProgressTickets}</span>
-            </div>
-            <div className="bg-green-50 rounded-lg shadow border border-green-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-green-600">Resolved</span>
-              <span className="text-lg font-bold text-green-700">{resolvedTickets}</span>
-            </div>
-            <div className="bg-gray-50 rounded-lg shadow border border-gray-200 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-gray-600">Closed</span>
-              <span className="text-lg font-bold text-gray-700">{closedTickets}</span>
+        <div className="flex items-center gap-4 w-full">
+          <div className="bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-xl px-6 py-4 flex items-center w-full shadow">
+            <h1 className="text-3xl font-bold text-white flex items-center">
+              <BsTicketFill className="mr-3 text-white" /> Tickets
+            </h1>
+            {/* Ticket Stats Cards */}
+            <div className="flex gap-2 ml-8">
+              <div className="bg-white bg-opacity-80 rounded-lg shadow border border-gray-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+                <span className="text-xs text-gray-700">Total</span>
+                <span className="text-lg font-bold text-gray-900">{totalTickets}</span>
+              </div>
+              <div className="bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-lg shadow border border-orange-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+                <span className="text-xs text-white">Open</span>
+                <span className="text-lg font-bold text-white">{openTickets}</span>
+              </div>
+              <div className="bg-yellow-50 rounded-lg shadow border border-yellow-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+                <span className="text-xs text-yellow-600">In Progress</span>
+                <span className="text-lg font-bold text-yellow-700">{inProgressTickets}</span>
+              </div>
+              <div className="bg-green-50 rounded-lg shadow border border-green-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+                <span className="text-xs text-green-600">Resolved</span>
+                <span className="text-lg font-bold text-green-700">{resolvedTickets}</span>
+              </div>
+              <div className="bg-gray-50 rounded-lg shadow border border-gray-200 px-3 py-2 flex flex-col items-center min-w-[70px]">
+                <span className="text-xs text-gray-600">Closed</span>
+                <span className="text-lg font-bold text-gray-700">{closedTickets}</span>
+              </div>
             </div>
           </div>
         </div>
-        <div>
-          <p className="text-gray-600 mt-2">Project: {selectedProjectId === 'all' ? 'All Projects' : selectedProjectName}</p>
-        </div>
+        {selectedProjectName && (
+          <p className="text-gray-700 mt-2">Project: {selectedProjectId === 'all' ? 'All Projects' : selectedProjectName}</p>
+        )}
       </div>
  
       <div className="flex justify-between items-center mb-8">
         <div>
-          {setActiveTab ? (
-            <button
-              onClick={() => setActiveTab('create')}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
-            >
-              <BsFolderFill className="mr-2" />
-              Create New Ticket
-            </button>
-          ) : (
-            <Link
-              to="/project-manager-dashboard?tab=create"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
-            >
-              <BsFolderFill className="mr-2" />
-              Create New Ticket
-            </Link>
-          )}
+          <button
+            onClick={() => setActiveTab('create')}
+            className="bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] hover:from-[#FFB86C] hover:to-[#FFA14A] text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center font-semibold shadow"
+          >
+            <BsFolderFill className="mr-2 text-white" />
+            Create New Ticket
+          </button>
         </div>
       </div>
  
@@ -577,7 +569,7 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
         </div>
         <button
           onClick={() => setFiltersApplied(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
+          className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
           type="button"
         >
           Search
@@ -591,7 +583,7 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
             setSearchTerm('');
             setFiltersApplied(false);
           }}
-          className="ml-auto text-xs text-blue-600 hover:underline px-2 py-1 rounded"
+          className="ml-auto text-xs text-orange-600 hover:underline px-2 py-1 rounded"
           type="button"
         >
           Clear Filters
@@ -646,7 +638,7 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                        ticket.status === 'Open' ? 'bg-orange-100 text-orange-800' :
                         ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
                         ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
                         'bg-gray-100 text-gray-800'

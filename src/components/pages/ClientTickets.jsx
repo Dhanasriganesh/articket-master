@@ -1,204 +1,128 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, doc, updateDoc, arrayUnion, serverTimestamp, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../firebase/config';
 import { Link, useNavigate } from 'react-router-dom';
 import { BsTicketFill, BsFolderFill } from 'react-icons/bs';
 import TicketDetails from './TicketDetails';
 import { sendEmail } from '../../utils/sendEmail';
+import { fetchProjectMemberEmails } from '../../utils/emailUtils';
  
-const ClientTickets = ({ setActiveTab }) => {
+// Helper to safely format timestamps
+function formatTimestamp(ts) {
+  if (!ts) return '';
+  if (typeof ts === 'string') {
+    return new Date(ts).toLocaleString();
+  }
+  if (typeof ts.toDate === 'function') {
+    return ts.toDate().toLocaleString();
+  }
+  return '';
+}
+ 
+const ClientHeadTickets = ({ setActiveTab }) => {
   const [ticketsData, setTicketsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const navigate = useNavigate();
-  const [userProject, setUserProject] = useState(null);
   const [selectedTicketId, setSelectedTicketId] = useState(null);
   const [filterStatus, setFilterStatus] = useState(['All']);
   const [filterPriority, setFilterPriority] = useState(['All']);
   const [searchTerm, setSearchTerm] = useState('');
-  const [teamMembers, setTeamMembers] = useState([]);
   const [filterRaisedByEmployee, setFilterRaisedByEmployee] = useState('all');
   const [filterRaisedByClient, setFilterRaisedByClient] = useState('all');
+  const [currentUserEmail, setCurrentUserEmail] = useState('');
+  const [selectedProject, setSelectedProject] = useState('VMM');
   const [employees, setEmployees] = useState([]);
   const [clients, setClients] = useState([]);
-  const [currentUserEmail, setCurrentUserEmail] = useState('');
+  const [currentUserData, setCurrentUserData] = useState(null);
   const [filtersApplied, setFiltersApplied] = useState(false);
   const [sortOrder, setSortOrder] = useState('desc'); // 'desc' for Newest, 'asc' for Oldest
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false);
   const statusDropdownRef = useRef(null);
   const priorityDropdownRef = useRef(null);
+  const navigate = useNavigate();
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [employeeMembers, setEmployeeMembers] = useState([]);
+  const [clientMembers, setClientMembers] = useState([]);
  
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
       if (user) {
-        console.log('User authenticated in ClientTickets.jsx', user.email);
         setLoading(true);
         setCurrentUserEmail(user.email);
- 
-        // Check for filter data from dashboard
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const userData = userDocSnap.data();
+          setCurrentUserData(userData);
+          setSelectedProject(userData.project || 'VMM');
+        }
         try {
           const filterData = sessionStorage.getItem('ticketFilter');
           if (filterData) {
             const parsedFilter = JSON.parse(filterData);
             setFilterStatus(parsedFilter.status);
             setFilterPriority(parsedFilter.priority);
-            setFilterRaisedByEmployee(parsedFilter.raisedByEmployee);
-            setFilterRaisedByClient(parsedFilter.raisedByClient);
-            // Clear the filter data after applying it
             sessionStorage.removeItem('ticketFilter');
           }
         } catch (err) {
           console.error('Error parsing filter data:', err);
         }
- 
-        let currentProject = 'General';
-        try {
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            const userData = userDocSnap.data();
-            currentProject = userData.project || 'General';
-            setUserProject(currentProject);
-            console.log('Fetched user project:', currentProject);
-          } else {
-            console.warn('User document not found for uid:', user.uid);
-            setUserProject('General');
-          }
-        } catch (err) {
-          console.error('Error fetching user project:', err);
-          setError('Failed to load user project.');
-          setUserProject('General');
-        }
- 
-        // Fetch employees and clients separately
-        try {
-          const usersRef = collection(db, 'users');
-         
-          // Fetch employees and project managers
-          const employeesQuery = query(
-            usersRef,
-            where('project', '==', currentProject),
-            where('role', 'in', ['employee', 'manager'])
-          );
-          const employeesSnapshot = await getDocs(employeesQuery);
-          const employeesList = [];
-          const employeeEmails = new Set();
-          const employeeNameCounts = {};
- 
-          employeesSnapshot.forEach((doc) => {
-            const userData = doc.data();
-            if (userData.email !== user.email && !employeeEmails.has(userData.email)) {
-              employeeEmails.add(userData.email);
-             
-              const displayName = userData.firstName && userData.lastName
-                ? `${userData.firstName} ${userData.lastName}`.trim()
-                : userData.email.split('@')[0];
-             
-              employeeNameCounts[displayName] = (employeeNameCounts[displayName] || 0) + 1;
-             
-              employeesList.push({
-                id: doc.id,
-                email: userData.email,
-                name: displayName,
-                role: userData.role
-              });
-            }
-          });
- 
-          employeesList.sort((a, b) => a.name.localeCompare(b.name));
-          employeesList.forEach(emp => {
-            if (employeeNameCounts[emp.name] > 1) {
-              const emailPart = emp.email.split('@')[0];
-              emp.displayName = `${emp.name} (${emailPart})`;
-            } else {
-              emp.displayName = emp.name;
-            }
-          });
-          setEmployees(employeesList);
- 
-          // Fetch clients
-          const clientsQuery = query(
-            usersRef,
-            where('project', '==', currentProject),
-            where('role', '==', 'client')
-          );
-          const clientsSnapshot = await getDocs(clientsQuery);
-          const clientsList = [];
-          const clientEmails = new Set();
-          const clientNameCounts = {};
- 
-          clientsSnapshot.forEach((doc) => {
-            const userData = doc.data();
-            if (userData.email !== user.email && !clientEmails.has(userData.email)) {
-              clientEmails.add(userData.email);
-             
-              const displayName = userData.firstName && userData.lastName
-                ? `${userData.firstName} ${userData.lastName}`.trim()
-                : userData.email.split('@')[0];
-             
-              clientNameCounts[displayName] = (clientNameCounts[displayName] || 0) + 1;
-             
-              clientsList.push({
-                id: doc.id,
-                email: userData.email,
-                name: displayName,
-                role: userData.role
-              });
-            }
-          });
- 
-          clientsList.sort((a, b) => a.name.localeCompare(b.name));
-          clientsList.forEach(client => {
-            if (clientNameCounts[client.name] > 1) {
-              const emailPart = client.email.split('@')[0];
-              client.displayName = `${client.name} (${emailPart})`;
-            } else {
-              client.displayName = client.name;
-            }
-          });
-          setClients(clientsList);
- 
-          console.log('Fetched employees:', employeesList);
-          console.log('Fetched clients:', clientsList);
-        } catch (err) {
-          console.error('Error fetching users:', err);
-        }
- 
-        const ticketsCollectionRef = collection(db, 'tickets');
-        const q = query(
-          ticketsCollectionRef,
-          where('project', '==', currentProject)
-        );
- 
-        const unsubscribeTickets = onSnapshot(q, (snapshot) => {
-          const tickets = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          setTicketsData(tickets);
-          setLoading(false);
-          console.log(`Fetched tickets for project ${currentProject}:`, tickets);
-        }, (err) => {
-          console.error('Error fetching project-filtered tickets:', err);
-          setError('Failed to load tickets for your project.');
-          setLoading(false);
-        });
- 
-        return () => unsubscribeTickets();
- 
       } else {
-        console.log('No user authenticated in ClientTickets.jsx');
         setLoading(false);
         setTicketsData([]);
-        setUserProject(null);
-        setEmployees([]);
-        setClients([]);
       }
     });
- 
     return () => unsubscribeAuth();
   }, []);
+ 
+  useEffect(() => {
+    if (!selectedProject) return;
+    setLoading(true);
+    // Fetch project members from projects collection
+    const fetchProjectMembers = async () => {
+      try {
+        const projectsRef = collection(db, 'projects');
+        const q = query(projectsRef, where('name', '==', selectedProject));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const projectDoc = snapshot.docs[0].data();
+          const members = projectDoc.members || [];
+          setProjectMembers(members);
+          setEmployeeMembers(members.filter(m => m.role === 'employee' || m.role === 'project_manager'));
+          setClientMembers(members.filter(m => m.role === 'client' || m.role === 'client_head'));
+        } else {
+          setProjectMembers([]);
+          setEmployeeMembers([]);
+          setClientMembers([]);
+        }
+      } catch (err) {
+        setProjectMembers([]);
+        setEmployeeMembers([]);
+        setClientMembers([]);
+      }
+      setLoading(false);
+    };
+    fetchProjectMembers();
+    // Fetch tickets for the project
+    const ticketsCollectionRef = collection(db, 'tickets');
+    const qTickets = query(
+      ticketsCollectionRef,
+      where('project', '==', selectedProject)
+    );
+    const unsubscribeTickets = onSnapshot(qTickets, (snapshot) => {
+      const tickets = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setTicketsData(tickets);
+      setLoading(false);
+    }, (err) => {
+      setError('Failed to load tickets for the project.');
+      setLoading(false);
+    });
+    return () => unsubscribeTickets();
+  }, [selectedProject]);
  
   useEffect(() => {
     function handleClickOutside(event) {
@@ -221,6 +145,64 @@ const ClientTickets = ({ setActiveTab }) => {
  
   const handleBackToTickets = () => {
     setSelectedTicketId(null);
+  };
+ 
+  const handleAssignTicket = async (ticketId, selectedUserEmail) => {
+    console.log('handleAssignTicket called with:', ticketId, selectedUserEmail);
+    const assignable = [...employees, ...clients];
+    const selectedUser = assignable.find(u => u.email === selectedUserEmail) || {
+      email: currentUserEmail,
+      id: 'me',
+      firstName: '',
+      lastName: '',
+    };
+    const ticket = ticketsData.find(t => t.id === ticketId);
+ 
+    if (!ticketId || !auth.currentUser || !selectedUser || !ticket) return;
+ 
+    const ticketRef = doc(db, 'tickets', ticketId);
+    const newAssignee = {
+      name: selectedUser.name || selectedUser.email.split('@')[0],
+      email: selectedUser.email
+    };
+    const assignerUsername = currentUserEmail.split('@')[0];
+ 
+    const response = {
+      message: `Ticket assigned to ${newAssignee.name} by ${assignerUsername}.`,
+      timestamp: new Date().toISOString(),
+      authorEmail: 'system',
+      authorRole: 'system',
+    };
+ 
+    try {
+      await updateDoc(ticketRef, {
+        assignedTo: newAssignee,
+        assignedBy: assignerUsername,
+        lastUpdated: serverTimestamp()
+      });
+      // Log the assignment as a comment for history, but do NOT send a comment email
+      await updateDoc(ticketRef, {
+        customerResponses: arrayUnion(response)
+      });
+      // Only send the assignment email
+      const emailParams = {
+        to_email: ticket.email,
+        to_name: ticket.customer || ticket.name || ticket.email,
+        subject: `Your ticket has been assigned (ID: ${ticket.ticketNumber})`,
+        ticket_number: ticket.ticketNumber,
+        assigned_to: newAssignee.name,
+        assigned_by_name: assignerUsername,
+        assigned_by_email: currentUserEmail,
+        project: ticket.project,
+        category: ticket.category,
+        priority: ticket.priority,
+        ticket_link: `https://articket.vercel.app`,
+      };
+      console.log('Assignment emailParams:', emailParams);
+      await sendEmail(emailParams, 'template_igl3oxn');
+    } catch (err) {
+      console.error('Error assigning ticket:', err);
+    }
   };
  
   const handleCheckboxFilter = (filter, setFilter, value) => {
@@ -246,33 +228,21 @@ const ClientTickets = ({ setActiveTab }) => {
     const matchesPriority = filterPriority.includes('All') || filterPriority.includes(ticket.priority);
     const matchesSearch =
       ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ticket.id?.toLowerCase().includes(searchTerm.toLowerCase());
+      ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase());
    
     // Check both employee and client filters
     let matchesRaisedBy = true;
-    const ticketUser = employees.find(emp => emp.email === ticket.email)
-      ? 'employee'
-      : clients.find(client => client.email === ticket.email)
-        ? 'client'
-        : null;
- 
-    if (ticketUser === 'employee') {
-      if (filterRaisedByEmployee === 'all') {
-        matchesRaisedBy = true;
-      } else if (filterRaisedByEmployee === 'me') {
+    if (filterRaisedByEmployee !== 'all') {
+      if (filterRaisedByEmployee === 'me') {
         matchesRaisedBy = ticket.email === currentUserEmail;
       } else {
-        const selectedEmployee = employees.find(emp => emp.id === filterRaisedByEmployee);
-        matchesRaisedBy = selectedEmployee ? ticket.email === selectedEmployee.email : false;
+        matchesRaisedBy = ticket.email === filterRaisedByEmployee;
       }
-    } else if (ticketUser === 'client') {
-      if (filterRaisedByClient === 'all') {
-        matchesRaisedBy = true;
-      } else if (filterRaisedByClient === 'me') {
+    } else if (filterRaisedByClient !== 'all') {
+      if (filterRaisedByClient === 'me') {
         matchesRaisedBy = ticket.email === currentUserEmail;
       } else {
-        const selectedClient = clients.find(client => client.id === filterRaisedByClient);
-        matchesRaisedBy = selectedClient ? ticket.email === selectedClient.email : false;
+        matchesRaisedBy = ticket.email === filterRaisedByClient;
       }
     }
    
@@ -316,7 +286,7 @@ const ClientTickets = ({ setActiveTab }) => {
   }
  
   if (selectedTicketId) {
-    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} onAssign={() => {}} />;
+    return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} onAssign={handleAssignTicket} />;
   }
  
   return (
@@ -324,7 +294,7 @@ const ClientTickets = ({ setActiveTab }) => {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
         <div className="flex items-center gap-4">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-            <BsTicketFill className="mr-3 text-blue-600" /> Project Tickets
+            <BsTicketFill className="mr-3 text-blue-600" />Tickets
           </h1>
           {/* Ticket Stats Cards */}
           <div className="flex gap-2">
@@ -350,12 +320,24 @@ const ClientTickets = ({ setActiveTab }) => {
             </div>
           </div>
         </div>
-        {userProject && (
-          <p className="text-gray-600 mt-2">Project: {userProject}</p>
-        )}
+        <div>
+          <p className="text-gray-600 mt-2 text-2xl text-black font-bold">Project: {selectedProject}</p>
+        </div>
       </div>
  
-      {/* Updated Filters Bar */}
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <button
+            onClick={() => navigate('/client-head-dashboard?tab=create')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
+          >
+            <BsFolderFill className="mr-2" />
+            Create New Ticket
+          </button>
+        </div>
+      </div>
+ 
+      {/* Filters Bar */}
       <div className="flex flex-wrap items-center gap-4 mb-6 bg-white p-4 rounded-xl shadow border border-gray-100">
         <div>
           <label className="text-xs font-semibold text-gray-500 mr-2">Status</label>
@@ -409,9 +391,9 @@ const ClientTickets = ({ setActiveTab }) => {
           >
             <option value="all">All Employees</option>
             <option value="me">Me</option>
-            {employees.map(employee => (
-              <option key={employee.id} value={employee.id}>
-                {employee.displayName}
+            {employeeMembers.map(member => (
+              <option key={member.email} value={member.email}>
+                {member.firstName && member.lastName ? `${member.firstName} ${member.lastName}` : member.email.split('@')[0]}{member.role === 'project_manager' ? ' (Manager)' : ''}
               </option>
             ))}
           </select>
@@ -427,10 +409,9 @@ const ClientTickets = ({ setActiveTab }) => {
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 min-w-[140px]"
           >
             <option value="all">All Clients</option>
-            <option value="me">Me</option>
-            {clients.map(client => (
-              <option key={client.id} value={client.id}>
-                {client.displayName}
+            {clientMembers.map(member => (
+              <option key={member.email} value={member.email}>
+                {member.firstName && member.lastName ? `${member.firstName} ${member.lastName}` : member.email.split('@')[0]}{member.role === 'client_head' ? ' (Client Head)' : ''}
               </option>
             ))}
           </select>
@@ -477,6 +458,7 @@ const ClientTickets = ({ setActiveTab }) => {
           Clear Filters
         </button>
       </div>
+ 
       {/* Only show tickets if filtersApplied is true */}
       {filtersApplied && sortedTickets.length > 0 ? (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
@@ -501,6 +483,9 @@ const ClientTickets = ({ setActiveTab }) => {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Assigned To
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Assigned By
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Last Updated
@@ -538,12 +523,15 @@ const ClientTickets = ({ setActiveTab }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {(() => {
-                        // Always just show the assignee's name/email or '-'. No assign dropdown for clients or client head.
+                        // Always just show the assignee's name/email or '-'. No assign dropdown for client head.
                         return ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-';
                       })()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ticket.lastUpdated ? new Date(ticket.lastUpdated.toDate()).toLocaleString() : 'N/A'}
+                      {ticket.assignedBy || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {formatTimestamp(ticket.lastUpdated)}
                     </td>
                   </tr>
                 ))}
@@ -560,5 +548,5 @@ const ClientTickets = ({ setActiveTab }) => {
   );
 };
  
-export default ClientTickets;
+export default ClientHeadTickets;
  

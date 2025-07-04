@@ -29,9 +29,11 @@ import {
 import { collection, query, where, getDocs, getFirestore, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend
 } from 'recharts';
 import LogoutModal from './LogoutModal';
+import TicketDetails from './TicketDetails';
+import { computeKPIsForTickets, exportKpiToExcelWithChartImage } from './ProjectManagerDashboard';
  
 // Animated count-up hook
 function useCountUp(target, duration = 1200) {
@@ -82,6 +84,7 @@ const ClientHeadDashboard = () => {
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedTicketId, setSelectedTicketId] = useState(null);
  
   // Animated counts for priorities
   const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
@@ -180,7 +183,7 @@ const ClientHeadDashboard = () => {
         // Update stats
         setStats({
           totalClients: clientsData.length,
-          activeProjects: projectsData.filter(project => project.status === 'active').length,
+          activeProjects: projects.filter(project => project.status === 'active').length,
           pendingTickets: ticketsData.filter(ticket => ticket.status === 'Open').length,
           resolvedTickets: ticketsData.filter(ticket => ticket.status === 'Closed').length
         });
@@ -216,6 +219,7 @@ const ClientHeadDashboard = () => {
     { id: 'dashboard', label: 'Dashboard', icon: Home, active: activeTab === 'dashboard' },
     { id: 'team', label: 'Team', icon: Users, active: activeTab === 'team' },
     { id: 'tickets', label: 'Tickets', icon: MessageSquare, active: activeTab === 'tickets' },
+    { id: 'kpi', label: 'KPI Reports', icon: BarChart3, active: activeTab === 'kpi' },
     { id: 'create', label: 'Create Ticket', icon: Plus, active: activeTab === 'create' },
   ];
  
@@ -253,6 +257,13 @@ const ClientHeadDashboard = () => {
  
   // Find the project where the client head is a member
   const myProject = projects.find(project => (project.members || []).some(m => m.email === user?.email && m.role === 'client_head'));
+ 
+  // Filter tickets for current user (assigned to or raised by)
+  const currentUserEmail = user?.email;
+  const myTickets = tickets.filter(t =>
+    (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
+    t.email === currentUserEmail
+  );
  
   return (
     <div className="flex h-screen bg-gray-50">
@@ -366,29 +377,47 @@ const ClientHeadDashboard = () => {
  
                 
  
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Pending Tickets</p>
-                      <p className="text-2xl font-bold text-gray-900">{stats.pendingTickets}</p>
-                    </div>
-                    <div className="bg-yellow-100 rounded-lg p-3">
-                      <AlertCircle className="w-6 h-6 text-yellow-600" />
-                    </div>
-                  </div>
-                </div>
+                
+             
+              </div>
  
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Resolved Tickets</p>
-                      <p className="text-2xl font-bold text-gray-900">{stats.resolvedTickets}</p>
-                    </div>
-                    <div className="bg-purple-100 rounded-lg p-3">
-                      <CheckCircle className="w-6 h-6 text-purple-600" />
-                    </div>
+              {/* My Project Tickets Table */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">My Tickets</h2>
+                {selectedTicketId ? (
+                  <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
+                ) : myTickets.length === 0 ? (
+                  <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs text-left text-gray-700 border">
+                      <thead>
+                        <tr>
+                          <th className="py-1 px-2">Ticket #</th>
+                          <th className="py-1 px-2">Subject</th>
+                          <th className="py-1 px-2">Status</th>
+                          <th className="py-1 px-2">Priority</th>
+                          <th className="py-1 px-2">Created</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {myTickets.map((ticket, idx) => (
+                          <tr
+                            key={idx}
+                            className="border-t cursor-pointer hover:bg-orange-50"
+                            onClick={() => setSelectedTicketId(ticket.id)}
+                          >
+                            <td className="py-1 px-2">{ticket.ticketNumber}</td>
+                            <td className="py-1 px-2">{ticket.subject}</td>
+                            <td className="py-1 px-2">{ticket.status}</td>
+                            <td className="py-1 px-2">{ticket.priority}</td>
+                            <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                </div>
+                )}
               </div>
  
               {/* Charts and Analytics Section */}
@@ -516,6 +545,80 @@ const ClientHeadDashboard = () => {
  
           {activeTab === 'create' && (
             <Ticketing />
+          )}
+ 
+          {activeTab === 'kpi' && (
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-blue-600" />KPI Reports</h2>
+              {tickets.length === 0 ? (
+                <div className="text-gray-500">No tickets found for KPI analysis.</div>
+              ) : (
+                (() => {
+                  const kpi = computeKPIsForTickets(tickets);
+                  return (
+                    <>
+                      <div className="mb-4">
+                        <div><b>Total Tickets Assigned:</b> {kpi.count}</div>
+                        <div><b>Avg. Response Time:</b> {kpi.avgResponse ? (kpi.avgResponse/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
+                        <div><b>Avg. Resolution Time:</b> {kpi.avgResolution ? (kpi.avgResolution/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart">
+                        <h3 className="text-lg font-semibold mb-2">KPI Bar Chart</h3>
+                        <ResponsiveContainer width="100%" height={250}>
+                          <BarChart data={kpi.details.map(row => ({
+                            name: row.ticketNumber,
+                            'Response Time (min)': row.responseTime ? (row.responseTime/1000/60) : 0,
+                            'Resolution Time (min)': row.resolutionTime ? (row.resolutionTime/1000/60) : 0,
+                          }))}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="Response Time (min)" fill="#8884d8" />
+                            <Bar dataKey="Resolution Time (min)" fill="#82ca9d" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="flex gap-4 mb-4">
+                        <button
+                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+                          onClick={() => exportKpiToExcelWithChartImage(kpi, 'kpi-bar-chart', projects.find(p => p.id === selectedProjectId)?.name || '')}
+                        >
+                          Export to Excel
+                        </button>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-xs text-left text-gray-700 border">
+                          <thead>
+                            <tr>
+                              <th className="py-1 px-2">Ticket #</th>
+                              <th className="py-1 px-2">Subject</th>
+                              <th className="py-1 px-2">Assignee</th>
+                              <th className="py-1 px-2">Response Time</th>
+                              <th className="py-1 px-2">Resolution Time</th>
+                              <th className="py-1 px-2">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {kpi.details.map((row, idx) => (
+                              <tr key={idx} className="border-t">
+                                <td className="py-1 px-2">{row.ticketNumber}</td>
+                                <td className="py-1 px-2">{row.subject}</td>
+                                <td className="py-1 px-2">{row.assignee}</td>
+                                <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                <td className="py-1 px-2">{row.status}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  );
+                })()
+              )}
+            </div>
           )}
         </main>
       </div>

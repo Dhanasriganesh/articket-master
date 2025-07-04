@@ -25,6 +25,7 @@ import Ticketing from './Ticketing'; // Import the Ticketing component
 import EmployeeTickets from './EmployeeTickets'; // Import the EmployeeTickets component
 import LogoutModal from './LogoutModal';
 import { Modal } from 'antd'; // Add this import if you use Ant Design, or use a custom modal
+import TicketDetails from './TicketDetails';
  
 function EmployeeDashboard() {
   const [tickets, setTickets] = useState([]);
@@ -47,6 +48,7 @@ function EmployeeDashboard() {
   const [searchParams] = useSearchParams();
   const [roleChangeToast, setRoleChangeToast] = useState({ show: false, message: '' });
   const [showSwitchProjectModal, setShowSwitchProjectModal] = useState(false);
+  const [selectedTicketId, setSelectedTicketId] = useState(null);
  
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
@@ -71,27 +73,30 @@ function EmployeeDashboard() {
   // Fetch projects when user is authenticated
   useEffect(() => {
     if (!authChecked || !user) return;
-    setIsLoading(true);
-    setError(null);
+      setIsLoading(true);
+      setError(null);
     let unsubscribe;
     // Real-time listener for projects
-    const projectsQuery = query(collection(db, 'projects'));
+          const projectsQuery = query(collection(db, 'projects'));
     unsubscribe = onSnapshot(projectsQuery, (projectsSnapshot) => {
-      const projectsData = projectsSnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(project =>
-          (project.members || []).some(
-            m => m.email === user.email && m.role === 'employee'
-          )
-        );
-      setProjects(projectsData);
-      if (projectsData.length > 0 && !selectedProjectId) {
-        setSelectedProjectId(projectsData[0].id);
-      }
-      setIsLoading(false);
+          const projectsData = projectsSnapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(project =>
+              (project.members || []).some(
+                m => m.email === user.email && m.role === 'employee'
+              )
+            );
+          setProjects(projectsData);
+      // Always select the first project the employee is in
+      if (projectsData.length > 0) {
+            setSelectedProjectId(projectsData[0].id);
+      } else {
+        setSelectedProjectId('');
+          }
+          setIsLoading(false);
     }, (error) => {
-      setError('Failed to load projects.');
-      setIsLoading(false);
+          setError('Failed to load projects.');
+          setIsLoading(false);
     });
     return () => { if (unsubscribe) unsubscribe(); };
   }, [authChecked, user, db]);
@@ -253,8 +258,6 @@ function EmployeeDashboard() {
     { id: 'dashboard', label: 'Dashboard', icon: Home, active: activeTab === 'dashboard' },
     { id: 'tickets', label: 'Tickets', icon: FileText, active: activeTab === 'tickets' },
     { id: 'create', label: 'Create Ticket', icon: Plus, active: activeTab === 'create' }
-   
-   
   ];
  
   const renderSidebarItem = (item) => {
@@ -270,7 +273,7 @@ function EmployeeDashboard() {
         }}
         className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-3'} px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
           item.active
-            ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg'
+            ? 'bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] text-white shadow-lg'
             : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
         }`}
         title={sidebarCollapsed ? item.label : ''}
@@ -313,11 +316,6 @@ function EmployeeDashboard() {
     return () => { if (unsubscribe) unsubscribe(); };
   }, [navigate]);
  
-  const handleSwitchProject = (projectId) => {
-    setSelectedProjectId(projectId);
-    setShowSwitchProjectModal(false);
-  };
- 
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
@@ -329,7 +327,7 @@ function EmployeeDashboard() {
           <p className="text-gray-600 mb-6 leading-relaxed">{error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 flex items-center justify-center space-x-2 font-medium shadow-lg hover:shadow-xl"
+            className="w-full bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] text-white px-6 py-3 rounded-xl hover:from-[#FFB86C] hover:to-[#FFC98C] transition-all duration-200 flex items-center justify-center space-x-2 font-medium shadow-lg hover:shadow-xl"
           >
             <RefreshCw className="w-5 h-5" />
             <span>Retry Connection</span>
@@ -343,8 +341,8 @@ function EmployeeDashboard() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border border-gray-200">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+          <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Loader2 className="w-8 h-8 text-orange-600 animate-spin" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-3">Loading Dashboard</h2>
           <p className="text-gray-600 leading-relaxed">Please wait while we connect to the server...</p>
@@ -372,7 +370,7 @@ function EmployeeDashboard() {
           <div className="p-6 border-b border-gray-200 flex items-center justify-between">
             {!sidebarCollapsed && (
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
+                <div className="w-10 h-10 bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-xl flex items-center justify-center">
                   <MessageSquare className="w-6 h-6 text-white" />
                 </div>
                 <div>
@@ -396,23 +394,13 @@ function EmployeeDashboard() {
           {/* Sidebar Navigation */}
           <nav className="flex-1 p-6 space-y-2">
             {sidebarItems.map(renderSidebarItem)}
-            {/* Switch Project button if more than one project */}
-            {projects.length > 1 && (
-              <button
-                onClick={() => setShowSwitchProjectModal(true)}
-                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-3'} px-4 py-3 rounded-xl transition-all duration-200 font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 mt-2`}
-              >
-                <Briefcase className="w-5 h-5 mr-2" />
-                {!sidebarCollapsed && <span>Switch Project</span>}
-              </button>
-            )}
           </nav>
  
           {/* Sidebar Footer */}
           <div className="p-6 border-t border-gray-200">
             {!sidebarCollapsed && (
               <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full flex items-center justify-center">
+                <div className="w-8 h-8 bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-full flex items-center justify-center">
                   <User className="w-4 h-4 text-white" />
                 </div>
                 <div>
@@ -423,7 +411,7 @@ function EmployeeDashboard() {
             )}
             <button
               onClick={handleLogoutClick}
-              className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200`}
+              className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-200`}
             >
               <LogOut className="w-4 h-4" />
               {!sidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
@@ -445,7 +433,24 @@ function EmployeeDashboard() {
                 <Menu className="w-6 h-6 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Project: {(projects.find(p => p.id === selectedProjectId)?.name) || projects[0]?.name || 'General'}</h1>
+                {projects.length === 0 ? (
+                  <h1 className="text-2xl font-bold text-gray-900">No Project Assigned</h1>
+                ) : projects.length === 1 ? (
+                  <h1 className="text-2xl font-bold text-gray-900">Project: {projects[0].name}</h1>
+                ) : (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-2xl font-bold text-gray-900">Project:</span>
+                    <select
+                      className="text-2xl font-bold text-gray-900 bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                      value={selectedProjectId}
+                      onChange={e => setSelectedProjectId(e.target.value)}
+                    >
+                      {projects.map(project => (
+                        <option key={project.id} value={project.id}>{project.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <p className="text-gray-600">Manage your assigned support tickets and communications</p>
               </div>
             </div>
@@ -453,7 +458,7 @@ function EmployeeDashboard() {
              
               <button
                 onClick={handleLogoutClick}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-200"
               >
                 <LogOut className="w-4 h-4" />
                 <span className="font-medium">Sign Out</span>
@@ -474,8 +479,8 @@ function EmployeeDashboard() {
                       <p className="text-sm font-medium text-gray-600">Total Tickets</p>
                       <p className="text-2xl font-bold text-gray-900">{tickets.length}</p>
                     </div>
-                    <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                      <FileText className="w-6 h-6 text-blue-600" />
+                    <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                      <FileText className="w-6 h-6 text-orange-600" />
                     </div>
                   </div>
                 </div>
@@ -483,10 +488,10 @@ function EmployeeDashboard() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-600">Open Tickets</p>
-                      <p className="text-2xl font-bold text-blue-600">{tickets.filter(t => t.status === 'Open').length}</p>
+                      <p className="text-2xl font-bold text-orange-600">{tickets.filter(t => t.status === 'Open').length}</p>
                     </div>
-                    <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                      <AlertCircle className="w-6 h-6 text-blue-600" />
+                    <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                      <AlertCircle className="w-6 h-6 text-orange-600" />
                     </div>
                   </div>
                 </div>
@@ -514,15 +519,62 @@ function EmployeeDashboard() {
                 </div>
               </div>
  
+              {/* My Project Tickets Table */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">My Project Tickets</h2>
+                {selectedTicketId ? (
+                  <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
+                ) : (() => {
+                  const currentUserEmail = user?.email;
+                  const myTickets = tickets.filter(t =>
+                    (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
+                    t.email === currentUserEmail
+                  );
+                  if (myTickets.length === 0) {
+                    return <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>;
+                  }
+                  return (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-xs text-left text-gray-700 border">
+                        <thead>
+                          <tr>
+                            <th className="py-1 px-2">Ticket #</th>
+                            <th className="py-1 px-2">Subject</th>
+                            <th className="py-1 px-2">Status</th>
+                            <th className="py-1 px-2">Priority</th>
+                            <th className="py-1 px-2">Created</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {myTickets.map((ticket, idx) => (
+                            <tr
+                              key={idx}
+                              className="border-t cursor-pointer hover:bg-orange-50"
+                              onClick={() => setSelectedTicketId(ticket.id)}
+                            >
+                              <td className="py-1 px-2">{ticket.ticketNumber}</td>
+                              <td className="py-1 px-2">{ticket.subject}</td>
+                              <td className="py-1 px-2">{ticket.status}</td>
+                              <td className="py-1 px-2">{ticket.priority}</td>
+                              <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
+ 
               {/* Quick Actions */}
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <button
                     onClick={() => setActiveTab('create')}
-                    className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all duration-200"
+                    className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-orange-300 hover:bg-orange-50 transition-all duration-200"
                   >
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
                       {/* Removed Plus icon */}
                     </div>
                     <div className="text-left">
@@ -532,14 +584,14 @@ function EmployeeDashboard() {
                   </button>
                   <button
                     onClick={() => setActiveTab('tickets')}
-                    className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all duration-200"
+                    className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-orange-300 hover:bg-orange-50 transition-all duration-200"
                   >
                     <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
                       <FileText className="w-5 h-5 text-green-600" />
                     </div>
                     <div className="text-left">
-                      <p className="font-medium text-gray-900">View My Tickets</p>
-                      <p className="text-sm text-gray-500">Check status of assigned tickets</p>
+                      <p className="font-medium text-gray-900">View All Project Tickets</p>
+                      <p className="text-sm text-gray-500">See all tickets for your project</p>
                     </div>
                   </button>
                 </div>
@@ -551,43 +603,19 @@ function EmployeeDashboard() {
  
           {activeTab === 'create' && (
             <div className="max-w-auto mx-auto">
-              <Ticketing onTicketCreated={() => setActiveTab('tickets')} />
+              <Ticketing 
+                onTicketCreated={() => setActiveTab('tickets')}
+                selectedProjectId={selectedProjectId}
+                selectedProjectName={projects.find(p => p.id === selectedProjectId)?.name || ''}
+              />
             </div>
           )}
- 
-         
         </main>
       </div>
       {/* Add toast UI */}
       {roleChangeToast.show && (
-        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg z-[9999] bg-blue-600 text-white font-semibold">
+        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg z-[9999] bg-orange-600 text-white font-semibold">
           {roleChangeToast.message}
-        </div>
-      )}
-      {/* Switch Project Modal */}
-      {showSwitchProjectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-          <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full relative">
-            <button
-              className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
-              onClick={() => setShowSwitchProjectModal(false)}
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <h2 className="text-xl font-bold mb-4">Switch Project</h2>
-            <ul className="space-y-2">
-              {projects.map(project => (
-                <li key={project.id}>
-                  <button
-                    className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${selectedProjectId === project.id ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100'}`}
-                    onClick={() => handleSwitchProject(project.id)}
-                  >
-                    {project.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
         </div>
       )}
     </div>

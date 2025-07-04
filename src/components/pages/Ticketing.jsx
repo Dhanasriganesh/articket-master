@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Send,
   Paperclip,
@@ -10,17 +10,91 @@ import {
   Video,
   Loader2,
   X,
-  AlertCircle,
-  ChevronRight
+  AlertCircle
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, updateDoc, doc, getDoc, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../../firebase/config';
 import { sendEmail } from '../../utils/sendEmail';
+import { fetchProjectMemberEmails } from '../../utils/emailUtils';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
-import parse from 'html-react-parser';
- 
-function Client({ onTicketCreated = null }) {
+import PropTypes from 'prop-types';
+
+function PriorityDropdown({ value, onChange, options }) {
+  console.log('PriorityDropdown rendered', options);
+  const [open, setOpen] = useState(false);
+  // Filter out empty/placeholder options
+  const filteredOptions = (options || []).filter(opt => opt.value && opt.value !== 'Select Priority');
+  const selected = filteredOptions.find(opt => opt.value === value);
+
+  const handleOpen = () => {
+    setOpen(o => {
+      if (!o) {
+        // Only log when opening
+        console.log('PriorityDropdown received options:', options);
+      }
+      return !o;
+    });
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className="w-full px-4 py-3 border-2 rounded-xl bg-white text-gray-700 flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-200 hover:border-gray-300"
+        onClick={handleOpen}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-2">
+          {selected && (
+            <span
+              className="inline-block w-4 h-4 rounded-full border border-gray-300 shadow-sm mr-1"
+              style={{ backgroundColor: selected.color || '#888' }}
+            ></span>
+          )}
+          {selected ? selected.value : 'Select Priority'}
+        </span>
+        <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+      </button>
+      {open && (
+        <ul
+          tabIndex={-1}
+          className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-auto focus:outline-none"
+          role="listbox"
+        >
+          {filteredOptions.length === 0 ? (
+            <li className="px-4 py-2 text-gray-400">No priority options available</li>
+          ) : filteredOptions.map(opt => (
+            <li
+              key={opt.value}
+              role="option"
+              aria-selected={value === opt.value}
+              className={`flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-blue-50 ${value === opt.value ? 'bg-blue-100' : ''}`}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              onKeyDown={e => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); } }}
+              tabIndex={0}
+            >
+              <span
+                className="inline-block w-4 h-4 rounded-full border border-gray-300 shadow-sm mr-2"
+                style={{ backgroundColor: opt.color || '#888' }}
+              ></span>
+              {opt.value}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+PriorityDropdown.propTypes = {
+  value: PropTypes.string.isRequired,
+  onChange: PropTypes.func.isRequired,
+  options: PropTypes.array.isRequired
+};
+
+function Client({ selectedProjectId, selectedProjectName }) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -28,7 +102,8 @@ function Client({ onTicketCreated = null }) {
     subject: '',
     priority: 'Medium',
     description: '',
-    category: 'Technical Issue'
+    category: 'Technical Issue',
+    subCategory: ''
   });
  
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,85 +111,41 @@ function Client({ onTicketCreated = null }) {
   const [errors, setErrors] = useState({});
   const [attachments, setAttachments] = useState([]);
   const [ticketId, setTicketId] = useState(null);
-  const [userData, setUserData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const fileInputRef = useRef(null);
   const [previewFile, setPreviewFile] = useState(null);
   const navigate = useNavigate();
-  const location = useLocation();
   const [attachmentError, setAttachmentError] = useState('');
-  const [previewImageSrc, setPreviewImageSrc] = useState(null);
-  const [redirectPath, setRedirectPath] = useState('/client-tickets');
+  const [formConfig, setFormConfig] = useState(null);
+  const [dropdownsLoading, setDropdownsLoading] = useState(true);
+  const [clientMembers, setClientMembers] = useState([]);
+  const [reportedBy, setReportedBy] = useState('');
  
-  const priorities = [
-    { value: 'Low', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200',  icon: '🟢' },
-    { value: 'Medium', color: 'text-yellow-600', bgColor: 'bg-yellow-50', borderColor: 'border-yellow-200',  icon: '🟡' },
-    { value: 'High', color: 'text-orange-600', bgColor: 'bg-red-50', borderColor: 'border-red-200', icon: '🔴' },
-    { value: 'Critical', color: 'text-red-900', bgColor: 'bg-red-90', borderColor: 'border-red-200', icon: '🔴' }
-  ];
+  // Fetch form config from Firestore for dynamic dropdowns
+  useEffect(() => {
+    const fetchFormConfig = async () => {
+      setDropdownsLoading(true);
+      try {
+        const configRef = doc(db, 'config', 'formConfig');
+        const configSnap = await getDoc(configRef);
+        if (configSnap.exists()) {
+          setFormConfig(configSnap.data());
+        }
+      } catch (err) {
+        console.error('Failed to fetch form config', err);
+      } finally {
+        setDropdownsLoading(false);
+      }
+    };
+    fetchFormConfig();
+  }, []);
  
-  const categories = [
-    { value: 'Incident'},
-    { value: 'Service request' },
-    { value: 'Change request' },
-  ];
+  // Fetch cascading options from formConfig
+  const moduleOptions = formConfig?.moduleOptions || [];
+  const categoryOptions = formConfig?.categoryOptions || {};
+  const subCategoryOptions = formConfig?.subCategoryOptions || {};
  
-  // Module and Category options
-  const moduleOptions = [
-    { value: '', label: 'Select Module' },
-    { value: 'EWM', label: 'EWM' },
-    { value: 'BTP', label: 'BTP' },
-    { value: 'TM', label: 'TM' },
-    { value: 'Yl', label: 'Yl' },
-    { value: 'MFS', label: 'MFS' },
-  ];
-  const categoryOptionsMap = {
-    EWM: [
-      { value: 'Inbound', label: 'Inbound' },
-      { value: 'Internal', label: 'Internal' },
-      { value: 'Outbound', label: 'Outbound' },
-    ],
-    BTP: [
-      { value: 'd', label: 'd' },
-      { value: 'e', label: 'e' },
-      { value: 'f', label: 'f' },
-    ],
-    TM: [
-      { value: 'g', label: 'g' },
-      { value: 'h', label: 'h' },
-      { value: 'i', label: 'i' },
-    ],
-    Yl: [
-      { value: 'Gate Management', label: 'Gate Management' },
-      { value: 'Yard Dispatching', label: 'Yard Dispatching' },
-      
-    ],
-    MFS: [
-      { value: 'm', label: 'm' },
-      { value: 'n', label: 'n' },
-      { value: 'o', label: 'o' },
-    ],
-  };
-
-  // Function to reset form
-  const resetForm = () => {
-    setFormData(prev => ({
-      ...prev,
-      name: userData ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim() : '',
-      email: userData?.email || auth.currentUser?.email || '',
-      project: userData?.project || 'General',
-      subject: '',
-      priority: 'Medium',
-      description: '',
-      category: 'Technical Issue',
-      otherIssue: ''
-    }));
-    setSubmitSuccess(false);
-    setTicketId(null);
-    setAttachments([]);
-  };
- 
-  // Fetch user data on component mount (restore logic)
+  // Fetch user data on mount and when selectedProjectName changes
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -123,8 +154,9 @@ function Client({ onTicketCreated = null }) {
           const userDocRef = doc(db, 'users', currentUser.uid);
           const userDocSnap = await getDoc(userDocRef);
           let name = '';
-          let project = 'General';
-          let email = currentUser.email || '';
+          let email = '';
+          let userProject = 'General';
+          let userRole = '';
           if (userDocSnap.exists()) {
             const data = userDocSnap.data();
             if (data.firstName || data.lastName) {
@@ -134,19 +166,25 @@ function Client({ onTicketCreated = null }) {
               name = (data.email || currentUser.email || '').split('@')[0];
             }
             name = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-            project = data.project || 'General';
             email = data.email || currentUser.email || '';
-            setUserData(data);
+            userProject = data.project || 'General';
+            userRole = data.role || '';
           } else {
             name = currentUser.displayName || (currentUser.email?.split('@')[0] || '');
             name = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            email = currentUser.email || '';
           }
-          // Set initial form data for dynamic fields
+          // If client or client_head, force project to user's project, but preserve name/email
           setFormData(prev => ({
             ...prev,
-            name,
-            email,
-            project
+            name: name,
+            email: email,
+            project: (userRole === 'client' || userRole === 'client_head') ? userProject : (selectedProjectName || 'General'),
+            subject: '',
+            priority: 'Medium',
+            description: '',
+            category: 'Technical Issue',
+            subCategory: ''
           }));
         }
       } catch (error) {
@@ -156,8 +194,54 @@ function Client({ onTicketCreated = null }) {
       }
     };
     fetchUserData();
-  }, []);
+    setAttachments([]);
+    setErrors({});
+    setReportedBy('');
+  }, [selectedProjectName]);
  
+  // Fetch client members when project changes
+  useEffect(() => {
+    if (isLoading || !formData.project) {
+      setClientMembers([]);
+        return;
+      }
+    const fetchClientMembers = async () => {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('project', '==', formData.project), where('role', 'in', ['client', 'client_head']));
+      const snapshot = await getDocs(q);
+      const clients = snapshot.docs.map(doc => {
+        const data = doc.data();
+        let name = '';
+        if (data.firstName && data.lastName) {
+          name = `${data.firstName} ${data.lastName}`.trim();
+        } else if (data.firstName) {
+          name = data.firstName;
+        } else if (data.lastName) {
+          name = data.lastName;
+        } else {
+          name = data.email.split('@')[0];
+        }
+        if (data.role === 'client_head') {
+          name += ' (Client Head)';
+        }
+        return {
+          id: doc.id,
+          email: data.email,
+          name,
+        };
+      });
+      console.log('Fetched client users for project', formData.project, ':', clients);
+      setClientMembers(clients);
+    };
+    fetchClientMembers();
+  }, [formData.project, isLoading]);
+
+  useEffect(() => {
+    if (clientMembers.length > 0 && !reportedBy) {
+      setReportedBy(clientMembers[0].email);
+    }
+  }, [clientMembers, reportedBy]);
+
   const validateForm = async () => {
     const newErrors = {};
    
@@ -167,16 +251,31 @@ function Client({ onTicketCreated = null }) {
     if (!formData.subject.trim()) newErrors.subject = 'Subject is required';
     if (!formData.description.trim()) newErrors.description = 'Description is required';
     else if (formData.description.trim().length < 10) newErrors.description = 'Description must be at least 10 characters';
+
+    // Sub-category required only if options exist for selected category
+    if (
+      formData.category &&
+      Array.isArray(subCategoryOptions[formData.category]) &&
+      subCategoryOptions[formData.category].length > 0 &&
+      !formData.subCategory
+    ) {
+      console.log('Validation failed: subCategory value is', formData.subCategory);
+      newErrors.subCategory = 'Sub-Category is required';
+    } else {
+      console.log('Validation passed: subCategory value is', formData.subCategory);
+    }
  
     // Check for duplicate tickets
     if (formData.subject.trim() && formData.email.trim()) {
       const isDuplicate = await checkDuplicateTicket(formData.subject, formData.email);
       if (isDuplicate) {
         newErrors.submit = 'A similar ticket was submitted in the last 24 hours. Please check your email for updates.';
+        console.log('Duplicate ticket detected for subject:', formData.subject, 'and email:', formData.email);
       }
     }
  
     setErrors(newErrors);
+    console.log('validateForm errors:', newErrors);
     return Object.keys(newErrors).length === 0;
   };
  
@@ -249,20 +348,21 @@ function Client({ onTicketCreated = null }) {
   // Helper to get the next ticket number for a category
   const getNextTicketNumber = async (category) => {
     let prefix, counterDocId, startValue;
-    if (category === 'Incident') {
+    // Remove spaces and make lowercase for robust matching
+    const cat = (category || '').replace(/\s+/g, '').toLowerCase();
+    if (cat === 'incident') {
       prefix = 'IN';
       counterDocId = 'incident_counter';
       startValue = 100000;
-    } else if (category === 'Service request') {
+    } else if (cat === 'servicerequest') {
       prefix = 'SR';
       counterDocId = 'service_counter';
       startValue = 200000;
-    } else if (category === 'Change request') {
+    } else if (cat === 'changerequest') {
       prefix = 'CR';
       counterDocId = 'change_counter';
       startValue = 300000;
     } else {
-      // fallback
       prefix = 'IN';
       counterDocId = 'incident_counter';
       startValue = 100000;
@@ -273,22 +373,36 @@ function Client({ onTicketCreated = null }) {
       let current = startValue - 1;
       if (counterDoc.exists()) {
         current = counterDoc.data().value;
+        console.log(`Fetched current value from counters/${counterDocId}:`, current);
+      } else {
+        console.log(`Counter document counters/${counterDocId} does not exist, starting at:`, startValue);
       }
       const newValue = current + 1;
       transaction.set(counterRef, { value: newValue });
       return newValue;
     });
+    console.log(`Returning ticket number: ${prefix}${nextNumber}`);
     return `${prefix}${nextNumber}`;
   };
  
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (attachmentError) return;
-    if (!await validateForm()) return;
-   
+    // Log the typeOfIssue value immediately on submit
+    console.log('Type of Issue value at submit:', formData.typeOfIssue, typeof formData.typeOfIssue);
+    console.log('Submitting ticket with formData:', formData);
+    console.log('Reported by:', reportedBy);
+    if (attachmentError) {
+      console.log('Attachment error:', attachmentError);
+      return;
+    }
+    const isValid = await validateForm();
+    console.log('Form valid?', isValid);
+    if (!isValid) {
+      console.log('Validation errors:', errors);
+      return;
+    }
     setIsSubmitting(true);
     setErrors({});
-   
     try {
       // Process attachments (ensure all are base64 Data URLs)
       const processedFiles = await Promise.all(
@@ -308,10 +422,10 @@ function Client({ onTicketCreated = null }) {
           });
         })
       );
-     
-      // Get the next ticket number based on typeOfIssue (not category)
+      console.log('Processed attachments:', processedFiles);
+      // Use typeOfIssue for ticket number series
       const ticketNumber = await getNextTicketNumber(formData.typeOfIssue);
- 
+      console.log('Generated ticket number:', ticketNumber);
       // Fetch the projectId (Firestore document ID) by project name
       let projectId = null;
       if (formData.project) {
@@ -322,8 +436,8 @@ function Client({ onTicketCreated = null }) {
           projectId = projectSnapshot.docs[0].id;
         }
       }
- 
-      // Create the ticket document in Firestore
+      console.log('Resolved projectId:', projectId, 'for project:', formData.project);
+      // Build the ticket data
       const ticketData = {
         subject: formData.subject,
         customer: formData.name,
@@ -335,64 +449,63 @@ function Client({ onTicketCreated = null }) {
         subCategory: formData.subCategory || '',
         typeOfIssue: formData.typeOfIssue || '',
         priority: formData.priority,
-        description: formData.description, // This is HTML from Quill, may contain <img src="data:...">
+        description: formData.description,
         status: 'Open',
         created: serverTimestamp(),
         starred: false,
-        attachments: processedFiles, // Always include attachments as base64
-        ticketNumber, // Use the generated ticket number
+        attachments: processedFiles,
+        ticketNumber,
         lastUpdated: serverTimestamp(),
-        userId: auth.currentUser?.uid || null
+        userId: auth.currentUser?.uid || null,
+        reportedBy: reportedBy
       };
- 
+      console.log('Final ticketData to submit:', ticketData);
       // Add to Firestore
       const docRef = await addDoc(collection(db, 'tickets'), ticketData);
-      setTicketId(ticketNumber); // Show the ticketNumber, not docRef.id
-     
-      // Update the ticket with its Firestore doc ID (if needed)
-      await updateDoc(docRef, {
-        ticketId: docRef.id
-      });
- 
-      // Fetch project members' emails
+      setTicketId(ticketNumber);
+      console.log('Ticket created in Firestore with docRef:', docRef.id);
+      // Update the ticket with its Firestore doc ID
+      await updateDoc(docRef, { ticketId: docRef.id });
+      // Fetch project members' emails for ticket creation notification
       const memberEmails = await fetchProjectMemberEmails(ticketData.project);
-      // Prepare email parameters for EmailJS (ticket creation template)
-      const emailParams = {
-        to_email: memberEmails.join(','), // Send to all team/project members
-        name: ticketData.customer || '',
-        email: ticketData.email,
-        project: ticketData.project,
-        module: ticketData.module,
-        category: ticketData.category,
-        subCategory: ticketData.subCategory,
-        typeOfIssue: ticketData.typeOfIssue,
-        priority: ticketData.priority,
-        description: ticketData.description, // HTML, may contain <img src="data:...">
-        ticket_link: `https://articket-master.vercel.app`,
-        ticket_number: ticketNumber, // Add ticket number to email params
-        subject: ` # ${ticketNumber} - ${ticketData.subject}` // Email subject line with user subject
-      };
-      console.log('Email params:', emailParams);
-      await sendEmail(emailParams, 'template_rorcfae');
-     
+      let toEmail = '';
+      if (memberEmails && memberEmails.length) {
+        toEmail = memberEmails.join(',');
+      } else if (reportedBy) {
+        toEmail = reportedBy;
+      } else if (ticketData.email) {
+        toEmail = ticketData.email;
+      }
+      console.log('Final toEmail for notification:', toEmail);
+      if (toEmail) {
+        const emailParams = {
+          to_email: toEmail,
+          name: ticketData.customer || '',
+          email: ticketData.email,
+          project: ticketData.project,
+          module: ticketData.module,
+          category: ticketData.category,
+          subCategory: ticketData.subCategory,
+          typeOfIssue: ticketData.typeOfIssue,
+          priority: ticketData.priority,
+          description: ticketData.description,
+          attachments: ticketData.attachments?.map(a => a.name).join(', ') || '',
+          ticket_link: `https://articket.vercel.app`,
+          ticket_number: ticketNumber,
+          subject: ` # ${ticketNumber} - ${ticketData.subject}`,
+          reportedBy: ticketData.reportedBy || '',
+        };
+        console.log('Sending email with params:', emailParams);
+        try {
+          await sendEmail(emailParams, 'template_502okf2');
+          console.log('Email sent successfully');
+        } catch (emailErr) {
+          console.error('Failed to send email:', emailErr);
+        }
+      }
       setIsSubmitting(false);
       setSubmitSuccess(true);
       setAttachments([]);
-      // Fetch user role and set redirect path
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        if (userDocSnap.exists()) {
-          const role = userDocSnap.data().role;
-          let path = '/clientdashboard?tab=tickets';
-          if (role === 'client') path = '/clientdashboard?tab=tickets';
-          else if (role === 'client_head') path = '/client-head-dashboard?tab=tickets';
-          else if (role === 'project_manager') path = '/project-manager-dashboard?tab=tickets';
-          else if (role === 'employee') path = '/employeedashboard?tab=tickets';
-          setRedirectPath(path);
-        }
-      }
     } catch (error) {
       console.error('Error adding ticket:', error);
       setIsSubmitting(false);
@@ -417,94 +530,28 @@ function Client({ onTicketCreated = null }) {
     });
   };
  
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-   
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
-    }
-  };
- 
-  // Handler for pasting images into the description textarea
-  const handleDescriptionPaste = (e) => {
-    if (e.clipboardData && e.clipboardData.items) {
-      for (let i = 0; i < e.clipboardData.items.length; i++) {
-        const item = e.clipboardData.items[i];
-        if (item.type.indexOf('image') !== -1) {
-          const file = item.getAsFile();
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              setAttachments(prev => ([
-                ...prev,
-                {
-                  name: file.name || 'pasted-image.png',
-                  type: file.type,
-                  size: file.size,
-                  data: event.target.result
-                }
-              ]));
-            };
-            reader.readAsDataURL(file);
-            // Optionally, show a message to the user
-            setAttachmentError('Screenshot image attached from clipboard!');
-            e.preventDefault(); // Prevent default paste
-            break;
-          }
-        }
-      }
-    }
-  };
+  const priorityField = formConfig?.fields?.find(f => f.id === 'priority' && f.type === 'dropdown');
+  let priorityOptions = [];
+  if (priorityField && Array.isArray(priorityField.options)) {
+    console.log('Raw priority field.options from config:', priorityField.options);
+    priorityOptions = priorityField.options.map(opt =>
+      typeof opt === 'object'
+        ? { value: opt.value || '', color: opt.color || '#888' }
+        : { value: opt || '', color: '#888' }
+    );
+    console.log('Mapped priorityOptions for dropdown:', priorityOptions);
+  }
 
-  // Re-add fetchProjectMemberEmails helper
-  const fetchProjectMemberEmails = async (projectName) => {
-    const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('project', '==', projectName));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => doc.data().email).filter(Boolean);
-  };
- 
-  // Helper to render description with image preview overlays
-  const renderDescriptionWithPreview = (html) => {
-    return parse(html, {
-      replace: domNode => {
-        if (domNode.name === 'img' && domNode.attribs && domNode.attribs.src) {
-          return (
-            <span className="ql-image-preview-wrapper" style={{ position: 'relative', display: 'inline-block' }}>
-              <img
-                {...domNode.attribs}
-                style={{ maxWidth: 40, maxHeight: 40, width: 40, height: 40, objectFit: 'cover', borderRadius: '0.5rem', cursor: 'pointer' }}
-                onClick={() => setPreviewImageSrc(domNode.attribs.src)}
-                alt={domNode.attribs.alt || 'image'}
-              />
-              <button
-                type="button"
-                className="ql-image-preview-btn"
-                onClick={e => { e.preventDefault(); setPreviewImageSrc(domNode.attribs.src); }}
-                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', color: '#fff', border: 'none', borderRadius: '0.5rem', fontSize: 10, zIndex: 2 }}
-              >
-                Preview
-              </button>
-            </span>
-          );
-        }
-      }
-    });
-  };
-
-  // Move this useEffect outside of the conditional
   useEffect(() => {
     if (submitSuccess) {
       const timer = setTimeout(() => {
-        navigate(redirectPath);
+        navigate('/clientdashboard?tab=tickets');
       }, 5000);
       return () => clearTimeout(timer);
     }
-  }, [submitSuccess, redirectPath]);
+  }, [submitSuccess, navigate]);
 
-  if (isLoading) {
+  if (isLoading || dropdownsLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
         <div className="text-center">
@@ -530,147 +577,204 @@ function Client({ onTicketCreated = null }) {
             <p className="text-sm text-gray-600 mb-2">Ticket ID</p>
             <p className="font-mono text-xl font-bold text-blue-600">{ticketId}</p>
           </div>
-          <p className="text-gray-500 text-sm mt-4">Redirecting to your tickets page in 5 seconds...</p>
+         
+          <p className="text-xs text-gray-400 mt-4">Redirecting to tickets page in 5 seconds...</p>
         </div>
       </div>
     );
   }
+ 
+  console.log('All field ids:', (formConfig?.fields || []).map(f => f.id));
+  console.log('formConfig:', formConfig);
+  console.log('priorityField:', priorityField);
+  console.log('priorityOptions:', priorityOptions);
  
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 w-full">
       <div className="w-full mx-auto px-4 py-10">
         <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 p-0 overflow-hidden">
           <form onSubmit={handleSubmit} className="p-8 md:p-12 space-y-10">
-            {/* Module and Category */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div>
+            <div className="space-y-6">
+              {/* Module Dropdown */}
+              <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Module *</label>
                 <select
                   className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
                   value={formData.module || ''}
-                  onChange={e => {
-                    const selectedModule = e.target.value;
-                    const firstCategory = categoryOptionsMap[selectedModule]?.[0]?.value || '';
-                    setFormData(prev => ({
-                      ...prev,
-                      module: selectedModule,
-                      category: firstCategory
-                    }));
-                  }}
+                  onChange={e => setFormData(prev => ({ ...prev, module: e.target.value, category: '', subCategory: '' }))}
                   required
                 >
-                  {moduleOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-          </div>
-          <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Category *</label>
-                <select
-                  className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
-                  value={formData.category || ''}
-                  onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                  required
-                  disabled={!formData.module}
-                >
-                  {!formData.module && <option value="">Please select the module</option>}
-                  {formData.module && categoryOptionsMap[formData.module]?.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  <option value="">Select Module</option>
+                  {moduleOptions.map(mod => (
+                    <option key={mod} value={mod}>{mod}</option>
                   ))}
                 </select>
               </div>
-            </div>
-
-            {/* Sub-Category and Type of Issue */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Sub-Category (optional)</label>
-            <input
-                  type="text"
-                  name="subCategory"
-                  value={formData.subCategory || ''}
-                  onChange={e => setFormData(prev => ({ ...prev, subCategory: e.target.value }))}
-                  className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
-                  placeholder="Enter sub-category (if any)"
-            />
-          </div>
+              {/* Category Dropdown (depends on module) */}
           <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Type of Issue</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Category</label>
                 <select
                   className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
-                  value={formData.typeOfIssue || ''}
-                  onChange={e => setFormData(prev => ({ ...prev, typeOfIssue: e.target.value }))}
-                  required
+                  value={formData.category || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, category: e.target.value, subCategory: '' }))}
                 >
-                  <option value="">Select Type of Issue</option>
-                  {categories.map(category => (
-                    <option key={category.value} value={category.value}>{category.value}</option>
+                  {!formData.module && <option value="">Please select the module</option>}
+                  {formData.module && (categoryOptions[formData.module] || []).map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
           </div>
-        </div>
-
-            {/* Priority */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Priority</label>
-              <select
-                className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
-                value={formData.priority}
-                onChange={e => setFormData(prev => ({ ...prev, priority: e.target.value }))}
-                required
-              >
-                {priorities.map(priority => (
-                  <option key={priority.value} value={priority.value}>
-                    {priority.icon} {priority.value} {priority.description}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Subject */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Subject *</label>
-              <input
-                type="text"
-                name="subject"
-                value={formData.subject}
-                onChange={handleInputChange}
-                className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${errors.subject ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-gray-300'}`}
-                placeholder="Brief summary of your issue"
-              />
-              {errors.subject && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.subject}</p>}
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Description *</label>
-              <ReactQuill
-                value={formData.description}
-                onChange={value => setFormData(prev => ({ ...prev, description: value }))}
-                modules={{
-                  toolbar: [
-                    [{ 'header': [1, 2, false] }],
-                    ['bold', 'italic', 'underline', 'strike'],
-                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                    ['link', 'image'],
-                    ['clean']
-                  ]
-                }}
-                formats={['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet', 'link', 'image']}
-                className="bg-white rounded-xl border-2 border-gray-200 focus:border-blue-500 min-h-[120px]"
-                placeholder="Please provide detailed information about your issue... (You can paste screenshots directly here)"
-              />
-              {/* Render preview thumbnails with overlay for images in the description */}
-              {formData.description && (
-                <div className="mt-2 prose prose-sm max-w-none">
-                  {renderDescriptionWithPreview(formData.description)}
+              {/* Sub-Category Dropdown (depends on category) */}
+              {formData.category && Array.isArray(subCategoryOptions[formData.category]) && subCategoryOptions[formData.category].length > 0 && (
+          <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Sub-Category</label>
+                  <select
+                    className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
+                    value={formData.subCategory || ''}
+                    onChange={e => {
+                      const value = e.target.value;
+                      console.log('Dropdown selected subCategory:', value);
+                      setFormData(prev => ({ ...prev, subCategory: value }));
+                      if (value) setErrors(prev => ({ ...prev, subCategory: undefined }));
+                    }}
+                  >
+                    <option value="">Select Sub-Category</option>
+                    {(subCategoryOptions[formData.category] || []).map(sub => (
+                      <option key={typeof sub === 'object' ? sub.value : sub} value={typeof sub === 'object' ? sub.value : sub}>
+                        {typeof sub === 'object' ? (sub.label || sub.value) : sub}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.subCategory && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.subCategory}</p>}
                 </div>
               )}
-              {errors.description && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.description}</p>}
-              <p className="text-gray-400 text-xs mt-2">You can paste images/screenshots directly into the box above.</p>
-            </div>
-
-            {/* Attachments */}
+              {/* Priority Dropdown */}
+              {priorityField && (
+                <div key={priorityField.id}>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">{priorityField.label}{priorityField.required && ' *'}</label>
+                  <PriorityDropdown
+                    value={formData[priorityField.id] || ''}
+                    onChange={val => setFormData(prev => ({ ...prev, [priorityField.id]: val }))}
+                    options={priorityOptions}
+            />
+          </div>
+              )}
+              {/* Project field */}
+          <div className="mb-4">
+                <label className="block text-gray-700 font-semibold mb-2">Project</label>
+            <input
+              type="text"
+              className="w-full px-4 py-3 border-2 rounded-xl bg-gray-100 text-gray-700 border-gray-200 cursor-not-allowed"
+              value={formData.project}
+              disabled
+              readOnly
+            />
+          </div>
+              {/* Debug log for clientMembers at render time */}
+              {console.log('Dropdown clientMembers:', clientMembers)}
+              {/* Reported by dropdown (unstyled for debugging) */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Reported by</label>
+                <select
+                  style={{ all: 'unset', display: 'block', border: '1px solid #000', padding: '8px', width: '100%' }}
+                  onChange={e => setReportedBy(e.target.value)}
+                >
+                  <option value="">Select member</option>
+                  {clientMembers.map(member => (
+                    <option key={member.email} value={member.email}>{member.name || member.email}</option>
+                  ))}
+                </select>
+              </div>
+              {/* Rest of the form fields */}
+              {formConfig?.fields?.filter(f => !['module','category','subCategory','priority'].includes(f.id)).map(field => {
+                if (field.id === 'reportedBy') {
+                  return (
+                    <div key={field.id}>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">{field.label}{field.required && ' *'}</label>
+                      <select
+                        value={reportedBy}
+                        onChange={e => setReportedBy(e.target.value)}
+                      >
+                        <option value="">Select member</option>
+                        {clientMembers.map(member => (
+                          <option key={member.email} value={member.email}>{member.name || member.email}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                }
+                if (field.id === 'description') {
+                  return (
+                    <div key={field.id}>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">{field.label}{field.required && ' *'}</label>
+                      <ReactQuill
+                        value={formData.description || ''}
+                        onChange={value => setFormData(prev => ({ ...prev, description: value }))}
+                        modules={{
+                          toolbar: [
+                            [{ 'header': [1, 2, false] }],
+                            ['bold', 'italic', 'underline', 'strike'],
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                            ['link', 'image'],
+                            ['clean']
+                          ]
+                        }}
+                        formats={['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet', 'link', 'image']}
+                        className="bg-white rounded-xl border-2 border-gray-200 focus:border-blue-500 min-h-[120px]"
+                        placeholder={`Please provide detailed information about your issue...`}
+                      />
+                      {errors.description && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.description}</p>}
+                      <p className="text-gray-400 text-xs mt-2">You can paste images/screenshots directly into the box above.</p>
+                    </div>
+                  );
+                }
+                if (field.type === 'dropdown') {
+                  return (
+                    <div key={field.id}>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">{field.label}{field.required && ' *'}</label>
+                      <select
+                        className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
+                        value={formData[field.id] || ''}
+                        onChange={e => setFormData(prev => ({ ...prev, [field.id]: e.target.value }))}
+                      >
+                        <option value="">Select {field.label}</option>
+                        {(Array.isArray(field.options) ? field.options : []).map(opt => (
+                          <option key={typeof opt === 'object' ? opt.value : opt} value={typeof opt === 'object' ? opt.value : opt}>
+                            {typeof opt === 'object' ? (opt.value || '') : opt}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                }
+                if (field.type === 'textarea') {
+                  return (
+                    <div key={field.id}>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">{field.label}{field.required && ' *'}</label>
+                      <textarea
+                        className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
+                        value={formData[field.id] || ''}
+                        onChange={e => setFormData(prev => ({ ...prev, [field.id]: e.target.value }))}
+                        placeholder={field.label}
+                      />
+        </div>
+                  );
+                }
+                // Default to text input
+                return (
+                  <div key={field.id}>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">{field.label}{field.required && ' *'}</label>
+              <input
+                type="text"
+                      className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 border-gray-200 hover:border-gray-300 bg-white text-gray-700"
+                value={formData[field.id] || ''}
+                      onChange={e => setFormData(prev => ({ ...prev, [field.id]: e.target.value }))}
+                placeholder={field.label}
+              />
+                  </div>
+                );
+              })}
+              {/* Attachments field stays as is */}
             <div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 text-gray-600">
@@ -685,6 +789,13 @@ function Client({ onTicketCreated = null }) {
                   className="hidden"
                   accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.mp4,.avi,.mov"
                 />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                >
+                  Add Files
+                </button>
               </div>
               {attachments.length > 0 && (
                 <div className="space-y-3 mt-4">
@@ -694,58 +805,30 @@ function Client({ onTicketCreated = null }) {
                       className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm"
                     >
                       <div className="flex items-center space-x-3">
-                        <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
                           {getFileIcon(file)}
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-gray-700">{file.name}</p>
+                          <p className="text-sm font-medium text-gray-700">{file.name}</p>
                           <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        {(file.type.startsWith('image/')) && (
-                          <button
-                            type="button"
-                            className="text-xs px-2 py-1 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 text-blue-700 font-medium"
-                            onClick={() => setPreviewFile(file)}
-                          >
-                            Preview
-                          </button>
-                        )}
-                        {(file.type === 'application/pdf') && (
-                          <a
-                            href={file.data}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs px-2 py-1 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 text-blue-700 font-medium"
-                          >
-                            Preview
-                          </a>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => removeAttachment(index)}
-                          className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                          aria-label="Remove attachment"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(index)}
+                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+          </div>
+        ))}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="mt-4 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
-              >
-                Add Files
-              </button>
               {attachmentError && (
                 <div className="text-red-600 text-sm mt-2">{attachmentError}</div>
               )}
-          </div>
+              </div>
+            </div>
 
         {/* Error Message */}
         {errors.submit && (
@@ -784,19 +867,19 @@ function Client({ onTicketCreated = null }) {
       </form>
         </div>
       {/* Modal for image preview */}
-        {previewImageSrc && (
+      {previewFile && previewFile.type.startsWith('image/') && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
           <div className="bg-white rounded-xl shadow-lg p-6 max-w-lg w-full relative flex flex-col items-center">
             <button
               className="absolute top-2 right-2 text-gray-500 hover:text-red-500"
-                onClick={() => setPreviewImageSrc(null)}
+              onClick={() => setPreviewFile(null)}
               aria-label="Close preview"
             >
               <X className="w-6 h-6" />
             </button>
             <img
-                src={previewImageSrc}
-                alt="Preview"
+              src={previewFile.data}
+              alt={previewFile.name}
               className="max-h-[60vh] w-auto mx-auto rounded-lg border border-gray-200 bg-gray-100"
               onError={e => {
                 e.target.onerror = null;
@@ -808,13 +891,25 @@ function Client({ onTicketCreated = null }) {
             <div id="img-fallback" style={{display:'none'}} className="text-red-500 text-center mt-8">
               Unable to preview this image.<br/>Please make sure the file is a valid image.
             </div>
-            </div>
+            <div className="mt-4 text-center text-gray-700 text-sm break-all">{previewFile.name}</div>
           </div>
-        )}
         </div>
+      )}
+      </div>
     </div>
   );
 }
+ 
+Client.defaultProps = {
+  selectedProjectId: '',
+  selectedProjectName: '',
+};
+
+Client.propTypes = {
+  selectedProjectId: PropTypes.string,
+  selectedProjectName: PropTypes.string,
+  onTicketCreated: PropTypes.func,
+};
  
 export default Client;
  

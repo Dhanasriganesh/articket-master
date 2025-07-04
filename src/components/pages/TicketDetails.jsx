@@ -19,14 +19,30 @@ import {
   Home,
   FileText,
   MessageSquare,
-  FolderOpen,
-  X
+  FolderOpen
+
 } from 'lucide-react';
 import { sendEmail } from '../../utils/sendEmail';
 import { fetchProjectMemberEmails } from '../../utils/emailUtils';
+import parse from 'html-react-parser';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
-import parse from 'html-react-parser';
+
+// Priority options for dropdowns
+const priorities = [
+  { value: 'Low', label: 'Low' },
+  { value: 'Medium', label: 'Medium' },
+  { value: 'High', label: 'High' },
+];
+
+// Status options for dropdowns
+const statusOptions = [
+  { value: 'Open', label: 'Open' },
+  { value: 'On Hold', label: 'On Hold' },
+  { value: 'In Progress', label: 'In Progress' },
+  { value: 'Resolved', label: 'Resolved' },
+  { value: 'Closed', label: 'Closed' },
+];
 
 // Helper to safely format timestamps
 function formatTimestamp(ts) {
@@ -40,59 +56,52 @@ function formatTimestamp(ts) {
   return '';
 }
 
-const priorities = [
-  { value: 'Low', label: 'Low' },
-  { value: 'Medium', label: 'Medium' },
-  { value: 'High', label: 'High' },
-];
-const categories = [
-  { value: 'Incident', label: 'Incident' },
-  { value: 'Service', label: 'Service' },
-  { value: 'Change', label: 'Change' },
-];
-const statusOptions = [
-  { value: 'Open', label: 'Open' },
-  { value: 'On Hold', label: 'On Hold' },
-  { value: 'In Progress', label: 'In Progress' },
-  { value: 'Resolved', label: 'Resolved' },
-  { value: 'Closed', label: 'Closed' },
-];
-
-// Module and Category options (should match Ticketing.jsx)
-const moduleOptions = [
-  { value: '', label: 'Select Module' },
-  { value: 'EWM', label: 'EWM' },
-  { value: 'BTP', label: 'BTP' },
-  { value: 'TM', label: 'TM' },
-  { value: 'Yl', label: 'Yl' },
-  { value: 'MFS', label: 'MFS' },
-];
-const categoryOptionsMap = {
-  EWM: [
-    { value: 'Inbound', label: 'Inbound' },
-    { value: 'Internal', label: 'Internal' },
-    { value: 'Outbound', label: 'Outbound' },
-  ],
-  BTP: [
-    { value: 'd', label: 'd' },
-    { value: 'e', label: 'e' },
-    { value: 'f', label: 'f' },
-  ],
-  TM: [
-    { value: 'g', label: 'g' },
-    { value: 'h', label: 'h' },
-    { value: 'i', label: 'i' },
-  ],
-  Yl: [
-    { value: 'Gate Management', label: 'Gate Management' },
-    { value: 'Yard Dispatching', label: 'Yard Dispatching' },
-  ],
-  MFS: [
-    { value: 'm', label: 'm' },
-    { value: 'n', label: 'n' },
-    { value: 'o', label: 'o' },
-  ],
+// Helper to render Quill HTML with image preview overlays
+const renderQuillWithPreview = (html) => {
+  return parse(html, {
+    replace: domNode => {
+      if (domNode.name === 'img' && domNode.attribs && domNode.attribs.src) {
+        return (
+          <img
+            {...domNode.attribs}
+            style={{
+              maxWidth: 40,
+              maxHeight: 40,
+              width: 40,
+              height: 40,
+              objectFit: 'cover',
+              borderRadius: '0.5rem',
+              cursor: 'pointer',
+              display: 'inline-block',
+              verticalAlign: 'middle',
+              margin: '0 4px',
+              border: '2px solid #d1d5db'
+            }}
+            onClick={() => setPreviewImageSrc(domNode.attribs.src)}
+            alt={domNode.attribs.alt || 'image'}
+          />
+        );
+      }
+    }
+  });
 };
+
+// Add this helper function near the top of the file (outside the component):
+function makeImagesClickable(html) {
+  if (!html) return '';
+  // Add inline style for small thumbnail
+  return html.replace(
+    /<img([^>]+)src=["']([^"']+)["']([^>]*)>/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer"><img$1src="$2"$3 style="width:80px;height:80px;object-fit:cover;display:inline-block;margin:4px 0;vertical-align:middle;cursor:pointer;" /></a>'
+  );
+}
+
+// Helper to sanitize HTML and remove base64 images
+function stripBase64Images(html) {
+  if (!html) return '';
+  // Remove <img src="data:image..."> tags (robust, covers single/double quotes, whitespace, and any attributes)
+  return html.replace(/<img[^>]*src=['"]data:image\/[a-zA-Z0-9+\/;=]+['"][^>]*>/gi, '');
+}
 
 const TicketDetails = ({ ticketId, onBack, onAssign }) => {
   const [ticket, setTicket] = useState(null);
@@ -121,39 +130,38 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
   const [detailsError, setDetailsError] = useState('');
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
   const [currentUserEmail, setCurrentUserEmail] = useState('');
-  const [clientMembers, setClientMembers] = useState([]);
-  const [selectedRequester, setSelectedRequester] = useState('');
-  const [editModule, setEditModule] = useState('');
-  const [editCategory, setEditCategory] = useState('');
+  const [formConfig, setFormConfig] = useState(null);
+  const [previewImageSrc, setPreviewImageSrc] = useState('');
   const [editSubCategory, setEditSubCategory] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editModule, setEditModule] = useState('');
+  const [selectedRequester, setSelectedRequester] = useState('');
+  const [clientMembers, setClientMembers] = useState([]);
+  const [editReportedBy, setEditReportedBy] = useState(ticket?.reportedBy || '');
   const [editTypeOfIssue, setEditTypeOfIssue] = useState('');
-  const [previewImageSrc, setPreviewImageSrc] = useState(null);
-  const [editReportedBy, setEditReportedBy] = useState('');
-  const [projectMembers, setProjectMembers] = useState([]);
-  const [projectMembersLoading, setProjectMembersLoading] = useState(false);
+  // Add a ref for ReactQuill to access the editor
+  const quillRef = useRef(null);
+
+  // Extract typeOfIssue options from formConfig.fields
+  const typeOfIssueField = formConfig?.fields?.find(f => f.id === 'typeOfIssue');
+  const typeOfIssueOptions = typeOfIssueField?.options || [];
+
+  // Dynamic moduleOptions from formConfig
+  const moduleOptions = formConfig?.moduleOptions
+    ? formConfig.moduleOptions.map(opt => typeof opt === 'object' ? opt : { value: opt, label: opt })
+    : [
+        { value: '', label: 'Select Module' },
+        { value: 'EWM', label: 'EWM' },
+        { value: 'BTP', label: 'BTP' },
+        { value: 'TM', label: 'TM' },
+        { value: 'Yl', label: 'Yl' },
+        { value: 'MFS', label: 'MFS' },
+      ];
 
   // Toast helper
   const showToast = (message, type = 'error') => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: '', type }), 2500);
-  };
-
-  // Helper to render Quill HTML with image preview overlays
-  const renderQuillWithPreview = (html) => {
-    return parse(html, {
-      replace: domNode => {
-        if (domNode.name === 'img' && domNode.attribs && domNode.attribs.src) {
-          return (
-            <img
-              {...domNode.attribs}
-              style={{ maxWidth: 40, maxHeight: 40, width: 40, height: 40, objectFit: 'cover', borderRadius: '0.5rem', cursor: 'pointer', display: 'inline-block', verticalAlign: 'middle', margin: '0 4px', border: '2px solid #d1d5db' }}
-              onClick={() => setPreviewImageSrc(domNode.attribs.src)}
-              alt={domNode.attribs.alt || 'image'}
-            />
-          );
-        }
-      }
-    });
   };
 
   useEffect(() => {
@@ -289,12 +297,12 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       fetchEmployees();
       setSelectedAssignee(ticket.assignedTo?.email || '');
       fetchCurrentUserRole();
+      setSelectedRequester(ticket.email || '');
     }
   }, [ticket]);
 
   useEffect(() => {
-    // Fetch client members for requester dropdown
-    const fetchClientMembers = async () => {
+    const fetchClients = async () => {
       if (!ticket?.project) return;
       const usersRef = collection(db, 'users');
       const q = query(usersRef, where('project', '==', ticket.project), where('role', '==', 'client'));
@@ -311,32 +319,31 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         } else {
           name = data.email.split('@')[0];
         }
-        return { email: data.email, name };
+        return {
+          id: doc.id,
+          email: data.email,
+          name,
+        };
       });
       setClientMembers(clients);
     };
-    if (ticket) {
-      fetchClientMembers();
-      setSelectedRequester(ticket.email || '');
-      setEditModule(ticket.module || '');
-      setEditCategory(ticket.category || '');
-      setEditSubCategory(ticket.subCategory || '');
-      setEditTypeOfIssue(ticket.typeOfIssue || '');
-    }
+    fetchClients();
   }, [ticket]);
 
   // Helper to get next ticket number for a category
-  const getNextTicketNumber = async (category) => {
+  const getNextTicketNumber = async (typeOfIssue) => {
     let prefix, counterDocId, startValue;
-    if (category === 'Incident') {
+    // Remove spaces and make lowercase for robust matching
+    const type = (typeOfIssue || '').replace(/\s+/g, '').toLowerCase();
+    if (type === 'incident') {
       prefix = 'IN';
       counterDocId = 'incident_counter';
       startValue = 100000;
-    } else if (category === 'Service') {
+    } else if (type === 'servicerequest') {
       prefix = 'SR';
       counterDocId = 'service_counter';
       startValue = 200000;
-    } else if (category === 'Change') {
+    } else if (type === 'changerequest') {
       prefix = 'CR';
       counterDocId = 'change_counter';
       startValue = 300000;
@@ -372,10 +379,27 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
     reader.readAsDataURL(file);
   });
 
-  const handleCommentAttachmentChange = async (e) => {
+  // File input handler for comment attachments
+  const handleCommentAttachmentChange = (e) => {
     const files = Array.from(e.target.files);
-    const base64Files = await Promise.all(files.map(fileToBase64));
-    setCommentAttachments(base64Files);
+    console.log('[DEBUG] Files selected:', files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const fileObj = {
+          name: file.name,
+          type: file.type,
+          data: event.target.result,
+        };
+        console.log('[DEBUG] File read as base64:', fileObj);
+        setCommentAttachments(prev => {
+          const updated = [...prev, fileObj];
+          console.log('[DEBUG] Updated commentAttachments after file input:', updated);
+          return updated;
+        });
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   const handleResolutionAttachmentChange = async (e) => {
@@ -408,6 +432,31 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       const ticketRef = doc(db, 'tickets', ticket.id);
       let updates = {};
       let commentMsg = [];
+      // Module
+      if (editModule !== ticket.module) {
+        updates.module = editModule;
+        commentMsg.push(`Module changed to ${editModule}`);
+      }
+      // Type of Issue
+      if (editTypeOfIssue !== ticket.typeOfIssue) {
+        updates.typeOfIssue = editTypeOfIssue;
+        // Generate new ticket number for the new type of issue
+        const newTicketNumber = await getNextTicketNumber(editTypeOfIssue);
+        updates.ticketNumber = newTicketNumber;
+        commentMsg.push(`Type of Issue changed to ${editTypeOfIssue} and Ticket ID updated to ${newTicketNumber}`);
+      }
+      // Category (and ticket number)
+      if (editCategory !== ticket.category) {
+        updates.category = editCategory;
+        const newTicketNumber = await getNextTicketNumber(editTypeOfIssue);
+        updates.ticketNumber = newTicketNumber;
+        commentMsg.push(`Category changed to ${editCategory} and Ticket ID updated to ${newTicketNumber}`);
+      }
+      // Sub-Category
+      if (editSubCategory !== ticket.subCategory) {
+        updates.subCategory = editSubCategory;
+        commentMsg.push(`Sub-Category changed to ${editSubCategory}`);
+      }
       // Priority
       if (editFields.priority !== ticket.priority) {
         updates.priority = editFields.priority;
@@ -417,13 +466,6 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       if (editFields.status !== ticket.status) {
         updates.status = editFields.status;
         commentMsg.push(`Status changed to ${editFields.status}`);
-      }
-      // Category (and ticket number)
-      if (editFields.category !== ticket.category) {
-        updates.category = editFields.category;
-        const newTicketNumber = await getNextTicketNumber(editFields.category);
-        updates.ticketNumber = newTicketNumber;
-        commentMsg.push(`Category changed to ${editFields.category} and Ticket ID updated to ${newTicketNumber}`);
       }
       // Assignment
       let assignee = null;
@@ -468,28 +510,6 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         setIsSaving(false);
         return;
       }
-      // Module, Category, Sub-Category, Type of Issue, Requester
-      if (editModule !== ticket.module) {
-        updates.module = editModule;
-      }
-      if (editCategory !== ticket.category) {
-        updates.category = editCategory;
-      }
-      if (editSubCategory !== ticket.subCategory) {
-        updates.subCategory = editSubCategory;
-      }
-      if (editTypeOfIssue !== ticket.typeOfIssue) {
-        updates.typeOfIssue = editTypeOfIssue;
-      }
-      if (selectedRequester !== ticket.email) {
-        updates.email = selectedRequester;
-        // Optionally update customer name if you want:
-        const req = clientMembers.find(c => c.email === selectedRequester);
-        if (req) updates.customer = req.name;
-      }
-      if (editReportedBy !== (ticket.reportedBy || '')) {
-        updates.reportedBy = editReportedBy;
-      }
       if (Object.keys(updates).length > 0) {
         updates.lastUpdated = serverTimestamp();
         await updateDoc(ticketRef, updates);
@@ -518,30 +538,13 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           setTicket({ ...ticketData, comments });
         }
         // Send email to the client who raised the ticket (for comment)
-        if (ticket && ticket.email) {
-          const recipients = [ticket.email];
-          if (ticket.assignedTo && ticket.assignedTo.email && ticket.assignedTo.email !== ticket.email) {
-            recipients.push(ticket.assignedTo.email);
-          }
-          if (ticket && ticket.reportedBy) {
-            let reportedByEmail = '';
-            const member = projectMembers.find(m => m.name === ticket.reportedBy);
-            if (member && member.email) {
-              reportedByEmail = member.email;
-            }
-            if (!reportedByEmail && ticket.reportedBy) {
-              // Fallback: fetch from users collection
-              const usersRef = collection(db, 'users');
-              const q = query(usersRef, where('project', '==', ticket.project), where('firstName', '==', ticket.reportedBy));
-              const snapshot = await getDocs(q);
-              if (!snapshot.empty) {
-                reportedByEmail = snapshot.docs[0].data().email;
-              }
-            }
-            if (reportedByEmail && !recipients.includes(reportedByEmail)) {
-              recipients.push(reportedByEmail);
-            }
-          }
+        let recipients = [];
+        if (ticket.reportedBy) {
+          recipients = [ticket.reportedBy];
+        } else if (ticket.email) {
+          recipients = [ticket.email];
+        }
+        if (recipients.length > 0) {
           const emailParams = {
             to_email: recipients.join(','),
             to_name: ticket.customer || ticket.name || ticket.email,
@@ -551,10 +554,14 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
             is_comment: true,
             assigned_by_name: currentUserName,
             assigned_by_email: currentUser.email,
-            ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+            ticket_link: `https://articket.vercel.app`,
           };
-          await sendEmail(emailParams, 'template_6265t8d');
+          await sendEmail(emailParams, 'template_igl3oxn');
         }
+      }
+      if (editReportedBy !== ticket.reportedBy) {
+        updates.reportedBy = editReportedBy;
+        commentMsg.push(`Reported by changed to ${editReportedBy}`);
       }
     } catch (err) {
       console.error('Error saving details:', err);
@@ -563,7 +570,9 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
     }
   };
 
+  // In handleAddResponse, log commentAttachments before submission
   const handleAddResponse = async () => {
+    console.log('[DEBUG] handleAddResponse called');
     if (!newResponse.trim() || !ticketId || !auth.currentUser) return;
     setIsSendingResponse(true);
     try {
@@ -576,19 +585,22 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
           const data = userDocSnap.data();
-          authorName = data.firstName || data.lastName ? `${data.firstName || ''} ${data.lastName || ''}`.trim() : (data.email || currentUser.email || '').split('@')[0];
-        } else {
-          authorName = currentUser.displayName || (currentUser.email?.split('@')[0] || '');
+          authorName = data.firstName || data.lastName ? `${data.firstName || ''} ${data.lastName || ''}`.trim() : currentUser.email;
         }
       }
+      // Log attachments before saving
+      console.log('[DEBUG] handleAddResponse - commentAttachments at submit:', commentAttachments);
+      // Strip base64 images before saving
+      const cleanedMessage = stripBase64Images(newResponse);
       const comment = {
-        message: newResponse.trim(),
-        timestamp: new Date(),
-        authorEmail: currentUser.email,
         authorName,
-        authorRole: 'user',
-        attachments: commentAttachments
+        authorEmail: currentUser.email,
+        authorRole: currentUserRole,
+        message: cleanedMessage,
+        timestamp: new Date(),
+        attachments: commentAttachments.length > 0 ? [...commentAttachments] : [],
       };
+      console.log('[DEBUG] Submitting comment:', comment);
       await updateDoc(ticketRef, {
         comments: arrayUnion(comment),
         lastUpdated: serverTimestamp()
@@ -596,42 +608,25 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       setNewResponse('');
       setCommentAttachments([]);
       // Send email to the client who raised the ticket (for comment)
-      if (ticket && ticket.email) {
-        const recipients = [ticket.email];
-        if (ticket.assignedTo && ticket.assignedTo.email && ticket.assignedTo.email !== ticket.email) {
-          recipients.push(ticket.assignedTo.email);
-        }
-        if (ticket && ticket.reportedBy) {
-          let reportedByEmail = '';
-          const member = projectMembers.find(m => m.name === ticket.reportedBy);
-          if (member && member.email) {
-            reportedByEmail = member.email;
-          }
-          if (!reportedByEmail && ticket.reportedBy) {
-            // Fallback: fetch from users collection
-            const usersRef = collection(db, 'users');
-            const q = query(usersRef, where('project', '==', ticket.project), where('firstName', '==', ticket.reportedBy));
-            const snapshot = await getDocs(q);
-            if (!snapshot.empty) {
-              reportedByEmail = snapshot.docs[0].data().email;
-            }
-          }
-          if (reportedByEmail && !recipients.includes(reportedByEmail)) {
-            recipients.push(reportedByEmail);
-          }
-        }
+      let recipients = [];
+      if (ticket.reportedBy) {
+        recipients = [ticket.reportedBy];
+      } else if (ticket.email) {
+        recipients = [ticket.email];
+      }
+      if (recipients.length > 0) {
         const emailParams = {
           to_email: recipients.join(','),
           to_name: ticket.customer || ticket.name || ticket.email,
           subject: `New update on Ticket ID: ${ticket.ticketNumber}`,
           ticket_number: ticket.ticketNumber,
-          message: newResponse.trim(),
+          message: cleanedMessage,
           is_comment: true,
           assigned_by_name: currentUserName,
           assigned_by_email: currentUser.email,
-          ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+          ticket_link: `https://articket.vercel.app`,
         };
-        await sendEmail(emailParams, 'template_6265t8d');
+        await sendEmail(emailParams, 'template_igl3oxn');
       }
       // Re-fetch ticket to update UI
       const updatedTicketSnap = await getDoc(ticketRef);
@@ -703,9 +698,16 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       }
       setResolutionAttachments([]);
       // Send email to the client who raised the ticket (for resolution)
-      if (ticket && ticket.email) {
+      let recipients = [];
+      if (ticket.reportedBy) {
+        recipients = [ticket.reportedBy];
+      } else if (ticket.email) {
+        recipients = [ticket.email];
+      }
+      console.log('[DEBUG] Resolution email recipients:', recipients);
+      if (recipients.length > 0) {
         const emailParams = {
-          to_email: ticket.email,
+          to_email: recipients.join(','),
           to_name: ticket.customer || ticket.name || ticket.email,
           subject: `Resolution provided for Ticket ID: ${ticket.ticketNumber}`,
           ticket_number: ticket.ticketNumber,
@@ -713,9 +715,13 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           is_resolution: true,
           assigned_by_name: currentUserName,
           assigned_by_email: currentUser.email,
-          ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+          ticket_link: `https://articket.vercel.app`,
         };
-        await sendEmail(emailParams, 'template_6265t8d');
+        console.log('[DEBUG] Resolution emailParams:', emailParams);
+        const emailResult = await sendEmail(emailParams, 'template_igl3oxn');
+        console.log('[DEBUG] sendEmail result:', emailResult);
+      } else {
+        console.error('[DEBUG] No recipients found for resolution email.');
       }
     } catch (err) {
       console.error('Error saving resolution:', err);
@@ -752,9 +758,11 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       const ticketRef = doc(db, 'tickets', ticket.id);
       // Prepare new comments array
       const updatedComments = [...ticket.comments];
+      // Strip base64 images before saving
+      const cleanedMessage = stripBase64Images(editingCommentValue);
       updatedComments[index] = {
         ...comment,
-        message: editingCommentValue,
+        message: cleanedMessage,
         lastEditedAt: new Date(),
         lastEditedBy: currentUserName,
       };
@@ -780,30 +788,95 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
     }
   };
 
-  // Fetch project members for reportedBy dropdown when entering edit mode
   useEffect(() => {
-    if (isEditMode && ticket?.projectId) {
-      const fetchProjectMembers = async () => {
-        setProjectMembersLoading(true);
-        try {
-          const projectRef = doc(db, 'projects', ticket.projectId);
-          const projectSnap = await getDoc(projectRef);
-          if (projectSnap.exists()) {
-            const members = projectSnap.data().members || [];
-            setProjectMembers(members);
-          } else {
-            setProjectMembers([]);
-          }
-        } catch (err) {
-          setProjectMembers([]);
-        } finally {
-          setProjectMembersLoading(false);
+    const fetchConfig = async () => {
+      try {
+        const configRef = doc(db, 'config', 'formConfig');
+        const configSnap = await getDoc(configRef);
+        if (configSnap.exists()) {
+          setFormConfig(configSnap.data());
         }
-      };
-      fetchProjectMembers();
-      setEditReportedBy(ticket.reportedBy || '');
+      } catch (err) {
+        // ignore
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  useEffect(() => {
+    if (ticket && formConfig) {
+      setEditModule(ticket.module || '');
+      setEditCategory(ticket.category || '');
+      setEditSubCategory(ticket.subCategory || '');
+      setEditTypeOfIssue(ticket.typeOfIssue || '');
     }
-  }, [isEditMode, ticket]);
+  }, [ticket, formConfig]);
+
+  useEffect(() => {
+    const fetchClientMembers = async () => {
+      if (!ticket?.project) return;
+      const projectsRef = collection(db, 'projects');
+      const q = query(projectsRef, where('name', '==', ticket.project));
+      const projectSnapshot = await getDocs(q);
+      if (!projectSnapshot.empty) {
+        const projectDoc = projectSnapshot.docs[0];
+        const members = projectDoc.data().members || [];
+        const clients = members.filter(m => m.userType === 'client');
+        setClientMembers(clients);
+      } else {
+        setClientMembers([]);
+      }
+    };
+    fetchClientMembers();
+  }, [ticket?.project]);
+
+  // Paste handler for images in ReactQuill
+  useEffect(() => {
+    const quill = quillRef.current && quillRef.current.getEditor && quillRef.current.getEditor();
+    if (!quill) return;
+    function handlePaste(e) {
+      let foundImage = false;
+      if (e.clipboardData && e.clipboardData.items) {
+        for (let i = 0; i < e.clipboardData.items.length; i++) {
+          const item = e.clipboardData.items[i];
+          if (item.type.indexOf('image') !== -1) {
+            foundImage = true;
+            const file = item.getAsFile();
+            if (file) {
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                const fileObj = {
+                  name: file.name,
+                  type: file.type,
+                  data: event.target.result,
+                };
+                setCommentAttachments(prev => [...prev, fileObj]);
+              };
+              reader.readAsDataURL(file);
+            }
+          }
+        }
+        if (foundImage) {
+          e.preventDefault();
+          // Remove any base64 images that might have been inserted by Quill
+          setTimeout(() => {
+            const quill = quillRef.current && quillRef.current.getEditor && quillRef.current.getEditor();
+            if (quill) {
+              const html = quill.root.innerHTML;
+              const cleaned = stripBase64Images(html);
+              if (html !== cleaned) {
+                quill.root.innerHTML = cleaned;
+              }
+            }
+          }, 0);
+        }
+      }
+    }
+    quill.root.addEventListener('paste', handlePaste);
+    return () => {
+      quill.root.removeEventListener('paste', handlePaste);
+    };
+  }, [quillRef]);
 
   if (loading) {
     return (
@@ -850,7 +923,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
     );
   }
 
-  const mainContent = (
+  return (
     <div className="flex flex-col gap-8 lg:flex-row">
       {/* Toast */}
       {toast.show && (
@@ -883,7 +956,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         {/* Tabs */}
         <div className="border-b mb-8 px-2">
           <nav className="flex flex-wrap gap-2">
-            {['Details','Commentbox','Resolution','Time Elapsed Analysis'].map(tab => (
+            {['Details','Commentbox','Resolution'].map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -906,6 +979,10 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                   {ticket.comments && ticket.comments.length > 0 ? (
                     ticket.comments.map((comment, index) => {
                       const isEditing = editingCommentIndex === index;
+                      console.log('[DEBUG] Rendering comment:', comment);
+                      if (comment.attachments) {
+                        console.log('[DEBUG] Comment attachments:', comment.attachments);
+                      }
                       return (
                       <div key={index} className="flex items-start gap-4">
                         <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center font-bold text-blue-700 text-lg shadow-sm">
@@ -944,7 +1021,48 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                                 </>
                               ) : (
                                 <>
-                            <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{comment.message ? renderQuillWithPreview(comment.message) : null}</div>
+                            <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{
+                              parse(stripBase64Images(comment.message))
+                            }</div>
+                            {/* Show image and other attachments as thumbnails or links below the comment */}
+                            {comment.attachments && comment.attachments.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {comment.attachments.map((file, idx) => {
+                                  if (file.type && file.type.startsWith('image/')) {
+                                    return (
+                                      <img
+                                        key={idx}
+                                        src={file.data}
+                                        alt={file.name || 'attachment'}
+                                        className="w-16 h-16 object-cover rounded cursor-pointer border border-gray-200"
+                                        style={{ maxWidth: '4rem', maxHeight: '4rem', width: '4rem', height: '4rem' }}
+                                        onClick={() => setPreviewImageSrc(file.data)}
+                                        onError={e => {
+                                          e.target.onerror = null;
+                                          e.target.style.display = 'none';
+                                          const fallback = document.createElement('div');
+                                          fallback.innerText = 'Image failed to load';
+                                          fallback.style.color = 'red';
+                                          e.target.parentNode.appendChild(fallback);
+                                        }}
+                                      />
+                                    );
+                                  } else {
+                                    return (
+                                      <a
+                                        key={idx}
+                                        href={file.data}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 underline text-xs block"
+                                      >
+                                        {file.name || 'Download attachment'}
+                                      </a>
+                                    );
+                                  }
+                                })}
+                              </div>
+                            )}
                                   {comment.lastEditedAt && comment.lastEditedBy && (
                                     <div className="mt-1 text-xs text-gray-500 italic">Last edited by {comment.lastEditedBy} at {formatTimestamp(comment.lastEditedAt)}</div>
                                   )}
@@ -955,27 +1073,8 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                                     Edit
                                   </button>
                                 </>
-                              )}
-                            {comment.attachments && comment.attachments.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {comment.attachments.map((file, idx) => (
-                                  <div key={idx} className="flex flex-col items-center border rounded p-1 bg-gray-50">
-                                    {file.type.startsWith('image/') ? (
-                                      <a href={file.data} target="_blank" rel="noopener noreferrer">
-                                        <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
-                                      </a>
-                                    ) : file.type === 'application/pdf' ? (
-                                      <a href={file.data} target="_blank" rel="noopener noreferrer" className="text-red-600 underline">PDF: {file.name}</a>
-                                    ) : file.type.startsWith('video/') ? (
-                                      <video src={file.data} controls className="w-16 h-16 mb-1" />
-                                    ) : (
-                                      <a href={file.data} download={file.name} className="text-gray-600 underline">{file.name}</a>
                                     )}
                                   </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
                         </div>
                       </div>
                       );
@@ -991,6 +1090,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Add a comment</h3>
                 <div className="flex flex-col space-y-4">
                   <ReactQuill
+                    ref={quillRef}
                     value={newResponse}
                     onChange={setNewResponse}
                     modules={{
@@ -1004,13 +1104,29 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                     }}
                     formats={['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet', 'link', 'image']}
                     className="bg-white rounded-xl border-2 border-gray-200 focus:border-blue-500 min-h-[120px]"
-                    placeholder="Add a comment... (You can paste screenshots directly here)"
+                    placeholder="Type your comment here..."
                   />
-                  {/* Render preview thumbnails for images in the comment */}
-                  {newResponse && (
-                    <div className="mt-2 prose prose-sm max-w-none">
-                      {renderQuillWithPreview(newResponse)}
+                  {/* Preview selected/pasted image attachments as thumbnails */}
+                  {commentAttachments.length > 0 && (
+                    <div className="flex flex-wrap gap-4 mb-2 mt-2">
+                      {commentAttachments.filter(file => file.type && file.type.startsWith('image/')).map((file, idx) => (
+                        <div key={idx} className="relative flex flex-col items-center border rounded p-2 bg-gray-50">
+                          <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
+                          <button
+                            type="button"
+                            className="absolute top-0 right-0 text-gray-400 hover:text-red-500 bg-white rounded-full p-1"
+                            onClick={() => setCommentAttachments(prev => prev.filter((_, i) => i !== idx))}
+                            aria-label="Remove image"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
                     </div>
+                  )}
+                  {/* Error message for empty comment */}
+                  {toast.show && !newResponse.trim() && (
+                    <p className="text-red-600 text-sm flex items-center mt-1">Comment is required</p>
                   )}
                   <input
                     id="comment-attachment-input"
@@ -1044,8 +1160,11 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                   )}
                   <div className="flex justify-end">
                     <button
-                      onClick={handleAddResponse}
-                      disabled={!newResponse.trim() || isSendingResponse}
+                      onClick={() => {
+                        console.log('[DEBUG] Add Comment button clicked. newResponse:', newResponse, 'commentAttachments:', commentAttachments);
+                        handleAddResponse();
+                      }}
+                      disabled={isSendingResponse}
                       className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl transition-all duration-200 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow"
                     >
                       {isSendingResponse ? (
@@ -1059,7 +1178,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                       ) : (
                         <>
                           <Send className="h-4 w-4 mr-2" />
-                          <span>comment</span>
+                          <span>Add Comment</span>
                         </>
                       )}
                     </button>
@@ -1076,66 +1195,59 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                   {!isEditMode ? (
                     <button
                       className="text-blue-600 hover:text-blue-800 text-sm font-medium border border-blue-100 rounded px-4 py-1.5 transition"
-                      onClick={() => setIsEditMode(true)}
+                      onClick={() => {
+                        setEditTypeOfIssue(ticket.typeOfIssue || '');
+                        setIsEditMode(true);
+                      }}
                     >
                       Edit
                     </button>
                   ) : null}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div><span className="font-semibold text-gray-700">Request ID:</span> {ticket.ticketNumber}</div>
-                  <div>
-                    <span className="font-semibold text-gray-700">Status:</span>
-                    {isEditMode ? (
-                    <select
-                      className="ml-2 border border-gray-300 rounded px-2 py-1"
-                      value={editFields.status}
-                      onChange={handleStatusChange}
-                      disabled={isSaving}
-                    >
-                      {statusOptions.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                    ) : (
-                      <span className="ml-2">{editFields.status}</span>
-                    )}
-                  </div>
-                  <div>
-                    <span className="font-semibold text-gray-700">Priority:</span>
-                    {isEditMode ? (
-                    <select
-                      className="ml-2 border border-gray-300 rounded px-2 py-1"
-                      value={editFields.priority}
-                      onChange={e => setEditFields(f => ({ ...f, priority: e.target.value }))}
-                      disabled={isSaving}
-                    >
-                      {priorities.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                    ) : (
-                      <span className="ml-2">{editFields.priority}</span>
-                    )}
-                  </div>
+                <div className="space-y-4">
                   <div>
                     <span className="font-semibold text-gray-700">Module:</span>
                     {isEditMode ? (
                       <select
                         className="ml-2 border border-gray-300 rounded px-2 py-1"
                         value={editModule}
-                        onChange={e => {
-                          setEditModule(e.target.value);
-                          setEditCategory('');
-                        }}
+                        onChange={e => { setEditModule(e.target.value); setEditCategory(''); setEditSubCategory(''); }}
                         disabled={isSaving}
                       >
-                        {moduleOptions.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        {(formConfig?.moduleOptions || []).map(opt => (
+                          <option key={typeof opt === 'object' ? opt.value : opt} value={typeof opt === 'object' ? opt.value : opt}>
+                            {typeof opt === 'object' ? opt.label : opt}
+                          </option>
                         ))}
                       </select>
                     ) : (
                       <span className="ml-2">{ticket.module || '-'}</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Type of Issue:</span>
+                    {isEditMode ? (
+                      <>
+                        {console.log('typeOfIssueOptions', typeOfIssueOptions)}
+                        <select
+                          className="ml-2 border border-gray-300 rounded px-2 py-1"
+                          value={editTypeOfIssue}
+                          onChange={e => setEditTypeOfIssue(e.target.value)}
+                          disabled={isSaving || typeOfIssueOptions.length === 0}
+                        >
+                          <option value="">Select Type of Issue</option>
+                          {typeOfIssueOptions.map(opt => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label || opt.value}
+                            </option>
+                          ))}
+                          {typeOfIssueOptions.length === 0 && (
+                            <option disabled>No type of issue options configured</option>
+                          )}
+                        </select>
+                      </>
+                    ) : (
+                      <span className="ml-2">{ticket.typeOfIssue || '-'}</span>
                     )}
                   </div>
                   <div>
@@ -1144,12 +1256,14 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                       <select
                         className="ml-2 border border-gray-300 rounded px-2 py-1"
                         value={editCategory}
-                        onChange={e => setEditCategory(e.target.value)}
+                        onChange={e => { setEditCategory(e.target.value); setEditSubCategory(''); }}
                         disabled={isSaving || !editModule}
                       >
                         {!editModule && <option value="">Please select the module</option>}
-                        {editModule && categoryOptionsMap[editModule]?.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        {(formConfig?.categoryOptions?.[editModule] || []).map(opt => (
+                          <option key={typeof opt === 'object' ? opt.value : opt} value={typeof opt === 'object' ? opt.value : opt}>
+                            {typeof opt === 'object' ? opt.label : opt}
+                          </option>
                         ))}
                       </select>
                     ) : (
@@ -1159,33 +1273,55 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                   <div>
                     <span className="font-semibold text-gray-700">Sub-Category:</span>
                     {isEditMode ? (
-                      <input
+                      <select
                         className="ml-2 border border-gray-300 rounded px-2 py-1"
                         value={editSubCategory}
                         onChange={e => setEditSubCategory(e.target.value)}
-                        disabled={isSaving}
-                        placeholder="Enter sub-category (if any)"
-                      />
+                        disabled={isSaving || !editCategory}
+                      >
+                        {!editCategory && <option value="">Please select the category</option>}
+                        {(formConfig?.subCategoryOptions?.[editCategory] || []).map(opt => (
+                          <option key={typeof opt === 'object' ? opt.value : opt} value={typeof opt === 'object' ? opt.value : opt}>
+                            {typeof opt === 'object' ? opt.label : opt}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
                       <span className="ml-2">{ticket.subCategory || '-'}</span>
                     )}
                   </div>
                   <div>
-                    <span className="font-semibold text-gray-700">Type of Issue:</span>
+                    <span className="font-semibold text-gray-700">Status:</span>
                     {isEditMode ? (
                       <select
                         className="ml-2 border border-gray-300 rounded px-2 py-1"
-                        value={editTypeOfIssue}
-                        onChange={e => setEditTypeOfIssue(e.target.value)}
+                        value={editFields.status}
+                        onChange={handleStatusChange}
                         disabled={isSaving}
                       >
-                        <option value="">Select Type of Issue</option>
-                        {categories.map(category => (
-                          <option key={category.value} value={category.value}>{category.value}</option>
+                        {statusOptions.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                       </select>
                     ) : (
-                      <span className="ml-2">{ticket.typeOfIssue || '-'}</span>
+                      <span className="ml-2">{editFields.status}</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Priority:</span>
+                    {isEditMode ? (
+                      <select
+                        className="ml-2 border border-gray-300 rounded px-2 py-1"
+                        value={editFields.priority}
+                        onChange={e => setEditFields(f => ({ ...f, priority: e.target.value }))}
+                        disabled={isSaving}
+                      >
+                        {priorities.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="ml-2">{editFields.priority}</span>
                     )}
                   </div>
                   <div>
@@ -1211,105 +1347,55 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                   </div>
                   <div>
                     <span className="font-semibold text-gray-700">Created By:</span>
-                    {isEditMode ? (
+                      <span className="ml-2">{ticket.customer} ({ticket.email})</span>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Reported by</label>
+                    {!isEditMode ? (
+                      <div className="text-gray-900 text-base min-h-[1.5em]">{ticket?.reportedBy || <span className="text-gray-400">(none)</span>}</div>
+                    ) : (
                       <select
-                        className="ml-2 border border-gray-300 rounded px-2 py-1"
-                        value={selectedRequester}
-                        onChange={e => setSelectedRequester(e.target.value)}
-                        disabled={isSaving || clientMembers.length === 0}
+                        className="w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-200 bg-white text-gray-700"
+                        value={editReportedBy}
+                        onChange={e => setEditReportedBy(e.target.value)}
                       >
-                        <option value="">Select Requester</option>
-                        {clientMembers.map(client => (
-                          <option key={client.email} value={client.email}>{client.name} ({client.email})</option>
+                        <option value="">Select member</option>
+                        {clientMembers.map(member => (
+                          <option key={member.email} value={member.email}>{member.name || member.email}</option>
                         ))}
                       </select>
-                    ) : (
-                      <span className="ml-2">{ticket.customer} ({ticket.email})</span>
-                    )}
-                  </div>
-                  <div>
-                    <span className="font-semibold text-gray-700">Reported by:</span>
-                    {isEditMode ? (
-                      projectMembersLoading ? (
-                        <span className="ml-2 text-gray-400">Loading members...</span>
-                      ) : (
-                        <select
-                          className="ml-2 border border-gray-300 rounded px-2 py-1"
-                          value={editReportedBy}
-                          onChange={e => setEditReportedBy(e.target.value)}
-                          disabled={isSaving || projectMembers.length === 0}
-                        >
-                          <option value="">Select member</option>
-                          {projectMembers.map(member => (
-                            <option key={member.email || member.uid || member.name} value={member.name}>{member.name}{member.email ? ` (${member.email})` : ''}</option>
-                          ))}
-                        </select>
-                      )
-                    ) : (
-                      <span className="ml-2">{ticket.reportedBy || '-'}</span>
                     )}
                   </div>
                 </div>
-                {isEditMode && (
-                  <div className="flex justify-end mt-6 gap-2">
+              </div>
+              {/* Restore Description section below the details grid */}
+              <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
+                <div className="font-semibold text-gray-700 mb-2">Description</div>
+                <div
+                  className="whitespace-pre-wrap break-words text-gray-900 border border-gray-100 rounded-lg p-4 bg-gray-50"
+                  style={{ fontFamily: 'inherit', fontSize: '1rem', minHeight: '80px' }}
+                  dangerouslySetInnerHTML={{ __html: makeImagesClickable(ticket.description) }}
+                />
+              </div>
+              {isEditMode && (
+                <div className="flex justify-end mt-6 gap-2">
                   <button
                     className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-50"
-                      onClick={async () => {
-                        await handleSaveDetails();
-                        setIsEditMode(false);
-                      }}
+                    onClick={async () => {
+                      await handleSaveDetails();
+                      setIsEditMode(false);
+                    }}
                     disabled={isSaving}
                   >
                     {isSaving ? 'Saving...' : 'Save Changes'}
                   </button>
-                    <button
-                      className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-2 rounded-lg font-semibold"
-                      onClick={() => { resetEditFields(); setIsEditMode(false); }}
-                      disabled={isSaving}
-                    >
-                      Cancel
-                    </button>
-                </div>
-                )}
-              </div>
-              <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
-                <div className="font-semibold text-gray-700 mb-2">Description</div>
-                <div className="whitespace-pre-wrap break-words text-gray-900 border border-gray-100 rounded-lg p-4 bg-gray-50" style={{ fontFamily: 'inherit', fontSize: '1rem', minHeight: '80px' }}>
-                  {ticket.description ? renderQuillWithPreview(ticket.description) : <span className="text-gray-400">No description provided.</span>}
-                </div>
-              </div>
-              {ticket.attachments && ticket.attachments.length > 0 && (
-                <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
-                  <div className="font-semibold text-gray-700 mb-2">Attachments ({ticket.attachments.length})</div>
-                  <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 overflow-x-auto">
-                    {ticket.attachments.map((file, index) => (
-                      <div key={index} className="flex flex-col items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-3 shadow-sm">
-                        <span className="text-xs font-medium text-gray-700 text-center truncate w-full" title={file.name}>{file.name}</span>
-                        <span className="text-xs text-gray-400">({(file.size / 1024).toFixed(1)} KB)</span>
-                        {/* Preview/Download Button */}
-                        {file.type.startsWith('image/') ? (
-                          <img src={file.data} alt={file.name} className="w-24 h-24 object-contain rounded mb-1 border" />
-                        ) : file.type === 'application/pdf' ? (
-                          <a
-                            href={file.data}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-red-600 hover:text-red-800 text-xs font-medium"
-                          >
-                            Preview
-                          </a>
-                        ) : (
-                          <a
-                            href={file.data}
-                            download={file.name}
-                            className="text-gray-600 hover:text-gray-800 text-xs font-medium"
-                          >
-                            Download
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <button
+                    className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-2 rounded-lg font-semibold"
+                    onClick={() => { resetEditFields(); setIsEditMode(false); }}
+                    disabled={isSaving}
+                  >
+                    Cancel
+                  </button>
                 </div>
               )}
             </div>
@@ -1388,49 +1474,8 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
               )}
             </div>
           )}
-          {activeTab === 'Time Elapsed Analysis' && (
-            <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm space-y-6">
-              <div className="font-bold text-lg text-gray-900 mb-4">Time Elapsed Analysis</div>
-              <div className="text-gray-800 mb-2">Sample time breakdown for this ticket:</div>
-              <table className="min-w-full text-sm text-left text-gray-700">
-                <thead>
-                  <tr>
-                    <th className="py-2 px-4 font-semibold">Stage</th>
-                    <th className="py-2 px-4 font-semibold">Start Time</th>
-                    <th className="py-2 px-4 font-semibold">End Time</th>
-                    <th className="py-2 px-4 font-semibold">Duration</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-t">
-                    <td className="py-2 px-4">Ticket Created</td>
-                    <td className="py-2 px-4">2025-06-05 12:15</td>
-                    <td className="py-2 px-4">2025-06-05 12:20</td>
-                    <td className="py-2 px-4">5 min</td>
-                  </tr>
-                  <tr className="border-t">
-                    <td className="py-2 px-4">Assigned</td>
-                    <td className="py-2 px-4">2025-06-05 12:20</td>
-                    <td className="py-2 px-4">2025-06-05 13:00</td>
-                    <td className="py-2 px-4">40 min</td>
-                  </tr>
-                  <tr className="border-t">
-                    <td className="py-2 px-4">In Progress</td>
-                    <td className="py-2 px-4">2025-06-05 13:00</td>
-                    <td className="py-2 px-4">2025-06-05 15:30</td>
-                    <td className="py-2 px-4">2 hr 30 min</td>
-                  </tr>
-                  <tr className="border-t">
-                    <td className="py-2 px-4">Resolved</td>
-                    <td className="py-2 px-4">2025-06-05 15:30</td>
-                    <td className="py-2 px-4">2025-06-05 16:00</td>
-                    <td className="py-2 px-4">30 min</td>
-                  </tr>
-                </tbody>
-              </table>
-              <div className="mt-4 text-blue-700 font-semibold">Total Time: 3 hr 45 min</div>
-            </div>
-          )}
+ 
+         
         </div>
       </div>
       {/* Sidebar */}
@@ -1454,15 +1499,6 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                   'bg-blue-500'
                 }`}></span>
                 <p className="text-sm font-medium text-gray-900">{ticket.priority || 'Low'}</p>
-              </div>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Project</p>
-              <div className="flex items-center space-x-2">
-                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center">
-                  <FolderOpen className="w-4 h-4 text-indigo-600" />
-                </div>
-                <p className="text-sm font-medium text-gray-900">{ticket.project || 'General'}</p>
               </div>
             </div>
             <div>
@@ -1500,7 +1536,16 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                     <Paperclip className="w-5 h-5 text-gray-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+                    {file.type && file.type.startsWith('image/') ? (
+                      <a href={file.data} target="_blank" rel="noopener noreferrer">
+                        <img src={file.data} alt={file.name} className="w-16 h-16 object-cover rounded mb-1" />
+                        <span className="text-sm font-medium text-blue-700 underline">{file.name}</span>
+                      </a>
+                    ) : (
+                      <a href={file.data} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-700 underline">
+                        {file.name}
+                      </a>
+                    )}
                     <p className="text-xs text-gray-500">
                       {(file.size / 1024).toFixed(1)} KB • {formatTimestamp(file.uploadedAt || new Date())}
                     </p>
@@ -1515,47 +1560,24 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           </div>
         </div>
       </div>
-    </div>
-  );
-
-  return (
-    <>
-      {mainContent}
+      {/* Modal for image preview */}
       {previewImageSrc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
-          <div className="bg-white rounded-xl shadow-lg p-6 max-w-lg w-full relative flex flex-col items-center">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black bg-opacity-70" onClick={() => setPreviewImageSrc('')}>
+          <div className="relative" onClick={e => e.stopPropagation()}>
+            <img src={previewImageSrc} alt="Preview" className="max-w-[90vw] max-h-[80vh] rounded shadow-lg" />
             <button
-              className="absolute top-2 right-2 text-gray-500 hover:text-red-500"
-              onClick={() => setPreviewImageSrc(null)}
+              className="absolute top-2 right-2 bg-white bg-opacity-80 rounded-full p-1 hover:bg-opacity-100 transition"
+              onClick={() => setPreviewImageSrc('')}
               aria-label="Close preview"
             >
-              <X className="w-6 h-6" />
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-gray-700">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
-            <img
-              src={previewImageSrc}
-              alt="Preview"
-              className="max-h-[60vh] w-auto mx-auto rounded-lg border border-gray-200 bg-gray-100"
-              onError={e => {
-                e.target.onerror = null;
-                e.target.style.display = 'none';
-                const fallback = document.getElementById('img-fallback');
-                if (fallback) fallback.style.display = 'block';
-              }}
-            />
-            <a
-              href={previewImageSrc}
-              download="image.png"
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
-            >
-              Download
-            </a>
-            <div id="img-fallback" style={{display:'none'}} className="text-red-500 text-center mt-8">
-              Unable to preview this image.<br/>Please make sure the file is a valid image.
-            </div>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 };
 

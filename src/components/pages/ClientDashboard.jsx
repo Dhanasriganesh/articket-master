@@ -47,6 +47,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import LogoutModal from './LogoutModal';
+import TicketDetails from './TicketDetails';
  
 // Animated count-up hook
 function useCountUp(target, duration = 1200) {
@@ -102,6 +103,7 @@ function ClientDashboard() {
   const [searchParams] = useSearchParams();
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [selectedTicketId, setSelectedTicketId] = useState(null);
  
   // Animated counts for priorities (must be at top level, not inside JSX)
   const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
@@ -465,6 +467,13 @@ function ClientDashboard() {
     return () => { if (unsubscribe) unsubscribe(); };
   }, [authChecked, user, db]);
  
+  // Filter tickets for current user (assigned to or raised by)
+  const currentUserEmail = user?.email;
+  const myTickets = tickets.filter(t =>
+    (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
+    t.email === currentUserEmail
+  );
+ 
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
@@ -715,6 +724,45 @@ function ClientDashboard() {
                 </button>
               </div>
 
+              {/* Filtered Tickets Table */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">My Project Tickets</h2>
+                {selectedTicketId ? (
+                  <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
+                ) : myTickets.length === 0 ? (
+                  <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs text-left text-gray-700 border">
+                      <thead>
+                        <tr>
+                          <th className="py-1 px-2">Ticket #</th>
+                          <th className="py-1 px-2">Subject</th>
+                          <th className="py-1 px-2">Status</th>
+                          <th className="py-1 px-2">Priority</th>
+                          <th className="py-1 px-2">Created</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {myTickets.map((ticket, idx) => (
+                          <tr
+                            key={idx}
+                            className="border-t cursor-pointer hover:bg-orange-50"
+                            onClick={() => setSelectedTicketId(ticket.id)}
+                          >
+                            <td className="py-1 px-2">{ticket.ticketNumber}</td>
+                            <td className="py-1 px-2">{ticket.subject}</td>
+                            <td className="py-1 px-2">{ticket.status}</td>
+                            <td className="py-1 px-2">{ticket.priority}</td>
+                            <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               {/* Charts and Analytics Section */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Status Distribution Line Chart */}
@@ -850,6 +898,39 @@ function ClientDashboard() {
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
               <h3 className="text-xl font-bold text-gray-900 mb-4">Settings</h3>
               <p className="text-gray-600">Account settings will be available here.</p>
+            </div>
+          )}
+          {activeTab === 'mytickets' && (
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">My Tickets</h2>
+              {tickets.filter(t => t.email === user?.email).length === 0 ? (
+                <div className="text-gray-500">You have not raised any tickets.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs text-left text-gray-700 border">
+                    <thead>
+                      <tr>
+                        <th className="py-1 px-2">Ticket #</th>
+                        <th className="py-1 px-2">Subject</th>
+                        <th className="py-1 px-2">Status</th>
+                        <th className="py-1 px-2">Priority</th>
+                        <th className="py-1 px-2">Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tickets.filter(t => t.email === user?.email).map((ticket, idx) => (
+                        <tr key={idx} className="border-t">
+                          <td className="py-1 px-2">{ticket.ticketNumber}</td>
+                          <td className="py-1 px-2">{ticket.subject}</td>
+                          <td className="py-1 px-2">{ticket.status}</td>
+                          <td className="py-1 px-2">{ticket.priority}</td>
+                          <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </main>

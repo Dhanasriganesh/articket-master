@@ -41,6 +41,9 @@ const ClientHeadTickets = ({ setActiveTab }) => {
   const statusDropdownRef = useRef(null);
   const priorityDropdownRef = useRef(null);
   const navigate = useNavigate();
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [employeeMembers, setEmployeeMembers] = useState([]);
+  const [clientMembers, setClientMembers] = useState([]);
  
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
@@ -76,86 +79,38 @@ const ClientHeadTickets = ({ setActiveTab }) => {
   useEffect(() => {
     if (!selectedProject) return;
     setLoading(true);
-    const usersRef = collection(db, 'users');
-    // Fetch employees
-    const employeesQuery = query(
-      usersRef,
-      where('project', '==', selectedProject),
-      where('role', '==', 'employee')
-    );
-    getDocs(employeesQuery).then(employeesSnapshot => {
-      const employeesList = [];
-      const employeeEmails = new Set();
-      const employeeNameCounts = {};
-      employeesSnapshot.forEach((doc) => {
-        const userData = doc.data();
-        if (!employeeEmails.has(userData.email)) {
-          employeeEmails.add(userData.email);
-          const displayName = userData.firstName && userData.lastName
-            ? `${userData.firstName} ${userData.lastName}`.trim()
-            : userData.email.split('@')[0];
-          employeeNameCounts[displayName] = (employeeNameCounts[displayName] || 0) + 1;
-          employeesList.push({
-            id: doc.id,
-            email: userData.email,
-            name: displayName
-          });
-        }
-      });
-      employeesList.sort((a, b) => a.name.localeCompare(b.name));
-      employeesList.forEach(emp => {
-        if (employeeNameCounts[emp.name] > 1) {
-          const emailPart = emp.email.split('@')[0];
-          emp.displayName = `${emp.name} (${emailPart})`;
+    // Fetch project members from projects collection
+    const fetchProjectMembers = async () => {
+      try {
+        const projectsRef = collection(db, 'projects');
+        const q = query(projectsRef, where('name', '==', selectedProject));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const projectDoc = snapshot.docs[0].data();
+          const members = projectDoc.members || [];
+          setProjectMembers(members);
+          setEmployeeMembers(members.filter(m => m.role === 'employee' || m.role === 'project_manager'));
+          setClientMembers(members.filter(m => m.role === 'client' || m.role === 'client_head'));
         } else {
-          emp.displayName = emp.name;
+          setProjectMembers([]);
+          setEmployeeMembers([]);
+          setClientMembers([]);
         }
-      });
-      setEmployees(employeesList);
-    });
-    // Fetch clients
-    const clientsQuery = query(
-      usersRef,
-      where('project', '==', selectedProject),
-      where('role', '==', 'client')
-    );
-    getDocs(clientsQuery).then(clientsSnapshot => {
-      const clientsList = [];
-      const clientEmails = new Set();
-      const clientNameCounts = {};
-      clientsSnapshot.forEach((doc) => {
-        const userData = doc.data();
-        if (!clientEmails.has(userData.email)) {
-          clientEmails.add(userData.email);
-          const displayName = userData.firstName && userData.lastName
-            ? `${userData.firstName} ${userData.lastName}`.trim()
-            : userData.email.split('@')[0];
-          clientNameCounts[displayName] = (clientNameCounts[displayName] || 0) + 1;
-          clientsList.push({
-            id: doc.id,
-            email: userData.email,
-            name: displayName
-          });
-        }
-      });
-      clientsList.sort((a, b) => a.name.localeCompare(b.name));
-      clientsList.forEach(client => {
-        if (clientNameCounts[client.name] > 1) {
-          const emailPart = client.email.split('@')[0];
-          client.displayName = `${client.name} (${emailPart})`;
-        } else {
-          client.displayName = client.name;
-        }
-      });
-      setClients(clientsList);
-    });
-    // Real-time listener for tickets
+      } catch (err) {
+        setProjectMembers([]);
+        setEmployeeMembers([]);
+        setClientMembers([]);
+      }
+      setLoading(false);
+    };
+    fetchProjectMembers();
+    // Fetch tickets for the project
     const ticketsCollectionRef = collection(db, 'tickets');
-    const q = query(
+    const qTickets = query(
       ticketsCollectionRef,
       where('project', '==', selectedProject)
     );
-    const unsubscribeTickets = onSnapshot(q, (snapshot) => {
+    const unsubscribeTickets = onSnapshot(qTickets, (snapshot) => {
       const tickets = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -241,10 +196,10 @@ const ClientHeadTickets = ({ setActiveTab }) => {
         project: ticket.project,
         category: ticket.category,
         priority: ticket.priority,
-        ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+        ticket_link: `https://articket.vercel.app`,
       };
       console.log('Assignment emailParams:', emailParams);
-      await sendEmail(emailParams, 'template_6265t8d');
+      await sendEmail(emailParams, 'template_igl3oxn');
     } catch (err) {
       console.error('Error assigning ticket:', err);
     }
@@ -277,29 +232,17 @@ const ClientHeadTickets = ({ setActiveTab }) => {
    
     // Check both employee and client filters
     let matchesRaisedBy = true;
-    const ticketUser = employees.find(emp => emp.email === ticket.email)
-      ? 'employee'
-      : clients.find(client => client.email === ticket.email)
-        ? 'client'
-        : null;
- 
-    if (ticketUser === 'employee') {
-      if (filterRaisedByEmployee === 'all') {
-        matchesRaisedBy = true;
-      } else if (filterRaisedByEmployee === 'me') {
+    if (filterRaisedByEmployee !== 'all') {
+      if (filterRaisedByEmployee === 'me') {
         matchesRaisedBy = ticket.email === currentUserEmail;
       } else {
-        const selectedEmployee = employees.find(emp => emp.id === filterRaisedByEmployee);
-        matchesRaisedBy = selectedEmployee ? ticket.email === selectedEmployee.email : false;
+        matchesRaisedBy = ticket.email === filterRaisedByEmployee;
       }
-    } else if (ticketUser === 'client') {
-      if (filterRaisedByClient === 'all') {
-        matchesRaisedBy = true;
-      } else if (filterRaisedByClient === 'me') {
+    } else if (filterRaisedByClient !== 'all') {
+      if (filterRaisedByClient === 'me') {
         matchesRaisedBy = ticket.email === currentUserEmail;
       } else {
-        const selectedClient = clients.find(client => client.id === filterRaisedByClient);
-        matchesRaisedBy = selectedClient ? ticket.email === selectedClient.email : false;
+        matchesRaisedBy = ticket.email === filterRaisedByClient;
       }
     }
    
@@ -378,7 +321,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
           </div>
         </div>
         <div>
-          <p className="text-gray-600 mt-2">Project: {selectedProject}</p>
+          <p className="text-gray-600 mt-2 text-2xl text-black font-bold">Project: {selectedProject}</p>
         </div>
       </div>
  
@@ -448,9 +391,9 @@ const ClientHeadTickets = ({ setActiveTab }) => {
           >
             <option value="all">All Employees</option>
             <option value="me">Me</option>
-            {employees.map(employee => (
-              <option key={employee.id} value={employee.id}>
-                {employee.displayName}
+            {employeeMembers.map(member => (
+              <option key={member.email} value={member.email}>
+                {member.firstName && member.lastName ? `${member.firstName} ${member.lastName}` : member.email.split('@')[0]}{member.role === 'project_manager' ? ' (Manager)' : ''}
               </option>
             ))}
           </select>
@@ -466,9 +409,9 @@ const ClientHeadTickets = ({ setActiveTab }) => {
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 min-w-[140px]"
           >
             <option value="all">All Clients</option>
-            {clients.map(client => (
-              <option key={client.id} value={client.id}>
-                {client.displayName}
+            {clientMembers.map(member => (
+              <option key={member.email} value={member.email}>
+                {member.firstName && member.lastName ? `${member.firstName} ${member.lastName}` : member.email.split('@')[0]}{member.role === 'client_head' ? ' (Client Head)' : ''}
               </option>
             ))}
           </select>
@@ -542,7 +485,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
                     Assigned To
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    -
+                    Assigned By
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Last Updated

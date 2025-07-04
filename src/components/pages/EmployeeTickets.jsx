@@ -5,8 +5,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { BsTicketFill, BsFolderFill } from 'react-icons/bs';
 import TicketDetails from './TicketDetails';
 import { sendEmail } from '../../utils/sendEmail';
+import PropTypes from 'prop-types';
  
-const EmployeeTickets = () => {
+const EmployeeTickets = ({ selectedProjectId }) => {
   const [ticketsData, setTicketsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -34,7 +35,14 @@ const EmployeeTickets = () => {
       if (user) {
         setLoading(true);
         setCurrentUserEmail(user.email);
-        let currentProject = 'General';
+        let currentProject = null;
+        if (selectedProjectId) {
+          // Fetch project name for display if needed
+          const projectDoc = await getDoc(doc(db, 'projects', selectedProjectId));
+          currentProject = projectDoc.exists() ? projectDoc.data().name : null;
+        }
+        if (!currentProject) {
+          // Fallback to user's project if no selectedProjectId
         try {
           const userDocRef = doc(db, 'users', user.uid);
           const userDocSnap = await getDoc(userDocRef);
@@ -45,16 +53,20 @@ const EmployeeTickets = () => {
             setCurrentUserData(userData);
           } else {
             setUserProject('General');
+              currentProject = 'General';
           }
         } catch (err) {
           setError('Failed to load user project.');
           setUserProject('General');
+            currentProject = 'General';
+          }
+        } else {
+          setUserProject(currentProject);
         }
  
-        // Fetch employees and clients separately
+        // Fetch employees and clients for the current project
         try {
           const usersRef = collection(db, 'users');
-         
           // Fetch employees
           const employeesQuery = query(
             usersRef,
@@ -70,13 +82,10 @@ const EmployeeTickets = () => {
             const userData = doc.data();
             if (!employeeEmails.has(userData.email)) {
               employeeEmails.add(userData.email);
-             
               const displayName = userData.firstName && userData.lastName
                 ? `${userData.firstName} ${userData.lastName}`.trim()
                 : userData.email.split('@')[0];
-             
               employeeNameCounts[displayName] = (employeeNameCounts[displayName] || 0) + 1;
-             
               employeesList.push({
                 id: doc.id,
                 email: userData.email,
@@ -84,7 +93,6 @@ const EmployeeTickets = () => {
               });
             }
           });
- 
           employeesList.sort((a, b) => a.name.localeCompare(b.name));
           employeesList.forEach(emp => {
             if (employeeNameCounts[emp.name] > 1) {
@@ -111,13 +119,10 @@ const EmployeeTickets = () => {
             const userData = doc.data();
             if (userData.email !== user.email && !clientEmails.has(userData.email)) {
               clientEmails.add(userData.email);
-             
               const displayName = userData.firstName && userData.lastName
                 ? `${userData.firstName} ${userData.lastName}`.trim()
                 : userData.email.split('@')[0];
-             
               clientNameCounts[displayName] = (clientNameCounts[displayName] || 0) + 1;
-             
               clientsList.push({
                 id: doc.id,
                 email: userData.email,
@@ -125,7 +130,6 @@ const EmployeeTickets = () => {
               });
             }
           });
- 
           clientsList.sort((a, b) => a.name.localeCompare(b.name));
           clientsList.forEach(client => {
             if (clientNameCounts[client.name] > 1) {
@@ -143,7 +147,7 @@ const EmployeeTickets = () => {
           console.error('Error fetching users:', err);
         }
  
-        // Query tickets for the employee's project
+        // Query tickets for the selected/current project
         const ticketsCollectionRef = collection(db, 'tickets');
         const q = query(
           ticketsCollectionRef,
@@ -170,7 +174,7 @@ const EmployeeTickets = () => {
       }
     });
     return () => unsubscribeAuth();
-  }, []);
+  }, [selectedProjectId]);
  
   useEffect(() => {
     function handleClickOutside(event) {
@@ -298,10 +302,10 @@ const EmployeeTickets = () => {
       project: ticket.project,
       category: ticket.category,
       priority: ticket.priority,
-      ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+      ticket_link: `https://articket.vercel.app`,
     };
     console.log('Assignment emailParams:', emailParams);
-    await sendEmail(emailParams, 'template_6265t8d');
+    await sendEmail(emailParams, 'template_igl3oxn');
   };
  
   const handleUnassignTicket = async (ticketId) => {
@@ -329,7 +333,7 @@ const EmployeeTickets = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading tickets...</p>
         </div>
       </div>
@@ -352,21 +356,22 @@ const EmployeeTickets = () => {
   }
  
   return (
-    <>
+    <div className="min-h-screen bg-gray-50">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
-        <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-            <BsTicketFill className="mr-3 text-blue-600" /> Tickets
+        <div className="flex items-center gap-4 w-full">
+          <div className="bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-xl px-6 py-4 flex items-center w-full shadow">
+            <h1 className="text-3xl font-bold text-white flex items-center">
+              <BsTicketFill className="mr-3 text-white" /> Tickets
           </h1>
           {/* Ticket Stats Cards */}
-          <div className="flex gap-2">
-            <div className="bg-white rounded-lg shadow border border-gray-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-gray-500">Total</span>
+            <div className="flex gap-2 ml-8">
+              <div className="bg-white bg-opacity-80 rounded-lg shadow border border-gray-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+                <span className="text-xs text-gray-700">Total</span>
               <span className="text-lg font-bold text-gray-900">{totalTickets}</span>
             </div>
-            <div className="bg-blue-50 rounded-lg shadow border border-blue-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-blue-600">Open</span>
-              <span className="text-lg font-bold text-blue-700">{openTickets}</span>
+              <div className="bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-lg shadow border border-orange-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+                <span className="text-xs text-white">Open</span>
+                <span className="text-lg font-bold text-white">{openTickets}</span>
             </div>
             <div className="bg-yellow-50 rounded-lg shadow border border-yellow-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
               <span className="text-xs text-yellow-600">In Progress</span>
@@ -379,20 +384,21 @@ const EmployeeTickets = () => {
             <div className="bg-gray-50 rounded-lg shadow border border-gray-200 px-3 py-2 flex flex-col items-center min-w-[70px]">
               <span className="text-xs text-gray-600">Closed</span>
               <span className="text-lg font-bold text-gray-700">{closedTickets}</span>
+              </div>
             </div>
           </div>
         </div>
         {userProject && (
-          <p className="text-gray-600 mt-2">Project: {userProject}</p>
+          <p className="text-gray-700 mt-2">Project: {userProject}</p>
         )}
       </div>
  
       <div className="flex justify-between items-center mb-8">
         <Link
           to="/employeedashboard?tab=create"
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
+          className="bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] hover:from-[#FFB86C] hover:to-[#FFA14A] text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center font-semibold shadow"
         >
-          <BsFolderFill className="mr-2" />
+          <BsFolderFill className="mr-2 text-white" />
           Create New Ticket
         </Link>
       </div>
@@ -447,7 +453,7 @@ const EmployeeTickets = () => {
               setFilterRaisedByEmployee(e.target.value);
               setFilterRaisedByClient('all'); // Reset client filter when employee filter changes
             }}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 min-w-[140px]"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50 min-w-[140px]"
           >
             <option value="all">All Employees</option>
             <option value="me">Me</option>
@@ -466,7 +472,7 @@ const EmployeeTickets = () => {
               setFilterRaisedByClient(e.target.value);
               setFilterRaisedByEmployee('all'); // Reset employee filter when client filter changes
             }}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 min-w-[140px]"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50 min-w-[140px]"
           >
             <option value="all">All Clients</option>
             {clients.map(client => (
@@ -482,7 +488,7 @@ const EmployeeTickets = () => {
             placeholder="Search by subject or ID..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50"
           />
         </div>
         <div>
@@ -490,7 +496,7 @@ const EmployeeTickets = () => {
           <select
             value={sortOrder}
             onChange={e => setSortOrder(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50"
           >
             <option value="desc">Newest</option>
             <option value="asc">Oldest</option>
@@ -498,7 +504,7 @@ const EmployeeTickets = () => {
         </div>
         <button
           onClick={() => setFiltersApplied(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
+          className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
           type="button"
         >
           Search
@@ -512,7 +518,7 @@ const EmployeeTickets = () => {
             setSearchTerm('');
             setFiltersApplied(false);
           }}
-          className="ml-auto text-xs text-blue-600 hover:underline px-2 py-1 rounded"
+          className="ml-auto text-xs text-orange-600 hover:underline px-2 py-1 rounded"
           type="button"
         >
           Clear Filters
@@ -564,7 +570,7 @@ const EmployeeTickets = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                        ticket.status === 'Open' ? 'bg-orange-100 text-orange-800' :
                         ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
                         ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
                         'bg-gray-100 text-gray-800'
@@ -595,8 +601,16 @@ const EmployeeTickets = () => {
       ) : (
         <div className="text-gray-400 text-center py-12">Select filters and click 'Apply Filters' to view tickets.</div>
       )}
-    </>
+    </div>
   );
+};
+ 
+EmployeeTickets.defaultProps = {
+  selectedProjectId: null,
+};
+
+EmployeeTickets.propTypes = {
+  selectedProjectId: PropTypes.string,
 };
  
 export default EmployeeTickets;
