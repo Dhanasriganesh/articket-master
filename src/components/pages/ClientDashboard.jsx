@@ -604,112 +604,16 @@ function ClientDashboard() {
           <main className="flex-1 overflow-auto p-6 bg-gray-50">
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
-                Stats Cards
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                  <button 
-                    onClick={() => {
-                      setActiveTab('tickets');
-                      // Pass filter data to ClientTickets component
-                      sessionStorage.setItem('ticketFilter', JSON.stringify({
-                        status: 'All',
-                        priority: 'All',
-                        raisedBy: 'all'
-                      }));
-                    }}
-                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-600 mb-1">Total Tickets</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.length}</p>
-                        <p className="text-xs text-gray-500 mt-1">All project tickets</p>
-                      </div>
-                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                        <FileText className="w-6 h-6 text-blue-600" />
-                      </div>
-                    </div>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setActiveTab('tickets');
-                     
-                    }}
-                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-600 mb-1">Tickets</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.email === auth.currentUser?.email).length}</p>
-                        <p className="text-xs text-gray-500 mt-1">Your tickets</p>
-                      </div>
-                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                        <User className="w-6 h-6 text-blue-600" />
-                      </div>
-                    </div>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setActiveTab('tickets');
-                      ;
-                    }}
-                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-600 mb-1">Open Tickets</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Open').length}</p>
-                        <p className="text-xs text-gray-500 mt-1">Needs attention</p>
-                      </div>
-                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                        <AlertCircle className="w-6 h-6 text-blue-600" />
-                      </div>
-                    </div>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setActiveTab('tickets');
-                     
-                    }}
-                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-600 mb-1">In Progress</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'In Progress').length}</p>
-                        <p className="text-xs text-gray-500 mt-1">Being worked on</p>
-                      </div>
-                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                        <Clock className="w-6 h-6 text-blue-600" />
-                      </div>
-                    </div>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setActiveTab('tickets');
-                    
-                    }}
-                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-600 mb-1">Resolved</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Resolved').length}</p>
-                        <p className="text-xs text-gray-500 mt-1">Completed</p>
-                      </div>
-                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                        <CheckCircle className="w-6 h-6 text-blue-600" />
-                      </div>
-                    </div>
-                  </button>
-                </div>
+               
+                
 
                 {/* Filtered Tickets Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">My Project Tickets</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">My Unsolved Tickets</h2>
                   {selectedTicketId ? (
                     <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
-                  ) : myTickets.length === 0 ? (
-                    <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>
+                  ) : myTickets.filter(ticket => ticket.status !== 'Resolved').length === 0 ? (
+                    <div className="text-gray-500">You have no unsolved tickets assigned to you or raised by you in this project.</div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-xs text-left text-gray-700 border">
@@ -723,7 +627,7 @@ function ClientDashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {myTickets.map((ticket, idx) => (
+                          {myTickets.filter(ticket => ticket.status !== 'Resolved').map((ticket, idx) => (
                             <tr
                               key={idx}
                               className="border-t cursor-pointer hover:bg-orange-50"
@@ -742,69 +646,7 @@ function ClientDashboard() {
                   )}
                 </div>
 
-                {/* Charts and Analytics Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Status Distribution Line Chart */}
-                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                      <TrendingUp className="w-5 h-5 mr-2 text-blue-600" />
-                      Ticket Status Trends
-                    </h3>
-                    <div className="h-64 bg-gray-50 rounded-lg p-4">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart
-                          data={[
-                            { name: 'Open', value: tickets.filter(t => t.status === 'Open').length },
-                            { name: 'In Progress', value: tickets.filter(t => t.status === 'In Progress').length },
-                            { name: 'Resolved', value: tickets.filter(t => t.status === 'Resolved').length },
-                            { name: 'Closed', value: tickets.filter(t => t.status === 'Closed').length }
-                          ]}
-                          margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                          <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                          <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
-                          <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={3} dot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  {/* Priority Counts Cards */}
-                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                      <BarChart3 className="w-5 h-5 mr-2 text-blue-600" />
-                      Ticket Priority Counts
-                    </h3>
-                    <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
-                      <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
-                        setActiveTab('tickets');
-                       
-                      }}>
-                        <Flag className="w-8 h-8 text-red-500 mb-2" />
-                        <span className="text-2xl font-bold text-red-600">{highCount}</span>
-                        <span className="text-sm font-medium text-red-700 mt-1">High Priority</span>
-                      </div>
-                      <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
-                        setActiveTab('tickets');
-                       
-                      }}>
-                        <Flag className="w-8 h-8 text-yellow-500 mb-2" />
-                        <span className="text-2xl font-bold text-yellow-600">{mediumCount}</span>
-                        <span className="text-sm font-medium text-yellow-700 mt-1">Medium Priority</span>
-                      </div>
-                      <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
-                        setActiveTab('tickets');
-                       
-                      }}>
-                        <Flag className="w-8 h-8 text-green-500 mb-2" />
-                        <span className="text-2xl font-bold text-green-600">{lowCount}</span>
-                        <span className="text-sm font-medium text-green-700 mt-1">Low Priority</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              
 
                 {/* Quick Actions */}
                 <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">

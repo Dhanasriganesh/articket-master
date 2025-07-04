@@ -24,7 +24,10 @@ import {
   Clock,
   Loader2,
   RefreshCw,
-  FileText
+  FileText,
+  ChevronRight,
+  Calendar,
+  XCircle
 } from 'lucide-react';
 import { collection, query, where, getDocs, getFirestore, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -58,6 +61,32 @@ function useCountUp(target, duration = 1200) {
   }, [target, duration]);
   return count;
 }
+ 
+const getStatusIcon = (status) => {
+  switch (status) {
+    case 'Open': return <AlertCircle className="w-4 h-4 text-blue-500" />;
+    case 'In Progress': return <Clock className="w-4 h-4 text-amber-500" />;
+    case 'Resolved': return <CheckCircle className="w-4 h-4 text-emerald-500" />;
+    case 'Closed': return <XCircle className="w-4 h-4 text-gray-500" />;
+    default: return null;
+  }
+};
+
+const getStatusBadge = (status) => {
+  const baseClasses = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium";
+  switch (status) {
+    case 'Open':
+      return `${baseClasses} bg-blue-100 text-blue-800`;
+    case 'In Progress':
+      return `${baseClasses} bg-amber-100 text-amber-800`;
+    case 'Resolved':
+      return `${baseClasses} bg-emerald-100 text-emerald-800`;
+    case 'Closed':
+      return `${baseClasses} bg-gray-100 text-gray-800`;
+    default:
+      return `${baseClasses} bg-gray-100 text-gray-800`;
+  }
+};
  
 const ClientHeadDashboard = () => {
   const navigate = useNavigate();
@@ -357,8 +386,98 @@ const ClientHeadDashboard = () => {
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
                 {/* Stats Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tickets');
+                      // Pass filter data to ClientHeadTickets component
+                      sessionStorage.setItem('ticketFilter', JSON.stringify({
+                        status: 'All',
+                        priority: 'All',
+                        raisedBy: 'all'
+                      }));
+                    }}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Total Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.length}</p>
+                        <p className="text-xs text-gray-500 mt-1">All project tickets</p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <FileText className="w-6 h-6 text-blue-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tickets');
+                    }}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.email === user?.email).length}</p>
+                        <p className="text-xs text-gray-500 mt-1">My tickets</p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <User className="w-6 h-6 text-blue-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tickets');
+                    }}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Open Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Open').length}</p>
+                        <p className="text-xs text-gray-500 mt-1">Needs attention</p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <AlertCircle className="w-6 h-6 text-blue-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tickets');
+                    }}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">In Progress</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'In Progress').length}</p>
+                        <p className="text-xs text-gray-500 mt-1">Being worked on</p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <Clock className="w-6 h-6 text-blue-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tickets');
+                    }}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Resolved</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Resolved').length}</p>
+                        <p className="text-xs text-gray-500 mt-1">Completed</p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <CheckCircle className="w-6 h-6 text-blue-600" />
+                      </div>
+                    </div>
+                  </button>
                 </div>
  
                 {/* My Project Tickets Table */}
@@ -369,33 +488,30 @@ const ClientHeadDashboard = () => {
                   ) : myTickets.length === 0 ? (
                     <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-xs text-left text-gray-700 border">
-                        <thead>
-                          <tr>
-                            <th className="py-1 px-2">Ticket #</th>
-                            <th className="py-1 px-2">Subject</th>
-                            <th className="py-1 px-2">Status</th>
-                            <th className="py-1 px-2">Priority</th>
-                            <th className="py-1 px-2">Created</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {myTickets.map((ticket, idx) => (
-                            <tr
-                              key={idx}
-                              className="border-t cursor-pointer hover:bg-orange-50"
-                              onClick={() => setSelectedTicketId(ticket.id)}
-                            >
-                              <td className="py-1 px-2">{ticket.ticketNumber}</td>
-                              <td className="py-1 px-2">{ticket.subject}</td>
-                              <td className="py-1 px-2">{ticket.status}</td>
-                              <td className="py-1 px-2">{ticket.priority}</td>
-                              <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {myTickets.map((ticket, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 flex flex-col gap-2 hover:shadow-lg transition cursor-pointer group"
+                          onClick={() => setSelectedTicketId(ticket.id)}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-blue-700 text-lg">{ticket.ticketNumber}</span>
+                              <span className="font-semibold text-gray-900 text-base">{ticket.subject}</span>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition" />
+                          </div>
+                          <div className="flex items-center gap-3 text-sm mb-1">
+                            <span className={getStatusBadge(ticket.status)}>{getStatusIcon(ticket.status)} {ticket.status}</span>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ticket.priority === 'High' ? 'bg-red-100 text-red-700' : ticket.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{ticket.priority}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <Calendar className="w-4 h-4" />
+                            <span>{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

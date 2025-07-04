@@ -466,9 +466,9 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
             </div>
           </div>
         </div>
-        {selectedProjectName && (
+        {/* {selectedProjectName && (
           <p className="text-gray-700 mt-2">Project: {selectedProjectId === 'all' ? 'All Projects' : selectedProjectName}</p>
-        )}
+        )} */}
       </div>
  
       <div className="flex justify-between items-center mb-8">

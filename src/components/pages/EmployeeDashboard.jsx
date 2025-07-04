@@ -514,7 +514,7 @@ function EmployeeDashboard() {
  
                 {/* My Project Tickets Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">My Project Tickets</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">My Tickets</h2>
                   {selectedTicketId ? (
                     <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
                   ) : (() => {
