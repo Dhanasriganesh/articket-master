@@ -526,7 +526,7 @@ function ClientDashboard() {
                     <MessageSquare className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h1 className="text-l font-bold text-gray-900">Client Portal</h1>
+                    <h1 className="text-l font-bold text-gray-900">User Portal</h1>
                   </div>
                 </div>
               )}
@@ -583,7 +583,7 @@ function ClientDashboard() {
                   <Menu className="w-6 h-6 text-gray-600" />
                 </button>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Project: {tickets[0]?.project || 'General'}</h1>
+                  <h1 className="text-2xl font-bold text-gray-900"> {tickets[0]?.project || 'General'}</h1>
                   <p className="text-gray-600">Manage your support tickets and communications</p>
                 </div>
               </div>
