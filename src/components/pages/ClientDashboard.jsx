@@ -604,7 +604,7 @@ function ClientDashboard() {
           <main className="flex-1 overflow-auto p-6 bg-gray-50">
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
-                {/* Stats Cards
+                Stats Cards
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                   <button 
                     onClick={() => {
@@ -632,11 +632,7 @@ function ClientDashboard() {
                   <button 
                     onClick={() => {
                       setActiveTab('tickets');
-                      sessionStorage.setItem('ticketFilter', JSON.stringify({
-                        status: 'All',
-                        priority: 'All',
-                        raisedBy: 'me'
-                      }));
+                     
                     }}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
                   >
@@ -654,11 +650,7 @@ function ClientDashboard() {
                   <button 
                     onClick={() => {
                       setActiveTab('tickets');
-                      sessionStorage.setItem('ticketFilter', JSON.stringify({
-                        status: 'Open',
-                        priority: 'All',
-                        raisedBy: 'all'
-                      }));
+                      ;
                     }}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
                   >
@@ -676,11 +668,7 @@ function ClientDashboard() {
                   <button 
                     onClick={() => {
                       setActiveTab('tickets');
-                      sessionStorage.setItem('ticketFilter', JSON.stringify({
-                        status: 'In Progress',
-                        priority: 'All',
-                        raisedBy: 'all'
-                      }));
+                     
                     }}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
                   >
@@ -698,11 +686,7 @@ function ClientDashboard() {
                   <button 
                     onClick={() => {
                       setActiveTab('tickets');
-                      sessionStorage.setItem('ticketFilter', JSON.stringify({
-                        status: 'Resolved',
-                        priority: 'All',
-                        raisedBy: 'all'
-                      }));
+                    
                     }}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
                   >
@@ -717,7 +701,7 @@ function ClientDashboard() {
                       </div>
                     </div>
                   </button>
-                </div> */}
+                </div>
 
                 {/* Filtered Tickets Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
@@ -796,11 +780,7 @@ function ClientDashboard() {
                     <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
                       <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
                         setActiveTab('tickets');
-                        sessionStorage.setItem('ticketFilter', JSON.stringify({
-                          status: 'All',
-                          priority: 'High',
-                          raisedBy: 'all'
-                        }));
+                       
                       }}>
                         <Flag className="w-8 h-8 text-red-500 mb-2" />
                         <span className="text-2xl font-bold text-red-600">{highCount}</span>
@@ -808,11 +788,7 @@ function ClientDashboard() {
                       </div>
                       <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
                         setActiveTab('tickets');
-                        sessionStorage.setItem('ticketFilter', JSON.stringify({
-                          status: 'All',
-                          priority: 'Medium',
-                          raisedBy: 'all'
-                        }));
+                       
                       }}>
                         <Flag className="w-8 h-8 text-yellow-500 mb-2" />
                         <span className="text-2xl font-bold text-yellow-600">{mediumCount}</span>
@@ -820,11 +796,7 @@ function ClientDashboard() {
                       </div>
                       <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
                         setActiveTab('tickets');
-                        sessionStorage.setItem('ticketFilter', JSON.stringify({
-                          status: 'All',
-                          priority: 'Low',
-                          raisedBy: 'all'
-                        }));
+                       
                       }}>
                         <Flag className="w-8 h-8 text-green-500 mb-2" />
                         <span className="text-2xl font-bold text-green-600">{lowCount}</span>
