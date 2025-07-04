@@ -511,226 +511,395 @@ function ClientDashboard() {
  
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
- 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out ${ sidebarCollapsed ? 'w-20' : 'w-64' } bg-white shadow-xl lg:translate-x-0 lg:static ${ sidebarOpen ? 'translate-x-0' : '-translate-x-full' }`}>
-        <div className="flex flex-col h-full">
-          {/* Sidebar Header */}
-          <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-            {!sidebarCollapsed && (
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
-                  <MessageSquare className="w-6 h-6 text-white" />
+      {/* LogoutModal always rendered above, not blurred */}
+      <LogoutModal open={showLogoutModal} onCancel={handleLogoutCancel} onConfirm={handleLogoutConfirm} loading={signingOut} />
+      {/* Blurred content (sidebar + main) */}
+      <div className={showLogoutModal ? 'flex flex-1 filter blur-sm pointer-events-none select-none' : 'flex flex-1'}>
+        {/* Sidebar */}
+        <aside className={`fixed inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out ${ sidebarCollapsed ? 'w-20' : 'w-64' } bg-white shadow-xl lg:translate-x-0 lg:static ${ sidebarOpen ? 'translate-x-0' : '-translate-x-full' }`}>
+          <div className="flex flex-col h-full">
+            {/* Sidebar Header */}
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              {!sidebarCollapsed && (
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
+                    <MessageSquare className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-l font-bold text-gray-900">Client Portal</h1>
+                  </div>
                 </div>
-                <div>
-                  <h1 className="text-l font-bold text-gray-900">Client Portal</h1>
-                </div>
-              </div>
-            )}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
-            >
-              {sidebarCollapsed ? (
-                <ChevronsRight className="w-6 h-6" />
-              ) : (
-                <ChevronsLeft className="w-6 h-6" />
               )}
-            </button>
-          </div>
- 
-          {/* Sidebar Navigation */}
-          <nav className="flex-1 p-6 space-y-2">
-            {sidebarItems.map(renderSidebarItem)}
-          </nav>
- 
-          {/* Sidebar Footer */}
-          <div className="p-6 border-t border-gray-200">
-            {!sidebarCollapsed && (
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full flex items-center justify-center">
-                  <User className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{clientName.toUpperCase()}</p>
-                  <p className="text-xs text-gray-500">Client</p>
-                </div>
-              </div>
-            )}
-            <button
-              onClick={handleLogout}
-              className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200`}
-            >
-              <LogOut className="w-4 h-4" />
-              {!sidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
-            </button>
-          </div>
-        </div>
-      </aside>
- 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="flex items-center justify-between px-6 py-4">
-            <div className="flex items-center space-x-4">
               <button
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
               >
-                <Menu className="w-6 h-6 text-gray-600" />
+                {sidebarCollapsed ? (
+                  <ChevronsRight className="w-6 h-6" />
+                ) : (
+                  <ChevronsLeft className="w-6 h-6" />
+                )}
               </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Project: {tickets[0]?.project || 'General'}</h1>
-                <p className="text-gray-600">Manage your support tickets and communications</p>
-              </div>
             </div>
-            <div className="flex items-center space-x-4">
-              
+ 
+            {/* Sidebar Navigation */}
+            <nav className="flex-1 p-6 space-y-2">
+              {sidebarItems.map(renderSidebarItem)}
+            </nav>
+ 
+            {/* Sidebar Footer */}
+            <div className="p-6 border-t border-gray-200">
+              {!sidebarCollapsed && (
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full flex items-center justify-center">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{clientName.toUpperCase()}</p>
+                    <p className="text-xs text-gray-500">Client</p>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={handleLogout}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200`}
               >
                 <LogOut className="w-4 h-4" />
-                <span className="font-medium">Sign Out</span>
+                {!sidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
               </button>
             </div>
           </div>
-        </header>
- 
-        {/* Dashboard Content */}
-        <main className="flex-1 overflow-auto p-6 bg-gray-50">
-          {activeTab === 'dashboard' && (
-            <div className="space-y-8">
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                <button 
-                  onClick={() => {
-                    setActiveTab('tickets');
-                    // Pass filter data to ClientTickets component
-                    sessionStorage.setItem('ticketFilter', JSON.stringify({
-                      status: 'All',
-                      priority: 'All',
-                      raisedBy: 'all'
-                    }));
-                  }}
-                  className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+        </aside>
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <header className="bg-white shadow-sm border-b border-gray-200">
+            <div className="flex items-center justify-between px-6 py-4">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600 mb-1">Total Tickets</p>
-                      <p className="text-3xl font-bold text-gray-900">{tickets.length}</p>
-                      <p className="text-xs text-gray-500 mt-1">All project tickets</p>
-                    </div>
-                    <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                      <FileText className="w-6 h-6 text-blue-600" />
-                    </div>
-                  </div>
+                  <Menu className="w-6 h-6 text-gray-600" />
                 </button>
-                <button 
-                  onClick={() => {
-                    setActiveTab('tickets');
-                    sessionStorage.setItem('ticketFilter', JSON.stringify({
-                      status: 'All',
-                      priority: 'All',
-                      raisedBy: 'me'
-                    }));
-                  }}
-                  className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Project: {tickets[0]?.project || 'General'}</h1>
+                  <p className="text-gray-600">Manage your support tickets and communications</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-4">
+                
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600 mb-1">Tickets</p>
-                      <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.email === auth.currentUser?.email).length}</p>
-                      <p className="text-xs text-gray-500 mt-1">Your tickets</p>
-                    </div>
-                    <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                      <User className="w-6 h-6 text-blue-600" />
-                    </div>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => {
-                    setActiveTab('tickets');
-                    sessionStorage.setItem('ticketFilter', JSON.stringify({
-                      status: 'Open',
-                      priority: 'All',
-                      raisedBy: 'all'
-                    }));
-                  }}
-                  className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600 mb-1">Open Tickets</p>
-                      <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Open').length}</p>
-                      <p className="text-xs text-gray-500 mt-1">Needs attention</p>
-                    </div>
-                    <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                      <AlertCircle className="w-6 h-6 text-blue-600" />
-                    </div>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => {
-                    setActiveTab('tickets');
-                    sessionStorage.setItem('ticketFilter', JSON.stringify({
-                      status: 'In Progress',
-                      priority: 'All',
-                      raisedBy: 'all'
-                    }));
-                  }}
-                  className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600 mb-1">In Progress</p>
-                      <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'In Progress').length}</p>
-                      <p className="text-xs text-gray-500 mt-1">Being worked on</p>
-                    </div>
-                    <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                      <Clock className="w-6 h-6 text-blue-600" />
-                    </div>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => {
-                    setActiveTab('tickets');
-                    sessionStorage.setItem('ticketFilter', JSON.stringify({
-                      status: 'Resolved',
-                      priority: 'All',
-                      raisedBy: 'all'
-                    }));
-                  }}
-                  className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600 mb-1">Resolved</p>
-                      <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Resolved').length}</p>
-                      <p className="text-xs text-gray-500 mt-1">Completed</p>
-                    </div>
-                    <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                      <CheckCircle className="w-6 h-6 text-blue-600" />
-                    </div>
-                  </div>
+                  <LogOut className="w-4 h-4" />
+                  <span className="font-medium">Sign Out</span>
                 </button>
               </div>
+            </div>
+          </header>
+ 
+          {/* Dashboard Content */}
+          <main className="flex-1 overflow-auto p-6 bg-gray-50">
+            {activeTab === 'dashboard' && (
+              <div className="space-y-8">
+                {/* Stats Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tickets');
+                      // Pass filter data to ClientTickets component
+                      sessionStorage.setItem('ticketFilter', JSON.stringify({
+                        status: 'All',
+                        priority: 'All',
+                        raisedBy: 'all'
+                      }));
+                    }}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Total Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.length}</p>
+                        <p className="text-xs text-gray-500 mt-1">All project tickets</p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <FileText className="w-6 h-6 text-blue-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tickets');
+                      sessionStorage.setItem('ticketFilter', JSON.stringify({
+                        status: 'All',
+                        priority: 'All',
+                        raisedBy: 'me'
+                      }));
+                    }}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.email === auth.currentUser?.email).length}</p>
+                        <p className="text-xs text-gray-500 mt-1">Your tickets</p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <User className="w-6 h-6 text-blue-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tickets');
+                      sessionStorage.setItem('ticketFilter', JSON.stringify({
+                        status: 'Open',
+                        priority: 'All',
+                        raisedBy: 'all'
+                      }));
+                    }}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Open Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Open').length}</p>
+                        <p className="text-xs text-gray-500 mt-1">Needs attention</p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <AlertCircle className="w-6 h-6 text-blue-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tickets');
+                      sessionStorage.setItem('ticketFilter', JSON.stringify({
+                        status: 'In Progress',
+                        priority: 'All',
+                        raisedBy: 'all'
+                      }));
+                    }}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">In Progress</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'In Progress').length}</p>
+                        <p className="text-xs text-gray-500 mt-1">Being worked on</p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <Clock className="w-6 h-6 text-blue-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tickets');
+                      sessionStorage.setItem('ticketFilter', JSON.stringify({
+                        status: 'Resolved',
+                        priority: 'All',
+                        raisedBy: 'all'
+                      }));
+                    }}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Resolved</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Resolved').length}</p>
+                        <p className="text-xs text-gray-500 mt-1">Completed</p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <CheckCircle className="w-6 h-6 text-blue-600" />
+                      </div>
+                    </div>
+                  </button>
+                </div>
 
-              {/* Filtered Tickets Table */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">My Project Tickets</h2>
-                {selectedTicketId ? (
-                  <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
-                ) : myTickets.length === 0 ? (
-                  <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>
+                {/* Filtered Tickets Table */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">My Project Tickets</h2>
+                  {selectedTicketId ? (
+                    <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
+                  ) : myTickets.length === 0 ? (
+                    <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-xs text-left text-gray-700 border">
+                        <thead>
+                          <tr>
+                            <th className="py-1 px-2">Ticket #</th>
+                            <th className="py-1 px-2">Subject</th>
+                            <th className="py-1 px-2">Status</th>
+                            <th className="py-1 px-2">Priority</th>
+                            <th className="py-1 px-2">Created</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {myTickets.map((ticket, idx) => (
+                            <tr
+                              key={idx}
+                              className="border-t cursor-pointer hover:bg-orange-50"
+                              onClick={() => setSelectedTicketId(ticket.id)}
+                            >
+                              <td className="py-1 px-2">{ticket.ticketNumber}</td>
+                              <td className="py-1 px-2">{ticket.subject}</td>
+                              <td className="py-1 px-2">{ticket.status}</td>
+                              <td className="py-1 px-2">{ticket.priority}</td>
+                              <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Charts and Analytics Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Status Distribution Line Chart */}
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                      <TrendingUp className="w-5 h-5 mr-2 text-blue-600" />
+                      Ticket Status Trends
+                    </h3>
+                    <div className="h-64 bg-gray-50 rounded-lg p-4">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={[
+                            { name: 'Open', value: tickets.filter(t => t.status === 'Open').length },
+                            { name: 'In Progress', value: tickets.filter(t => t.status === 'In Progress').length },
+                            { name: 'Resolved', value: tickets.filter(t => t.status === 'Resolved').length },
+                            { name: 'Closed', value: tickets.filter(t => t.status === 'Closed').length }
+                          ]}
+                          margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
+                          <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
+                          <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
+                          <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={3} dot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Priority Counts Cards */}
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                      <BarChart3 className="w-5 h-5 mr-2 text-blue-600" />
+                      Ticket Priority Counts
+                    </h3>
+                    <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
+                      <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
+                        setActiveTab('tickets');
+                        sessionStorage.setItem('ticketFilter', JSON.stringify({
+                          status: 'All',
+                          priority: 'High',
+                          raisedBy: 'all'
+                        }));
+                      }}>
+                        <Flag className="w-8 h-8 text-red-500 mb-2" />
+                        <span className="text-2xl font-bold text-red-600">{highCount}</span>
+                        <span className="text-sm font-medium text-red-700 mt-1">High Priority</span>
+                      </div>
+                      <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
+                        setActiveTab('tickets');
+                        sessionStorage.setItem('ticketFilter', JSON.stringify({
+                          status: 'All',
+                          priority: 'Medium',
+                          raisedBy: 'all'
+                        }));
+                      }}>
+                        <Flag className="w-8 h-8 text-yellow-500 mb-2" />
+                        <span className="text-2xl font-bold text-yellow-600">{mediumCount}</span>
+                        <span className="text-sm font-medium text-yellow-700 mt-1">Medium Priority</span>
+                      </div>
+                      <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
+                        setActiveTab('tickets');
+                        sessionStorage.setItem('ticketFilter', JSON.stringify({
+                          status: 'All',
+                          priority: 'Low',
+                          raisedBy: 'all'
+                        }));
+                      }}>
+                        <Flag className="w-8 h-8 text-green-500 mb-2" />
+                        <span className="text-2xl font-bold text-green-600">{lowCount}</span>
+                        <span className="text-sm font-medium text-green-700 mt-1">Low Priority</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+                    <Zap className="w-6 h-6 mr-3 text-blue-600" />
+                    Quick Actions
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <button
+                      onClick={() => setActiveTab('create')}
+                      className="group bg-white p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 text-left"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                          <Plus className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-gray-900 text-lg">Create New Ticket</p>
+                          <p className="text-gray-600 text-sm">Submit a new support request</p>
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('tickets')}
+                      className="group bg-white p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 text-left"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                          <FileText className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-gray-900 text-lg">View Project Tickets</p>
+                          <p className="text-gray-600 text-sm">Check status of all project tickets</p>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+ 
+ {activeTab === 'tickets' && <ClientTickets setActiveTab={setActiveTab} />}
+ 
+            {activeTab === 'create' && (
+              <div className="max-w-auto mx-auto">
+                <Ticketing onTicketCreated={() => setActiveTab('tickets')} />
+              </div>
+            )}
+ 
+            {/* Conditional rendering for other tabs like notifications, settings */}
+            {activeTab === 'notifications' && (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                <h3 className="text-xl font-bold text-gray-900 mb-4">Notifications</h3>
+                <p className="text-gray-600">No new notifications.</p>
+              </div>
+            )}
+            {activeTab === 'settings' && (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                <h3 className="text-xl font-bold text-gray-900 mb-4">Settings</h3>
+                <p className="text-gray-600">Account settings will be available here.</p>
+              </div>
+            )}
+            {activeTab === 'mytickets' && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">My Tickets</h2>
+                {tickets.filter(t => t.email === user?.email).length === 0 ? (
+                  <div className="text-gray-500">You have not raised any tickets.</div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-xs text-left text-gray-700 border">
@@ -744,12 +913,8 @@ function ClientDashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {myTickets.map((ticket, idx) => (
-                          <tr
-                            key={idx}
-                            className="border-t cursor-pointer hover:bg-orange-50"
-                            onClick={() => setSelectedTicketId(ticket.id)}
-                          >
+                        {tickets.filter(t => t.email === user?.email).map((ticket, idx) => (
+                          <tr key={idx} className="border-t">
                             <td className="py-1 px-2">{ticket.ticketNumber}</td>
                             <td className="py-1 px-2">{ticket.subject}</td>
                             <td className="py-1 px-2">{ticket.status}</td>
@@ -762,181 +927,10 @@ function ClientDashboard() {
                   </div>
                 )}
               </div>
-
-              {/* Charts and Analytics Section */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Status Distribution Line Chart */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                    <TrendingUp className="w-5 h-5 mr-2 text-blue-600" />
-                    Ticket Status Trends
-                  </h3>
-                  <div className="h-64 bg-gray-50 rounded-lg p-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={[
-                          { name: 'Open', value: tickets.filter(t => t.status === 'Open').length },
-                          { name: 'In Progress', value: tickets.filter(t => t.status === 'In Progress').length },
-                          { name: 'Resolved', value: tickets.filter(t => t.status === 'Resolved').length },
-                          { name: 'Closed', value: tickets.filter(t => t.status === 'Closed').length }
-                        ]}
-                        margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                        <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                        <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
-                        <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={3} dot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Priority Counts Cards */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                    <BarChart3 className="w-5 h-5 mr-2 text-blue-600" />
-                    Ticket Priority Counts
-                  </h3>
-                  <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
-                    <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
-                      setActiveTab('tickets');
-                      sessionStorage.setItem('ticketFilter', JSON.stringify({
-                        status: 'All',
-                        priority: 'High',
-                        raisedBy: 'all'
-                      }));
-                    }}>
-                      <Flag className="w-8 h-8 text-red-500 mb-2" />
-                      <span className="text-2xl font-bold text-red-600">{highCount}</span>
-                      <span className="text-sm font-medium text-red-700 mt-1">High Priority</span>
-                    </div>
-                    <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
-                      setActiveTab('tickets');
-                      sessionStorage.setItem('ticketFilter', JSON.stringify({
-                        status: 'All',
-                        priority: 'Medium',
-                        raisedBy: 'all'
-                      }));
-                    }}>
-                      <Flag className="w-8 h-8 text-yellow-500 mb-2" />
-                      <span className="text-2xl font-bold text-yellow-600">{mediumCount}</span>
-                      <span className="text-sm font-medium text-yellow-700 mt-1">Medium Priority</span>
-                    </div>
-                    <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col items-center shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => {
-                      setActiveTab('tickets');
-                      sessionStorage.setItem('ticketFilter', JSON.stringify({
-                        status: 'All',
-                        priority: 'Low',
-                        raisedBy: 'all'
-                      }));
-                    }}>
-                      <Flag className="w-8 h-8 text-green-500 mb-2" />
-                      <span className="text-2xl font-bold text-green-600">{lowCount}</span>
-                      <span className="text-sm font-medium text-green-700 mt-1">Low Priority</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
-                <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
-                  <Zap className="w-6 h-6 mr-3 text-blue-600" />
-                  Quick Actions
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <button
-                    onClick={() => navigate('/ticketing')}
-                    className="group bg-white p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 text-left"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                        <Plus className="w-6 h-6 text-blue-600" />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-semibold text-gray-900 text-lg">Create New Ticket</p>
-                        <p className="text-gray-600 text-sm">Submit a new support request</p>
-                      </div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('tickets')}
-                    className="group bg-white p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 text-left"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                        <FileText className="w-6 h-6 text-blue-600" />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-semibold text-gray-900 text-lg">View Project Tickets</p>
-                        <p className="text-gray-600 text-sm">Check status of all project tickets</p>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
- 
- {activeTab === 'tickets' && <ClientTickets setActiveTab={setActiveTab} />}
- 
-          {activeTab === 'create' && (
-            <div className="max-w-auto mx-auto">
-              <Ticketing onTicketCreated={() => setActiveTab('tickets')} />
-            </div>
-          )}
- 
-          {/* Conditional rendering for other tabs like notifications, settings */}
-          {activeTab === 'notifications' && (
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Notifications</h3>
-              <p className="text-gray-600">No new notifications.</p>
-            </div>
-          )}
-          {activeTab === 'settings' && (
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Settings</h3>
-              <p className="text-gray-600">Account settings will be available here.</p>
-            </div>
-          )}
-          {activeTab === 'mytickets' && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">My Tickets</h2>
-              {tickets.filter(t => t.email === user?.email).length === 0 ? (
-                <div className="text-gray-500">You have not raised any tickets.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-xs text-left text-gray-700 border">
-                    <thead>
-                      <tr>
-                        <th className="py-1 px-2">Ticket #</th>
-                        <th className="py-1 px-2">Subject</th>
-                        <th className="py-1 px-2">Status</th>
-                        <th className="py-1 px-2">Priority</th>
-                        <th className="py-1 px-2">Created</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tickets.filter(t => t.email === user?.email).map((ticket, idx) => (
-                        <tr key={idx} className="border-t">
-                          <td className="py-1 px-2">{ticket.ticketNumber}</td>
-                          <td className="py-1 px-2">{ticket.subject}</td>
-                          <td className="py-1 px-2">{ticket.status}</td>
-                          <td className="py-1 px-2">{ticket.priority}</td>
-                          <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-        </main>
+            )}
+          </main>
+        </div>
       </div>
-      {/* Replace old signout modal/toast with reusable modal */}
-      <LogoutModal open={showLogoutModal} onCancel={handleLogoutCancel} onConfirm={handleLogoutConfirm} loading={signingOut} />
     </div>
   );
 }

@@ -267,360 +267,347 @@ const ClientHeadDashboard = () => {
  
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Logout Confirmation Modal */}
+      {/* LogoutModal always rendered above, not blurred */}
       <LogoutModal open={showLogoutModal} onCancel={handleLogoutCancel} onConfirm={handleLogout} loading={signingOut} />
-      {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
- 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out ${
-        sidebarCollapsed ? 'w-20' : 'w-64'
-      } bg-white shadow-xl lg:translate-x-0 lg:static ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
-        <div className="flex flex-col h-full">
-          {/* Sidebar Header */}
-          <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-            {!sidebarCollapsed && (
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
-                  <Building className="w-6 h-6 text-white" />
+      {/* Blurred content (sidebar + main) */}
+      <div className={showLogoutModal ? 'flex flex-1 filter blur-sm pointer-events-none select-none' : 'flex flex-1'}>
+        {/* Sidebar */}
+        <aside className={`fixed inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-20' : 'w-64'} bg-white shadow-xl lg:translate-x-0 lg:static ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+          <div className="flex flex-col h-full">
+            {/* Sidebar Header */}
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              {!sidebarCollapsed && (
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
+                    <Building className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-l font-bold text-gray-900">Client Manager</h1>
+                  </div>
                 </div>
-                <div>
-                  <h1 className="text-l font-bold text-gray-900">Client Manager</h1>
-                 
-                </div>
-              </div>
-            )}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
-            >
-              {sidebarCollapsed ? (
-                <ChevronsRight className="w-6 h-6" />
-              ) : (
-                <ChevronsLeft className="w-6 h-6" />
               )}
-            </button>
-          </div>
- 
-          {/* Sidebar Navigation */}
-          <nav className="flex-1 p-6 space-y-2">
-            {sidebarItems.map(renderSidebarItem)}
-          </nav>
- 
-          {/* Sidebar Footer */}
-          <div className="p-6 border-t border-gray-200">
-            {!sidebarCollapsed && (
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full flex items-center justify-center">
-                  <User className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{clientHeadName.toUpperCase()}</p>
-                  <p className="text-xs text-gray-500">Client Manager</p>
-                </div>
-              </div>
-            )}
-            <button
-              onClick={handleLogoutClick}
-              className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200`}
-            >
-              <LogOut className="w-4 h-4" />
-              {!sidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
-            </button>
-          </div>
-        </div>
-      </aside>
- 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="flex items-center justify-between px-6 py-4">
-            <div className="flex items-center space-x-4">
               <button
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
               >
-                <Menu className="w-6 h-6 text-gray-600" />
+                {sidebarCollapsed ? (
+                  <ChevronsRight className="w-6 h-6" />
+                ) : (
+                  <ChevronsLeft className="w-6 h-6" />
+                )}
               </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Project: {myProject?.name || 'General'}</h1>
-                <p className="text-gray-600">Monitor client activities and project progress</p>
-              </div>
             </div>
-            <div className="flex items-center space-x-4">
+            {/* Sidebar Navigation */}
+            <nav className="flex-1 p-6 space-y-2">
+              {sidebarItems.map(renderSidebarItem)}
+            </nav>
+            {/* Sidebar Footer */}
+            <div className="p-6 border-t border-gray-200">
+              {!sidebarCollapsed && (
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full flex items-center justify-center">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{clientHeadName.toUpperCase()}</p>
+                    <p className="text-xs text-gray-500">Client Manager</p>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={handleLogoutClick}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200`}
               >
                 <LogOut className="w-4 h-4" />
-                <span className="font-medium">Sign Out</span>
+                {!sidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
               </button>
             </div>
           </div>
-        </header>
- 
-        {/* Dashboard Content */}
-        <main className="flex-1 overflow-auto p-6 bg-gray-50">
-          {activeTab === 'dashboard' && (
-            <div className="space-y-8">
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                
- 
-                
- 
-                
-             
+        </aside>
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <header className="bg-white shadow-sm border-b border-gray-200">
+            <div className="flex items-center justify-between px-6 py-4">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <Menu className="w-6 h-6 text-gray-600" />
+                </button>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Project: {myProject?.name || 'General'}</h1>
+                  <p className="text-gray-600">Monitor client activities and project progress</p>
+                </div>
               </div>
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={handleLogoutClick}
+                  className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="font-medium">Sign Out</span>
+                </button>
+              </div>
+            </div>
+          </header>
+          {/* Dashboard Content */}
+          <main className="flex-1 overflow-auto p-6 bg-gray-50">
+            {activeTab === 'dashboard' && (
+              <div className="space-y-8">
+                {/* Stats Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  
+                </div>
  
-              {/* My Project Tickets Table */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">My Tickets</h2>
-                {selectedTicketId ? (
-                  <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
-                ) : myTickets.length === 0 ? (
-                  <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-xs text-left text-gray-700 border">
-                      <thead>
-                        <tr>
-                          <th className="py-1 px-2">Ticket #</th>
-                          <th className="py-1 px-2">Subject</th>
-                          <th className="py-1 px-2">Status</th>
-                          <th className="py-1 px-2">Priority</th>
-                          <th className="py-1 px-2">Created</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {myTickets.map((ticket, idx) => (
-                          <tr
-                            key={idx}
-                            className="border-t cursor-pointer hover:bg-orange-50"
-                            onClick={() => setSelectedTicketId(ticket.id)}
-                          >
-                            <td className="py-1 px-2">{ticket.ticketNumber}</td>
-                            <td className="py-1 px-2">{ticket.subject}</td>
-                            <td className="py-1 px-2">{ticket.status}</td>
-                            <td className="py-1 px-2">{ticket.priority}</td>
-                            <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
+                {/* My Project Tickets Table */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">My Tickets</h2>
+                  {selectedTicketId ? (
+                    <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
+                  ) : myTickets.length === 0 ? (
+                    <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-xs text-left text-gray-700 border">
+                        <thead>
+                          <tr>
+                            <th className="py-1 px-2">Ticket #</th>
+                            <th className="py-1 px-2">Subject</th>
+                            <th className="py-1 px-2">Status</th>
+                            <th className="py-1 px-2">Priority</th>
+                            <th className="py-1 px-2">Created</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
- 
-              {/* Charts and Analytics Section */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Status Distribution Line Chart */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                    <TrendingUp className="w-5 h-5 mr-2 text-blue-600" />
-                    Ticket Status Trends
-                  </h3>
-                  <div className="h-64 bg-gray-50 rounded-lg p-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={[
-                          { name: 'Open', value: tickets.filter(t => t.status === 'Open').length },
-                          { name: 'In Progress', value: tickets.filter(t => t.status === 'In Progress').length },
-                          { name: 'Resolved', value: tickets.filter(t => t.status === 'Resolved').length },
-                          { name: 'Closed', value: tickets.filter(t => t.status === 'Closed').length }
-                        ]}
-                        margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                        <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                        <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
-                        <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={3} dot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
- 
-                {/* Priority Distribution */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                    <BarChart3 className="w-5 h-5 mr-2 text-blue-600" />
-                    Ticket Priority Distribution
-                  </h3>
-                  <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
-                    <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center">
-                      <Flag className="w-8 h-8 text-red-500 mb-2" />
-                      <span className="text-2xl font-bold text-red-600">{highCount}</span>
-                      <span className="text-sm font-medium text-red-700 mt-1">High Priority</span>
-                    </div>
-                    <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex flex-col items-center">
-                      <Flag className="w-8 h-8 text-yellow-500 mb-2" />
-                      <span className="text-2xl font-bold text-yellow-600">{mediumCount}</span>
-                      <span className="text-sm font-medium text-yellow-700 mt-1">Medium Priority</span>
-                    </div>
-                    <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col items-center">
-                      <Flag className="w-8 h-8 text-green-500 mb-2" />
-                      <span className="text-2xl font-bold text-green-600">{lowCount}</span>
-                      <span className="text-sm font-medium text-green-700 mt-1">Low Priority</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
- 
-              {/* Quick Actions */}
-              <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
-                <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
-                  <Zap className="w-6 h-6 mr-3 text-blue-600" />
-                  Quick Actions
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  
- 
-                  
- 
-                  <button
-                    onClick={() => setActiveTab('tickets')}
-                    className="group bg-white p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 text-left"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                        <MessageSquare className="w-6 h-6 text-blue-600" />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-semibold text-gray-900 text-lg">View Tickets</p>
-                        <p className="text-gray-600 text-sm">Manage support tickets</p>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
- 
-            
-            </div>
-          )}
- 
-          {/* Other tabs content */}
-          {activeTab === 'team' && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Clients</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                {(myProject?.members?.filter(m => m.userType === 'client') || []).map(member => (
-                  <div key={member.uid} className="bg-purple-50 rounded-xl p-6 flex flex-col items-center shadow hover:shadow-lg transition">
-                    <div className="w-16 h-16 bg-purple-200 rounded-full flex items-center justify-center mb-4">
-                      <User className="w-8 h-8 text-purple-600" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-lg font-semibold text-gray-900">{member.email}</p>
-                      <p className="text-sm text-gray-600 capitalize">{member.role.replace('_', ' ')}</p>
-                    </div>
-                  </div>
-                ))}
-                {((myProject?.members?.filter(m => m.userType === 'client') || []).length === 0) && (
-                  <div className="col-span-full text-center text-gray-500">No clients found for this project.</div>
-                )}
-              </div>
-            </div>
-          )}
- 
-          {activeTab === 'clients' && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Clients Management</h2>
-              {/* Clients management content */}
-            </div>
-          )}
- 
-          
- 
-          {activeTab === 'tickets' && (
-            <ClientHeadTickets />
-          )}
- 
-          {activeTab === 'create' && (
-            <Ticketing />
-          )}
- 
-          {activeTab === 'kpi' && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-blue-600" />KPI Reports</h2>
-              {tickets.length === 0 ? (
-                <div className="text-gray-500">No tickets found for KPI analysis.</div>
-              ) : (
-                (() => {
-                  const kpi = computeKPIsForTickets(tickets);
-                  return (
-                    <>
-                      <div className="mb-4">
-                        <div><b>Total Tickets Assigned:</b> {kpi.count}</div>
-                        <div><b>Avg. Response Time:</b> {kpi.avgResponse ? (kpi.avgResponse/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
-                        <div><b>Avg. Resolution Time:</b> {kpi.avgResolution ? (kpi.avgResolution/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
-                      </div>
-                      <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart">
-                        <h3 className="text-lg font-semibold mb-2">KPI Bar Chart</h3>
-                        <ResponsiveContainer width="100%" height={250}>
-                          <BarChart data={kpi.details.map(row => ({
-                            name: row.ticketNumber,
-                            'Response Time (min)': row.responseTime ? (row.responseTime/1000/60) : 0,
-                            'Resolution Time (min)': row.resolutionTime ? (row.resolutionTime/1000/60) : 0,
-                          }))}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip />
-                            <Legend />
-                            <Bar dataKey="Response Time (min)" fill="#8884d8" />
-                            <Bar dataKey="Resolution Time (min)" fill="#82ca9d" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="flex gap-4 mb-4">
-                        <button
-                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
-                          onClick={() => exportKpiToExcelWithChartImage(kpi, 'kpi-bar-chart', projects.find(p => p.id === selectedProjectId)?.name || '')}
-                        >
-                          Export to Excel
-                        </button>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-xs text-left text-gray-700 border">
-                          <thead>
-                            <tr>
-                              <th className="py-1 px-2">Ticket #</th>
-                              <th className="py-1 px-2">Subject</th>
-                              <th className="py-1 px-2">Assignee</th>
-                              <th className="py-1 px-2">Response Time</th>
-                              <th className="py-1 px-2">Resolution Time</th>
-                              <th className="py-1 px-2">Status</th>
+                        </thead>
+                        <tbody>
+                          {myTickets.map((ticket, idx) => (
+                            <tr
+                              key={idx}
+                              className="border-t cursor-pointer hover:bg-orange-50"
+                              onClick={() => setSelectedTicketId(ticket.id)}
+                            >
+                              <td className="py-1 px-2">{ticket.ticketNumber}</td>
+                              <td className="py-1 px-2">{ticket.subject}</td>
+                              <td className="py-1 px-2">{ticket.status}</td>
+                              <td className="py-1 px-2">{ticket.priority}</td>
+                              <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {kpi.details.map((row, idx) => (
-                              <tr key={idx} className="border-t">
-                                <td className="py-1 px-2">{row.ticketNumber}</td>
-                                <td className="py-1 px-2">{row.subject}</td>
-                                <td className="py-1 px-2">{row.assignee}</td>
-                                <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                                <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                                <td className="py-1 px-2">{row.status}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+ 
+                {/* Charts and Analytics Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Status Distribution Line Chart */}
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                      <TrendingUp className="w-5 h-5 mr-2 text-blue-600" />
+                      Ticket Status Trends
+                    </h3>
+                    <div className="h-64 bg-gray-50 rounded-lg p-4">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={[
+                            { name: 'Open', value: tickets.filter(t => t.status === 'Open').length },
+                            { name: 'In Progress', value: tickets.filter(t => t.status === 'In Progress').length },
+                            { name: 'Resolved', value: tickets.filter(t => t.status === 'Resolved').length },
+                            { name: 'Closed', value: tickets.filter(t => t.status === 'Closed').length }
+                          ]}
+                          margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
+                          <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
+                          <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
+                          <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={3} dot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+ 
+                  {/* Priority Distribution */}
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                      <BarChart3 className="w-5 h-5 mr-2 text-blue-600" />
+                      Ticket Priority Distribution
+                    </h3>
+                    <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
+                      <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center">
+                        <Flag className="w-8 h-8 text-red-500 mb-2" />
+                        <span className="text-2xl font-bold text-red-600">{highCount}</span>
+                        <span className="text-sm font-medium text-red-700 mt-1">High Priority</span>
                       </div>
-                    </>
-                  );
-                })()
-              )}
-            </div>
-          )}
-        </main>
+                      <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex flex-col items-center">
+                        <Flag className="w-8 h-8 text-yellow-500 mb-2" />
+                        <span className="text-2xl font-bold text-yellow-600">{mediumCount}</span>
+                        <span className="text-sm font-medium text-yellow-700 mt-1">Medium Priority</span>
+                      </div>
+                      <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col items-center">
+                        <Flag className="w-8 h-8 text-green-500 mb-2" />
+                        <span className="text-2xl font-bold text-green-600">{lowCount}</span>
+                        <span className="text-sm font-medium text-green-700 mt-1">Low Priority</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+ 
+                {/* Quick Actions */}
+                <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+                    <Zap className="w-6 h-6 mr-3 text-blue-600" />
+                    Quick Actions
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <button
+                      onClick={() => setActiveTab('create')}
+                      className="group bg-white p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 text-left"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                          <Plus className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-gray-900 text-lg">Create New Ticket</p>
+                          <p className="text-gray-600 text-sm">Submit a new support request</p>
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('tickets')}
+                      className="group bg-white p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 text-left"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                          <MessageSquare className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-gray-900 text-lg">View Tickets</p>
+                          <p className="text-gray-600 text-sm">Manage support tickets</p>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+ 
+            {/* Other tabs content */}
+            {activeTab === 'team' && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Clients</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                  {(myProject?.members?.filter(m => m.userType === 'client') || []).map(member => (
+                    <div key={member.uid} className="bg-purple-50 rounded-xl p-6 flex flex-col items-center shadow hover:shadow-lg transition">
+                      <div className="w-16 h-16 bg-purple-200 rounded-full flex items-center justify-center mb-4">
+                        <User className="w-8 h-8 text-purple-600" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-lg font-semibold text-gray-900">{member.email}</p>
+                        <p className="text-sm text-gray-600 capitalize">{member.role.replace('_', ' ')}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {((myProject?.members?.filter(m => m.userType === 'client') || []).length === 0) && (
+                    <div className="col-span-full text-center text-gray-500">No clients found for this project.</div>
+                  )}
+                </div>
+              </div>
+            )}
+ 
+            {activeTab === 'clients' && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Clients Management</h2>
+                {/* Clients management content */}
+              </div>
+            )}
+ 
+            {activeTab === 'tickets' && (
+              <ClientHeadTickets />
+            )}
+ 
+            {activeTab === 'create' && (
+              <Ticketing />
+            )}
+ 
+            {activeTab === 'kpi' && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-blue-600" />KPI Reports</h2>
+                {tickets.length === 0 ? (
+                  <div className="text-gray-500">No tickets found for KPI analysis.</div>
+                ) : (
+                  (() => {
+                    const kpi = computeKPIsForTickets(tickets);
+                    return (
+                      <>
+                        <div className="mb-4">
+                          <div><b>Total Tickets Assigned:</b> {kpi.count}</div>
+                          <div><b>Avg. Response Time:</b> {kpi.avgResponse ? (kpi.avgResponse/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
+                          <div><b>Avg. Resolution Time:</b> {kpi.avgResolution ? (kpi.avgResolution/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
+                        </div>
+                        <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart">
+                          <h3 className="text-lg font-semibold mb-2">KPI Bar Chart</h3>
+                          <ResponsiveContainer width="100%" height={250}>
+                            <BarChart data={kpi.details.map(row => ({
+                              name: row.ticketNumber,
+                              'Response Time (min)': row.responseTime ? (row.responseTime/1000/60) : 0,
+                              'Resolution Time (min)': row.resolutionTime ? (row.resolutionTime/1000/60) : 0,
+                            }))}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" />
+                              <YAxis />
+                              <Tooltip />
+                              <Legend />
+                              <Bar dataKey="Response Time (min)" fill="#8884d8" />
+                              <Bar dataKey="Resolution Time (min)" fill="#82ca9d" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="flex gap-4 mb-4">
+                          <button
+                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+                            onClick={() => exportKpiToExcelWithChartImage(kpi, 'kpi-bar-chart', projects.find(p => p.id === selectedProjectId)?.name || '')}
+                          >
+                            Export to Excel
+                          </button>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-xs text-left text-gray-700 border">
+                            <thead>
+                              <tr>
+                                <th className="py-1 px-2">Ticket #</th>
+                                <th className="py-1 px-2">Subject</th>
+                                <th className="py-1 px-2">Assignee</th>
+                                <th className="py-1 px-2">Response Time</th>
+                                <th className="py-1 px-2">Resolution Time</th>
+                                <th className="py-1 px-2">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {kpi.details.map((row, idx) => (
+                                <tr key={idx} className="border-t">
+                                  <td className="py-1 px-2">{row.ticketNumber}</td>
+                                  <td className="py-1 px-2">{row.subject}</td>
+                                  <td className="py-1 px-2">{row.assignee}</td>
+                                  <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                  <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                  <td className="py-1 px-2">{row.status}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    );
+                  })()
+                )}
+              </div>
+            )}
+          </main>
+        </div>
       </div>
     </div>
   );

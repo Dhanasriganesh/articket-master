@@ -353,264 +353,258 @@ function EmployeeDashboard() {
  
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Logout Confirmation Modal */}
+      {/* LogoutModal always rendered above, not blurred */}
       <LogoutModal open={showLogoutModal} onCancel={handleLogoutCancel} onConfirm={handleLogout} loading={signingOut} />
-      {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
- 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out ${ sidebarCollapsed ? 'w-20' : 'w-64' } bg-white shadow-xl lg:translate-x-0 lg:static ${ sidebarOpen ? 'translate-x-0' : '-translate-x-full' }`}>
-        <div className="flex flex-col h-full">
-          {/* Sidebar Header */}
-          <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-            {!sidebarCollapsed && (
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-xl flex items-center justify-center">
-                  <MessageSquare className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                 
-                  <p className="text-sm text-gray-500">Employee Portal</p>
-                </div>
-              </div>
-            )}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
-            >
-              {sidebarCollapsed ? (
-                <ChevronsRight className="w-6 h-6" />
-              ) : (
-                <ChevronsLeft className="w-6 h-6" />
-              )}
-            </button>
-          </div>
- 
-          {/* Sidebar Navigation */}
-          <nav className="flex-1 p-6 space-y-2">
-            {sidebarItems.map(renderSidebarItem)}
-          </nav>
- 
-          {/* Sidebar Footer */}
-          <div className="p-6 border-t border-gray-200">
-            {!sidebarCollapsed && (
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-full flex items-center justify-center">
-                  <User className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{employeeName.toUpperCase()}</p>
-                  <p className="text-xs text-gray-500">Employee</p>
-                </div>
-              </div>
-            )}
-            <button
-              onClick={handleLogoutClick}
-              className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-200`}
-            >
-              <LogOut className="w-4 h-4" />
-              {!sidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
-            </button>
-          </div>
-        </div>
-      </aside>
- 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="flex items-center justify-between px-6 py-4">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <Menu className="w-6 h-6 text-gray-600" />
-              </button>
-              <div>
-                {projects.length === 0 ? (
-                  <h1 className="text-2xl font-bold text-gray-900">No Project Assigned</h1>
-                ) : projects.length === 1 ? (
-                  <h1 className="text-2xl font-bold text-gray-900">Project: {projects[0].name}</h1>
-                ) : (
-                  <div className="flex items-center space-x-2">
-                    <span className="text-2xl font-bold text-gray-900">Project:</span>
-                    <select
-                      className="text-2xl font-bold text-gray-900 bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-orange-400"
-                      value={selectedProjectId}
-                      onChange={e => setSelectedProjectId(e.target.value)}
-                    >
-                      {projects.map(project => (
-                        <option key={project.id} value={project.id}>{project.name}</option>
-                      ))}
-                    </select>
+      {/* Blurred content (sidebar + main) */}
+      <div className={showLogoutModal ? 'flex flex-1 filter blur-sm pointer-events-none select-none' : 'flex flex-1'}>
+        {/* Sidebar */}
+        <aside className={`fixed inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out ${ sidebarCollapsed ? 'w-20' : 'w-64' } bg-white shadow-xl lg:translate-x-0 lg:static ${ sidebarOpen ? 'translate-x-0' : '-translate-x-full' }`}>
+          <div className="flex flex-col h-full">
+            {/* Sidebar Header */}
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              {!sidebarCollapsed && (
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-xl flex items-center justify-center">
+                    <MessageSquare className="w-6 h-6 text-white" />
                   </div>
+                  <div>
+                   
+                    <p className="text-sm text-gray-500">Employee Portal</p>
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
+              >
+                {sidebarCollapsed ? (
+                  <ChevronsRight className="w-6 h-6" />
+                ) : (
+                  <ChevronsLeft className="w-6 h-6" />
                 )}
-                <p className="text-gray-600">Manage your assigned support tickets and communications</p>
-              </div>
+              </button>
             </div>
-            <div className="flex items-center space-x-4">
-             
+ 
+            {/* Sidebar Navigation */}
+            <nav className="flex-1 p-6 space-y-2">
+              {sidebarItems.map(renderSidebarItem)}
+            </nav>
+ 
+            {/* Sidebar Footer */}
+            <div className="p-6 border-t border-gray-200">
+              {!sidebarCollapsed && (
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-8 h-8 bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-full flex items-center justify-center">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{employeeName.toUpperCase()}</p>
+                    <p className="text-xs text-gray-500">Employee</p>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={handleLogoutClick}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-200"
+                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} space-x-2 px-4 py-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-200`}
               >
                 <LogOut className="w-4 h-4" />
-                <span className="font-medium">Sign Out</span>
+                {!sidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
               </button>
             </div>
           </div>
-        </header>
- 
-        {/* Dashboard Content */}
-        <main className="flex-1 overflow-auto p-6 sm:p-4 xs:p-2">
-          {activeTab === 'dashboard' && (
-            <div className="space-y-6">
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Total Tickets</p>
-                      <p className="text-2xl font-bold text-gray-900">{tickets.length}</p>
+        </aside>
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <header className="bg-white shadow-sm border-b border-gray-200">
+            <div className="flex items-center justify-between px-6 py-4">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <Menu className="w-6 h-6 text-gray-600" />
+                </button>
+                <div>
+                  {projects.length === 0 ? (
+                    <h1 className="text-2xl font-bold text-gray-900">No Project Assigned</h1>
+                  ) : projects.length === 1 ? (
+                    <h1 className="text-2xl font-bold text-gray-900">Project: {projects[0].name}</h1>
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      <span className="text-2xl font-bold text-gray-900">Project:</span>
+                      <select
+                        className="text-2xl font-bold text-gray-900 bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        value={selectedProjectId}
+                        onChange={e => setSelectedProjectId(e.target.value)}
+                      >
+                        {projects.map(project => (
+                          <option key={project.id} value={project.id}>{project.name}</option>
+                        ))}
+                      </select>
                     </div>
-                    <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                      <FileText className="w-6 h-6 text-orange-600" />
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Open Tickets</p>
-                      <p className="text-2xl font-bold text-orange-600">{tickets.filter(t => t.status === 'Open').length}</p>
-                    </div>
-                    <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                      <AlertCircle className="w-6 h-6 text-orange-600" />
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">In Progress</p>
-                      <p className="text-2xl font-bold text-amber-600">{tickets.filter(t => t.status === 'In Progress').length}</p>
-                    </div>
-                    <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                      <Clock className="w-6 h-6 text-amber-600" />
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Resolved</p>
-                      <p className="text-2xl font-bold text-emerald-600">{tickets.filter(t => t.status === 'Resolved').length}</p>
-                    </div>
-                    <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-                      <CheckCircle className="w-6 h-6 text-emerald-600" />
-                    </div>
-                  </div>
+                  )}
+                  <p className="text-gray-600">Manage your assigned support tickets and communications</p>
                 </div>
               </div>
+              <div className="flex items-center space-x-4">
+               
+                <button
+                  onClick={handleLogoutClick}
+                  className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-200"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="font-medium">Sign Out</span>
+                </button>
+              </div>
+            </div>
+          </header>
  
-              {/* My Project Tickets Table */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">My Project Tickets</h2>
-                {selectedTicketId ? (
-                  <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
-                ) : (() => {
-                  const currentUserEmail = user?.email;
-                  const myTickets = tickets.filter(t =>
-                    (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
-                    t.email === currentUserEmail
-                  );
-                  if (myTickets.length === 0) {
-                    return <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>;
-                  }
-                  return (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-xs text-left text-gray-700 border">
-                        <thead>
-                          <tr>
-                            <th className="py-1 px-2">Ticket #</th>
-                            <th className="py-1 px-2">Subject</th>
-                            <th className="py-1 px-2">Status</th>
-                            <th className="py-1 px-2">Priority</th>
-                            <th className="py-1 px-2">Created</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {myTickets.map((ticket, idx) => (
-                            <tr
-                              key={idx}
-                              className="border-t cursor-pointer hover:bg-orange-50"
-                              onClick={() => setSelectedTicketId(ticket.id)}
-                            >
-                              <td className="py-1 px-2">{ticket.ticketNumber}</td>
-                              <td className="py-1 px-2">{ticket.subject}</td>
-                              <td className="py-1 px-2">{ticket.status}</td>
-                              <td className="py-1 px-2">{ticket.priority}</td>
-                              <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
+          {/* Dashboard Content */}
+          <main className="flex-1 overflow-auto p-6 sm:p-4 xs:p-2">
+            {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                {/* Stats Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Total Tickets</p>
+                        <p className="text-2xl font-bold text-gray-900">{tickets.length}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                        <FileText className="w-6 h-6 text-orange-600" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Open Tickets</p>
+                        <p className="text-2xl font-bold text-orange-600">{tickets.filter(t => t.status === 'Open').length}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                        <AlertCircle className="w-6 h-6 text-orange-600" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">In Progress</p>
+                        <p className="text-2xl font-bold text-amber-600">{tickets.filter(t => t.status === 'In Progress').length}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                        <Clock className="w-6 h-6 text-amber-600" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Resolved</p>
+                        <p className="text-2xl font-bold text-emerald-600">{tickets.filter(t => t.status === 'Resolved').length}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
+                        <CheckCircle className="w-6 h-6 text-emerald-600" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+ 
+                {/* My Project Tickets Table */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">My Project Tickets</h2>
+                  {selectedTicketId ? (
+                    <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
+                  ) : (() => {
+                    const currentUserEmail = user?.email;
+                    const myTickets = tickets.filter(t =>
+                      (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
+                      t.email === currentUserEmail
+                    );
+                    if (myTickets.length === 0) {
+                      return <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>;
+                    }
+                    return (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-xs text-left text-gray-700 border">
+                          <thead>
+                            <tr>
+                              <th className="py-1 px-2">Ticket #</th>
+                              <th className="py-1 px-2">Subject</th>
+                              <th className="py-1 px-2">Status</th>
+                              <th className="py-1 px-2">Priority</th>
+                              <th className="py-1 px-2">Created</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                })()}
-              </div>
+                          </thead>
+                          <tbody>
+                            {myTickets.map((ticket, idx) => (
+                              <tr
+                                key={idx}
+                                className="border-t cursor-pointer hover:bg-orange-50"
+                                onClick={() => setSelectedTicketId(ticket.id)}
+                              >
+                                <td className="py-1 px-2">{ticket.ticketNumber}</td>
+                                <td className="py-1 px-2">{ticket.subject}</td>
+                                <td className="py-1 px-2">{ticket.status}</td>
+                                <td className="py-1 px-2">{ticket.priority}</td>
+                                <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
+                </div>
  
-              {/* Quick Actions */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button
-                    onClick={() => setActiveTab('create')}
-                    className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-orange-300 hover:bg-orange-50 transition-all duration-200"
-                  >
-                    <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                      {/* Removed Plus icon */}
-                    </div>
-                    <div className="text-left">
-                      <p className="font-medium text-gray-900">Create New Ticket</p>
-                      <p className="text-sm text-gray-500">Submit a new support request</p>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('tickets')}
-                    className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-orange-300 hover:bg-orange-50 transition-all duration-200"
-                  >
-                    <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-green-600" />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-medium text-gray-900">View All Project Tickets</p>
-                      <p className="text-sm text-gray-500">See all tickets for your project</p>
-                    </div>
-                  </button>
+                {/* Quick Actions */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                      onClick={() => setActiveTab('create')}
+                      className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-orange-300 hover:bg-orange-50 transition-all duration-200"
+                    >
+                      <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                        {/* Removed Plus icon */}
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium text-gray-900">Create New Ticket</p>
+                        <p className="text-sm text-gray-500">Submit a new support request</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('tickets')}
+                      className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-orange-300 hover:bg-orange-50 transition-all duration-200"
+                    >
+                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                        <FileText className="w-5 h-5 text-green-600" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium text-gray-900">View All Project Tickets</p>
+                        <p className="text-sm text-gray-500">See all tickets for your project</p>
+                      </div>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
  
-          {activeTab === 'tickets' && <EmployeeTickets selectedProjectId={selectedProjectId} allProjectIds={projects.map(p => p.id)} />}
+            {activeTab === 'tickets' && <EmployeeTickets selectedProjectId={selectedProjectId} allProjectIds={projects.map(p => p.id)} />}
  
-          {activeTab === 'create' && (
-            <div className="max-w-auto mx-auto">
-              <Ticketing 
-                onTicketCreated={() => setActiveTab('tickets')}
-                selectedProjectId={selectedProjectId}
-                selectedProjectName={projects.find(p => p.id === selectedProjectId)?.name || ''}
-              />
-            </div>
-          )}
-        </main>
+            {activeTab === 'create' && (
+              <div className="max-w-auto mx-auto">
+                <Ticketing 
+                  onTicketCreated={() => setActiveTab('tickets')}
+                  selectedProjectId={selectedProjectId}
+                  selectedProjectName={projects.find(p => p.id === selectedProjectId)?.name || ''}
+                />
+              </div>
+            )}
+          </main>
+        </div>
       </div>
       {/* Add toast UI */}
       {roleChangeToast.show && (

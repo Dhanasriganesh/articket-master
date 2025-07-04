@@ -325,17 +325,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
         </div>
       </div>
  
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <button
-            onClick={() => navigate('/client-head-dashboard?tab=create')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
-          >
-            <BsFolderFill className="mr-2" />
-            Create New Ticket
-          </button>
-        </div>
-      </div>
+    
  
       {/* Filters Bar */}
       <div className="flex flex-wrap items-center gap-4 mb-6 bg-white p-4 rounded-xl shadow border border-gray-100">

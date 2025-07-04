@@ -497,42 +497,32 @@ const ProjectManagerDashboard = () => {
           </div>
         </div>
       )}
-      <div className="flex h-screen bg-gray-50">
-        {/* Logout Confirmation Modal */}
-        {showLogoutConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="bg-white rounded-lg shadow-lg p-8 max-w-xs w-full text-center">
-              <h2 className="text-lg font-semibold mb-4">Confirm Logout</h2>
-              <p className="mb-6 text-gray-700">Are you sure you want to log out?</p>
-              <div className="flex justify-center gap-4">
-                <button
-                  className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
-                  onClick={() => setShowLogoutConfirm(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-                  onClick={() => {
-                    setShowLogoutConfirm(false);
-                    handleLogout();
-                  }}
-                >
-                  Yes, Log Out
-                </button>
-              </div>
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-lg p-8 max-w-xs w-full text-center">
+            <h2 className="text-lg font-semibold mb-4">Confirm Logout</h2>
+            <p className="mb-6 text-gray-700">Are you sure you want to log out?</p>
+            <div className="flex justify-center gap-4">
+              <button
+                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  handleLogout();
+                }}
+              >
+                Yes, Log Out
+              </button>
             </div>
           </div>
-        )}
-        {/* Mobile Sidebar Overlay */}
-        {sidebarOpen && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Sidebar */}
+        </div>
+      )}
+      <div className={showLogoutConfirm ? 'flex h-screen bg-gray-50 filter blur-sm pointer-events-none select-none' : 'flex h-screen bg-gray-50'}>
         <aside className={`fixed inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out ${
           sidebarCollapsed ? 'w-20' : 'w-64'
         } bg-white shadow-xl lg:translate-x-0 lg:static ${
@@ -593,9 +583,7 @@ const ProjectManagerDashboard = () => {
           </div>
         </aside>
 
-        {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Header - replaced with EmployeeDashboard style */}
           <header className="bg-white shadow-sm border-b border-gray-200">
             <div className="flex items-center justify-between px-6 py-4">
               <div className="flex items-center space-x-4">
@@ -639,15 +627,9 @@ const ProjectManagerDashboard = () => {
             </div>
           </header>
 
-          {/* Dashboard Content */}
           <main className="flex-1 overflow-auto p-6 sm:p-4 xs:p-2">
-            {/* Only show Select Project dropdown if not viewing a ticket and not on team tab */}
-   
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
-           
-
-                {/* Filtered Tickets Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-4">My Project Tickets</h2>
                   {selectedTicketId ? (
@@ -686,9 +668,7 @@ const ProjectManagerDashboard = () => {
                   )}
                 </div>
 
-                {/* Charts and Analytics Section */}
                 <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-                  {/* Status Distribution Line Chart */}
                   <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
                       <TrendingUp className="w-5 h-5 mr-2 text-orange-600" />
@@ -715,7 +695,6 @@ const ProjectManagerDashboard = () => {
                     </div>
                   </div>
 
-                  {/* Priority Distribution */}
                   <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
                     <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
                       <BarChart3 className="w-5 h-5 mr-2 text-orange-600" />
@@ -741,7 +720,6 @@ const ProjectManagerDashboard = () => {
                   </div>
                 </div>
 
-                {/* Quick Actions */}
                 <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
                   <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
                     <Zap className="w-6 h-6 mr-3 text-orange-600" />
@@ -799,7 +777,6 @@ const ProjectManagerDashboard = () => {
             {activeTab === 'kpi' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-orange-600" />KPI Reports</h2>
-                {/* Compute KPIs for all tickets in the selected project(s) */}
                 {tickets.length === 0 ? (
                   <div className="text-gray-500">No tickets found for KPI analysis.</div>
                 ) : (
