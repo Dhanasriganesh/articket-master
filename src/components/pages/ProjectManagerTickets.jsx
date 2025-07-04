@@ -43,6 +43,15 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
   const priorityDropdownRef = useRef(null);
  
   useEffect(() => {
+    // Guard: skip effect if required props are missing
+    if (!selectedProjectName || selectedProjectName.trim() === '' || !selectedProjectId || selectedProjectId.trim() === '') {
+      console.warn('selectedProjectName or selectedProjectId is empty or undefined, skipping Firestore queries.', { selectedProjectName, selectedProjectId });
+      setLoading(false);
+      setTicketsData([]);
+      setEmployees([]);
+      setClients([]);
+      return;
+    }
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
       if (user) {
         console.log('User authenticated in ProjectManagerTickets.jsx', user.email);
@@ -66,98 +75,104 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
           console.error('Error parsing filter data:', err);
         }
  
-        // Fetch employees and clients separately
-        try {
-          const usersRef = collection(db, 'users');
-         
-          // Fetch employees for the selected project
-          const employeesQuery = query(
-            usersRef,
-            where('project', '==', selectedProjectName),
-            where('role', '==', 'employee')
-          );
-          const employeesSnapshot = await getDocs(employeesQuery);
-          const employeesList = [];
-          const employeeEmails = new Set();
-          const employeeNameCounts = {};
+        // Fetch employees and clients separately, only if selectedProjectName is defined and not empty
+        if (selectedProjectName && selectedProjectName.trim() !== '') {
+          console.log('selectedProjectName for Firestore queries:', selectedProjectName);
+          try {
+            const usersRef = collection(db, 'users');
+            // Fetch employees for the selected project
+            const employeesQuery = query(
+              usersRef,
+              where('project', '==', selectedProjectName),
+              where('role', '==', 'employee')
+            );
+            const employeesSnapshot = await getDocs(employeesQuery);
+            const employeesList = [];
+            const employeeEmails = new Set();
+            const employeeNameCounts = {};
  
-          employeesSnapshot.forEach((doc) => {
-            const userData = doc.data();
-            if (userData.email !== user.email && !employeeEmails.has(userData.email)) {
-              employeeEmails.add(userData.email);
-             
-              const displayName = userData.firstName && userData.lastName
-                ? `${userData.firstName} ${userData.lastName}`.trim()
-                : userData.email.split('@')[0];
-             
-              employeeNameCounts[displayName] = (employeeNameCounts[displayName] || 0) + 1;
-             
-              employeesList.push({
-                id: doc.id,
-                email: userData.email,
-                name: displayName
-              });
-            }
-          });
+            employeesSnapshot.forEach((doc) => {
+              const userData = doc.data();
+              if (userData.email !== user.email && !employeeEmails.has(userData.email)) {
+                employeeEmails.add(userData.email);
+               
+                const displayName = userData.firstName && userData.lastName
+                  ? `${userData.firstName} ${userData.lastName}`.trim()
+                  : userData.email.split('@')[0];
+               
+                employeeNameCounts[displayName] = (employeeNameCounts[displayName] || 0) + 1;
+               
+                employeesList.push({
+                  id: doc.id,
+                  email: userData.email,
+                  name: displayName
+                });
+              }
+            });
  
-          // Process employee display names
-          employeesList.sort((a, b) => a.name.localeCompare(b.name));
-          employeesList.forEach(emp => {
-            if (employeeNameCounts[emp.name] > 1) {
-              const emailPart = emp.email.split('@')[0];
-              emp.displayName = `${emp.name} (${emailPart})`;
-            } else {
-              emp.displayName = emp.name;
-            }
-          });
-          setEmployees(employeesList);
+            // Process employee display names
+            employeesList.sort((a, b) => a.name.localeCompare(b.name));
+            employeesList.forEach(emp => {
+              if (employeeNameCounts[emp.name] > 1) {
+                const emailPart = emp.email.split('@')[0];
+                emp.displayName = `${emp.name} (${emailPart})`;
+              } else {
+                emp.displayName = emp.name;
+              }
+            });
+            setEmployees(employeesList);
  
-          // Fetch clients for the selected project
-          const clientsQuery = query(
-            usersRef,
-            where('project', '==', selectedProjectName),
-            where('role', '==', 'client')
-          );
-          const clientsSnapshot = await getDocs(clientsQuery);
-          const clientsList = [];
-          const clientEmails = new Set();
-          const clientNameCounts = {};
+            // Fetch clients for the selected project
+            const clientsQuery = query(
+              usersRef,
+              where('project', '==', selectedProjectName),
+              where('role', '==', 'client')
+            );
+            const clientsSnapshot = await getDocs(clientsQuery);
+            const clientsList = [];
+            const clientEmails = new Set();
+            const clientNameCounts = {};
  
-          clientsSnapshot.forEach((doc) => {
-            const userData = doc.data();
-            if (userData.email !== user.email && !clientEmails.has(userData.email)) {
-              clientEmails.add(userData.email);
-             
-              const displayName = userData.firstName && userData.lastName
-                ? `${userData.firstName} ${userData.lastName}`.trim()
-                : userData.email.split('@')[0];
-             
-              clientNameCounts[displayName] = (clientNameCounts[displayName] || 0) + 1;
-             
-              clientsList.push({
-                id: doc.id,
-                email: userData.email,
-                name: displayName
-              });
-            }
-          });
+            clientsSnapshot.forEach((doc) => {
+              const userData = doc.data();
+              if (userData.email !== user.email && !clientEmails.has(userData.email)) {
+                clientEmails.add(userData.email);
+               
+                const displayName = userData.firstName && userData.lastName
+                  ? `${userData.firstName} ${userData.lastName}`.trim()
+                  : userData.email.split('@')[0];
+               
+                clientNameCounts[displayName] = (clientNameCounts[displayName] || 0) + 1;
+               
+                clientsList.push({
+                  id: doc.id,
+                  email: userData.email,
+                  name: displayName
+                });
+              }
+            });
  
-          // Process client display names
-          clientsList.sort((a, b) => a.name.localeCompare(b.name));
-          clientsList.forEach(client => {
-            if (clientNameCounts[client.name] > 1) {
-              const emailPart = client.email.split('@')[0];
-              client.displayName = `${client.name} (${emailPart})`;
-            } else {
-              client.displayName = client.name;
-            }
-          });
-          setClients(clientsList);
+            // Process client display names
+            clientsList.sort((a, b) => a.name.localeCompare(b.name));
+            clientsList.forEach(client => {
+              if (clientNameCounts[client.name] > 1) {
+                const emailPart = client.email.split('@')[0];
+                client.displayName = `${client.name} (${emailPart})`;
+              } else {
+                client.displayName = client.name;
+              }
+            });
+            setClients(clientsList);
  
-          console.log('Fetched employees:', employeesList);
-          console.log('Fetched clients:', clientsList);
-        } catch (err) {
-          console.error('Error fetching users:', err);
+            console.log('Fetched employees:', employeesList);
+            console.log('Fetched clients:', clientsList);
+          } catch (err) {
+            console.error('Error fetching users:', err);
+          }
+        } else {
+          if (selectedProjectName === undefined || selectedProjectName.trim() === '') {
+            console.warn('selectedProjectName is empty or undefined, skipping Firestore queries. Value:', selectedProjectName);
+          }
         }
  
         // Set up real-time listener for tickets
@@ -677,4 +692,3 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
 };
  
 export default ProjectManagerTickets;
- 

@@ -337,7 +337,7 @@ const ClientHeadDashboard = () => {
                   <Menu className="w-6 h-6 text-gray-600" />
                 </button>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Project: {myProject?.name || 'General'}</h1>
+                  <h1 className="text-2xl font-bold text-gray-900">{myProject?.name || 'General'}</h1>
                   <p className="text-gray-600">Monitor client activities and project progress</p>
                 </div>
               </div>

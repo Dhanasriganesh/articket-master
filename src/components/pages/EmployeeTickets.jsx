@@ -389,7 +389,7 @@ const EmployeeTickets = ({ selectedProjectId }) => {
           </div>
         </div>
         {userProject && (
-          <p className="text-gray-700 mt-2">Project: {userProject}</p>
+          <p className="text-gray-700 mt-2">{userProject}</p>
         )}
       </div>
  

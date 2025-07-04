@@ -320,9 +320,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
             </div>
           </div>
         </div>
-        <div>
-          <p className="text-gray-600 mt-2 text-2xl text-black font-bold">Project: {selectedProject}</p>
-        </div>
+       
       </div>
  
     

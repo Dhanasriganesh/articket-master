@@ -722,7 +722,9 @@ function Client({ selectedProjectId, selectedProjectName }) {
                         }}
                         formats={['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet', 'link', 'image']}
                         className="bg-white rounded-xl border-2 border-gray-200 focus:border-blue-500 min-h-[120px]"
+                        
                         placeholder={`Please provide detailed information about your issue...`}
+                        
                       />
                       {errors.description && <p className="text-red-600 text-sm flex items-center mt-1"><AlertCircle className="w-4 h-4 mr-1" />{errors.description}</p>}
                       <p className="text-gray-400 text-xs mt-2">You can paste images/screenshots directly into the box above.</p>
