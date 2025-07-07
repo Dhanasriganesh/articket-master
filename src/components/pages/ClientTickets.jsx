@@ -8,7 +8,7 @@ import { sendEmail } from '../../utils/sendEmail';
 import { fetchProjectMemberEmails } from '../../utils/emailUtils';
 import * as XLSX from 'xlsx';
 import dayjs from 'dayjs';
- 
+
 // Helper to safely format timestamps
 function formatTimestamp(ts) {
   if (!ts) return '';
@@ -20,7 +20,62 @@ function formatTimestamp(ts) {
   }
   return '';
 }
- 
+
+function safeCellValue(val) {
+  if (typeof val === 'string') return val.length > 10000 ? val.slice(0, 10000) + '... [truncated]' : val;
+  if (Array.isArray(val)) return `[${val.length} items]`;
+  if (typeof val === 'object' && val !== null) return '[object]';
+  return val ?? '';
+}
+
+function formatDate(val) {
+  if (!val) return '';
+  if (typeof val === 'string') return val;
+  if (val.toDate) return val.toDate().toLocaleString();
+  return new Date(val).toLocaleString();
+}
+
+function responseSummary(responses) {
+  if (!Array.isArray(responses)) return '';
+  if (responses.length === 0) return '0';
+  return `${responses.length} responses`;
+}
+
+function employeeResponseSummary(ticket) {
+  // If you have a separate employeeResponses array, use it. Otherwise, filter customerResponses by authorRole === 'employee'
+  if (Array.isArray(ticket.employeeResponses)) return `${ticket.employeeResponses.length} responses`;
+  if (Array.isArray(ticket.customerResponses)) {
+    const emp = ticket.customerResponses.filter(r => r.authorRole === 'employee');
+    return `${emp.length} responses`;
+  }
+  return '';
+}
+
+function calculateTimes(ticket) {
+  let responseTime = '';
+  let resolutionTime = '';
+  const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+  let assigned = null;
+  let resolved = null;
+  if (ticket.customerResponses && Array.isArray(ticket.customerResponses)) {
+    for (const c of ticket.customerResponses) {
+      if (!assigned && c.message && /assigned to/i.test(c.message)) {
+        assigned = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
+      }
+      if (!resolved && c.message && /resolution updated/i.test(c.message)) {
+        resolved = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
+      }
+    }
+  }
+  // Fallback: if status is Resolved and lastUpdated exists
+  if (!resolved && ticket.status === 'Resolved' && ticket.lastUpdated) {
+    resolved = ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate() : new Date(ticket.lastUpdated);
+  }
+  if (created && assigned) responseTime = ((assigned - created) / 60000).toFixed(2);
+  if (assigned && resolved) resolutionTime = ((resolved - assigned) / 60000).toFixed(2);
+  return { responseTime, resolutionTime };
+}
+
 const ClientHeadTickets = ({ setActiveTab }) => {
   const [ticketsData, setTicketsData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,10 +101,11 @@ const ClientHeadTickets = ({ setActiveTab }) => {
   const [projectMembers, setProjectMembers] = useState([]);
   const [employeeMembers, setEmployeeMembers] = useState([]);
   const [clientMembers, setClientMembers] = useState([]);
+  const [selectedTicketIds, setSelectedTicketIds] = useState([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [quickDate, setQuickDate] = useState('');
- 
+
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
       if (user) {
@@ -80,7 +136,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
     });
     return () => unsubscribeAuth();
   }, []);
- 
+
   useEffect(() => {
     if (!selectedProject) return;
     setLoading(true);
@@ -128,7 +184,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
     });
     return () => unsubscribeTickets();
   }, [selectedProject]);
- 
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) setStatusDropdownOpen(false);
@@ -137,21 +193,21 @@ const ClientHeadTickets = ({ setActiveTab }) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
- 
+
   const summarize = (arr, allLabel, options) => {
     if (arr.includes('All')) return allLabel;
     if (arr.length === 0) return allLabel;
     return arr.join(', ');
   };
- 
+
   const handleTicketClick = (ticketId) => {
     setSelectedTicketId(ticketId);
   };
- 
+
   const handleBackToTickets = () => {
     setSelectedTicketId(null);
   };
- 
+
   const handleAssignTicket = async (ticketId, selectedUserEmail) => {
     console.log('handleAssignTicket called with:', ticketId, selectedUserEmail);
     const assignable = [...employees, ...clients];
@@ -162,23 +218,23 @@ const ClientHeadTickets = ({ setActiveTab }) => {
       lastName: '',
     };
     const ticket = ticketsData.find(t => t.id === ticketId);
- 
+
     if (!ticketId || !auth.currentUser || !selectedUser || !ticket) return;
- 
+
     const ticketRef = doc(db, 'tickets', ticketId);
     const newAssignee = {
       name: selectedUser.name || selectedUser.email.split('@')[0],
       email: selectedUser.email
     };
     const assignerUsername = currentUserEmail.split('@')[0];
- 
+
     const response = {
       message: `Ticket assigned to ${newAssignee.name} by ${assignerUsername}.`,
       timestamp: new Date().toISOString(),
       authorEmail: 'system',
       authorRole: 'system',
     };
- 
+
     try {
       await updateDoc(ticketRef, {
         assignedTo: newAssignee,
@@ -209,7 +265,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
       console.error('Error assigning ticket:', err);
     }
   };
- 
+
   const handleCheckboxFilter = (filter, setFilter, value) => {
     if (value === 'All') {
       setFilter(['All']);
@@ -226,7 +282,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
       });
     }
   };
- 
+
   // Date filter logic
   const applyQuickDate = (type) => {
     setQuickDate(type);
@@ -246,12 +302,12 @@ const ClientHeadTickets = ({ setActiveTab }) => {
     setDateFrom(from);
     setDateTo(to);
   };
-  const clearFilters = () => {
+  const clearDateFilter = () => {
     setDateFrom('');
     setDateTo('');
     setQuickDate('');
   };
- 
+
   // Compute filtered tickets
   const filteredTickets = ticketsData.filter(ticket => {
     const matchesStatus = filterStatus.includes('All') || filterStatus.includes(ticket.status);
@@ -289,70 +345,49 @@ const ClientHeadTickets = ({ setActiveTab }) => {
    
     return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy && matchesDate;
   });
- 
+
   // Sort tickets by date
   const sortedTickets = [...filteredTickets].sort((a, b) => {
     const dateA = a.created?.toDate ? a.created.toDate() : new Date(a.created);
     const dateB = b.created?.toDate ? b.created.toDate() : new Date(b.created);
     return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
   });
- 
+
   // Ticket counts for cards
   const totalTickets = ticketsData.length;
   const openTickets = ticketsData.filter(t => t.status === 'Open').length;
   const inProgressTickets = ticketsData.filter(t => t.status === 'In Progress').length;
   const resolvedTickets = ticketsData.filter(t => t.status === 'Resolved').length;
   const closedTickets = ticketsData.filter(t => t.status === 'Closed').length;
- 
-  function calculateTimes(ticket) {
-    let responseTime = '';
-    let resolutionTime = '';
-    const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
-    let assigned = null;
-    let resolved = null;
-    if (ticket.customerResponses && Array.isArray(ticket.customerResponses)) {
-      for (const c of ticket.customerResponses) {
-        if (!assigned && c.message && /assigned to/i.test(c.message)) {
-          assigned = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
-        }
-        if (!resolved && c.message && /resolution updated/i.test(c.message)) {
-          resolved = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
-        }
-      }
+
+  // Add handler for checkbox
+  const handleCheckboxChange = (ticketId) => {
+    setSelectedTicketIds(prev =>
+      prev.includes(ticketId) ? prev.filter(id => id !== ticketId) : [...prev, ticketId]
+    );
+  };
+
+  // Add handler for select all
+  const handleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedTicketIds(sortedTickets.map(t => t.id));
+    } else {
+      setSelectedTicketIds([]);
     }
-    if (created && assigned) responseTime = ((assigned - created) / 60000).toFixed(2);
-    if (assigned && resolved) resolutionTime = ((resolved - assigned) / 60000).toFixed(2);
-    return { responseTime, resolutionTime };
-  }
- 
-  function safeCellValue(val) {
-    if (typeof val === 'string') return val.length > 10000 ? val.slice(0, 10000) + '... [truncated]' : val;
-    if (Array.isArray(val)) return `[${val.length} items]`;
-    if (typeof val === 'object' && val !== null) return '[object]';
-    return val ?? '';
-  }
- 
-  function downloadTicketsAsExcel(tickets) {
-    if (!tickets || tickets.length === 0) return;
-    const allKeys = Array.from(new Set(tickets.flatMap(ticket => Object.keys(ticket))));
-    // Ensure ticketNumber is first
-    const keys = ['ticketNumber', ...allKeys.filter(k => k !== 'ticketNumber')];
-    const columns = [...keys, 'Response Time (min)', 'Resolution Time (min)'];
-    const rows = tickets.map(ticket => {
-      const times = calculateTimes(ticket);
-      return [
-        ...columns.slice(0, -2).map(key => safeCellValue(ticket[key])),
-        times.responseTime,
-        times.resolutionTime
-      ];
-    });
-    rows.unshift(columns);
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
-    XLSX.writeFile(wb, 'tickets_export.xlsx');
-  }
- 
+  };
+
+  const clearFilters = () => {
+    setFilterStatus(['All']);
+    setFilterPriority(['All']);
+    setFilterRaisedByEmployee('all');
+    setFilterRaisedByClient('all');
+    setSearchTerm('');
+    setFiltersApplied(false);
+    setDateFrom('');
+    setDateTo('');
+    setQuickDate('');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -363,7 +398,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
       </div>
     );
   }
- 
+
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -374,11 +409,11 @@ const ClientHeadTickets = ({ setActiveTab }) => {
       </div>
     );
   }
- 
+
   if (selectedTicketId) {
     return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} onAssign={handleAssignTicket} />;
   }
- 
+
   return (
     <>
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
@@ -387,34 +422,17 @@ const ClientHeadTickets = ({ setActiveTab }) => {
             <BsTicketFill className="mr-3 text-blue-600" />Tickets
           </h1>
           {/* Ticket Stats Cards */}
-          {/* <div className="flex gap-2">
-            <div className="bg-white rounded-lg shadow border border-gray-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-gray-500">Total</span>
-              <span className="text-lg font-bold text-gray-900">{totalTickets}</span>
-            </div>
-            <div className="bg-blue-50 rounded-lg shadow border border-blue-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-blue-600">Open</span>
-              <span className="text-lg font-bold text-blue-700">{openTickets}</span>
-            </div>
-            <div className="bg-yellow-50 rounded-lg shadow border border-yellow-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-yellow-600">In Progress</span>
-              <span className="text-lg font-bold text-yellow-700">{inProgressTickets}</span>
-            </div>
-            <div className="bg-green-50 rounded-lg shadow border border-green-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-green-600">Resolved</span>
-              <span className="text-lg font-bold text-green-700">{resolvedTickets}</span>
-            </div>
-            <div className="bg-gray-50 rounded-lg shadow border border-gray-200 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-gray-600">Closed</span>
-              <span className="text-lg font-bold text-gray-700">{closedTickets}</span>
-            </div>
-          </div> */}
+        
         </div>
-       
+        
       </div>
- 
-    
- 
+
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          
+        </div>
+      </div>
+
       {/* Filters Bar */}
       <div className="flex flex-wrap items-center gap-4 mb-6 bg-white p-4 rounded-xl shadow border border-gray-100">
         <div>
@@ -515,6 +533,14 @@ const ClientHeadTickets = ({ setActiveTab }) => {
           </select>
         </div>
         <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">From</label>
+          <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setQuickDate(''); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">To</label>
+          <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setQuickDate(''); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50" />
+        </div>
+        <div>
           <label className="text-xs font-semibold text-gray-500 mr-2">Quick Date</label>
           <select
             value={quickDate}
@@ -527,9 +553,133 @@ const ClientHeadTickets = ({ setActiveTab }) => {
             <option value="last_2_days">Last 2 Days</option>
           </select>
         </div>
+        <button
+          onClick={() => setFiltersApplied(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
+          type="button"
+        >
+          Search
+        </button>
+        <button
+          onClick={clearFilters}
+          className="ml-auto text-xs text-blue-600 hover:underline px-2 py-1 rounded"
+          type="button"
+        >
+          Clear Filters
+        </button>
+       
       </div>
+
+      {/* Only show tickets if filtersApplied is true */}
+      {filtersApplied && sortedTickets.length > 0 ? (
+        <div className="bg-white shadow overflow-hidden sm:rounded-md">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <input
+                      type="checkbox"
+                      checked={selectedTicketIds.length === sortedTickets.length}
+                      onChange={e => handleSelectAll(e.target.checked)}
+                    />
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {sortedTickets.map((ticket) => (
+                  <tr
+                    key={ticket.id}
+                    onClick={e => {
+                      // Prevent row click if checkbox is clicked
+                      if (e.target.type !== 'checkbox') setSelectedTicketId(ticket.id);
+                    }}
+                    className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
+                  >
+                    <td className="px-2 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <input
+                        type="checkbox"
+                        checked={selectedTicketIds.includes(ticket.id)}
+                        onChange={() => handleCheckboxChange(ticket.id)}
+                        onClick={e => e.stopPropagation()}
+                      />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {ticket.ticketNumber}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                        ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                        ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {ticket.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatTimestamp(ticket.lastUpdated)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : filtersApplied ? (
+        <div className="text-gray-400 text-center py-12">No tickets found for selected filters.</div>
+      ) : (
+        <div className="text-gray-400 text-center py-12">Select filters and click 'Apply Filters' to view tickets.</div>
+      )}
     </>
   );
 };
- 
+
 export default ClientHeadTickets;
+
+function downloadTicketsAsExcel(tickets) {
+  if (!tickets || tickets.length === 0) return;
+  const columns = [
+    'ticketNumber', 'subject', 'module', 'typeOfIssue', 'category', 'subCategory', 'status', 'priority',
+    'assignedTo', 'assignedBy', 'createdBy', 'reportedBy', 'lastUpdated', 'customerResponses', 'employeeResponses', 'Response Time (min)', 'Resolution Time (min)'
+  ];
+  const rows = tickets.map(ticket => {
+    const times = calculateTimes(ticket);
+    return [
+      ticket.ticketNumber || '',
+      ticket.subject || '',
+      ticket.module || '',
+      ticket.typeOfIssue || '',
+      ticket.category || '',
+      ticket.subCategory || '',
+      ticket.status || '',
+      ticket.priority || '',
+      ticket.assignedTo ? (typeof ticket.assignedTo === 'object' ? (ticket.assignedTo.name || ticket.assignedTo.email || '') : ticket.assignedTo) : '',
+      ticket.assignedBy || '',
+      ticket.customer || ticket.createdBy || ticket.email || '',
+      ticket.reportedBy || '',
+      formatDate(ticket.lastUpdated),
+      responseSummary(ticket.customerResponses),
+      employeeResponseSummary(ticket),
+      times.responseTime,
+      times.resolutionTime
+    ];
+  });
+  rows.unshift(columns);
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
+  XLSX.writeFile(wb, 'tickets_export.xlsx');
+}
+ 
