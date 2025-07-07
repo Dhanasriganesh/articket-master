@@ -6,6 +6,8 @@ import { BsTicketFill, BsFolderFill } from 'react-icons/bs';
 import TicketDetails from './TicketDetails';
 import { sendEmail } from '../../utils/sendEmail';
 import { fetchProjectMemberEmails } from '../../utils/emailUtils';
+import * as XLSX from 'xlsx';
+import dayjs from 'dayjs';
  
 // Helper to safely format timestamps
 function formatTimestamp(ts) {
@@ -41,6 +43,10 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
   const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false);
   const statusDropdownRef = useRef(null);
   const priorityDropdownRef = useRef(null);
+  const [selectedTicketIds, setSelectedTicketIds] = useState([]);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [quickDate, setQuickDate] = useState('');
  
   useEffect(() => {
     // Guard: skip effect if required props are missing
@@ -75,104 +81,18 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
           console.error('Error parsing filter data:', err);
         }
  
-        // Fetch employees and clients separately, only if selectedProjectName is defined and not empty
-        if (selectedProjectName && selectedProjectName.trim() !== '') {
-          console.log('selectedProjectName for Firestore queries:', selectedProjectName);
-          try {
-            const usersRef = collection(db, 'users');
-            // Fetch employees for the selected project
-            const employeesQuery = query(
-              usersRef,
-              where('project', '==', selectedProjectName),
-              where('role', '==', 'employee')
-            );
-            const employeesSnapshot = await getDocs(employeesQuery);
-            const employeesList = [];
-            const employeeEmails = new Set();
-            const employeeNameCounts = {};
- 
-            employeesSnapshot.forEach((doc) => {
-              const userData = doc.data();
-              if (userData.email !== user.email && !employeeEmails.has(userData.email)) {
-                employeeEmails.add(userData.email);
-               
-                const displayName = userData.firstName && userData.lastName
-                  ? `${userData.firstName} ${userData.lastName}`.trim()
-                  : userData.email.split('@')[0];
-               
-                employeeNameCounts[displayName] = (employeeNameCounts[displayName] || 0) + 1;
-               
-                employeesList.push({
-                  id: doc.id,
-                  email: userData.email,
-                  name: displayName
-                });
-              }
-            });
- 
-            // Process employee display names
-            employeesList.sort((a, b) => a.name.localeCompare(b.name));
-            employeesList.forEach(emp => {
-              if (employeeNameCounts[emp.name] > 1) {
-                const emailPart = emp.email.split('@')[0];
-                emp.displayName = `${emp.name} (${emailPart})`;
-              } else {
-                emp.displayName = emp.name;
-              }
-            });
-            setEmployees(employeesList);
- 
-            // Fetch clients for the selected project
-            const clientsQuery = query(
-              usersRef,
-              where('project', '==', selectedProjectName),
-              where('role', '==', 'client')
-            );
-            const clientsSnapshot = await getDocs(clientsQuery);
-            const clientsList = [];
-            const clientEmails = new Set();
-            const clientNameCounts = {};
- 
-            clientsSnapshot.forEach((doc) => {
-              const userData = doc.data();
-              if (userData.email !== user.email && !clientEmails.has(userData.email)) {
-                clientEmails.add(userData.email);
-               
-                const displayName = userData.firstName && userData.lastName
-                  ? `${userData.firstName} ${userData.lastName}`.trim()
-                  : userData.email.split('@')[0];
-               
-                clientNameCounts[displayName] = (clientNameCounts[displayName] || 0) + 1;
-               
-                clientsList.push({
-                  id: doc.id,
-                  email: userData.email,
-                  name: displayName
-                });
-              }
-            });
- 
-            // Process client display names
-            clientsList.sort((a, b) => a.name.localeCompare(b.name));
-            clientsList.forEach(client => {
-              if (clientNameCounts[client.name] > 1) {
-                const emailPart = client.email.split('@')[0];
-                client.displayName = `${client.name} (${emailPart})`;
-              } else {
-                client.displayName = client.name;
-              }
-            });
-            setClients(clientsList);
- 
-            console.log('Fetched employees:', employeesList);
-            console.log('Fetched clients:', clientsList);
-          } catch (err) {
-            console.error('Error fetching users:', err);
-          }
+        // Fetch project members from projects collection (like ClientHeadTickets)
+        const projectsRef = collection(db, 'projects');
+        const q = query(projectsRef, where('name', '==', selectedProjectName));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const projectDoc = snapshot.docs[0].data();
+          const members = projectDoc.members || [];
+          setEmployees(members.filter(m => m.role === 'employee' || m.role === 'project_manager'));
+          setClients(members.filter(m => m.role === 'client' || m.role === 'client_head'));
         } else {
-          if (selectedProjectName === undefined || selectedProjectName.trim() === '') {
-            console.warn('selectedProjectName is empty or undefined, skipping Firestore queries. Value:', selectedProjectName);
-          }
+          setEmployees([]);
+          setClients([]);
         }
  
         // Set up real-time listener for tickets
@@ -299,6 +219,13 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
       });
       // Log the assignment as a comment for history, but do NOT send a comment email
       await updateDoc(ticketRef, {
+        customerResponses: arrayUnion({
+          message: `Assigned to ${newAssignee.name}`,
+          timestamp: new Date(),
+          authorEmail: currentUserEmail,
+          authorName: assignerUsername,
+          authorRole: 'system',
+        }),
         customerResponses: arrayUnion(response)
       });
       // Only send the assignment email
@@ -354,6 +281,31 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
     }
   };
  
+  // Date filter logic
+  const applyQuickDate = (type) => {
+    setQuickDate(type);
+    let from = '';
+    let to = '';
+    const now = dayjs();
+    if (type === 'this_month') {
+      from = now.startOf('month').format('YYYY-MM-DD');
+      to = now.endOf('month').format('YYYY-MM-DD');
+    } else if (type === 'this_week') {
+      from = now.startOf('week').format('YYYY-MM-DD');
+      to = now.endOf('week').format('YYYY-MM-DD');
+    } else if (type === 'last_2_days') {
+      from = now.subtract(2, 'day').format('YYYY-MM-DD');
+      to = now.format('YYYY-MM-DD');
+    }
+    setDateFrom(from);
+    setDateTo(to);
+  };
+  const clearDateFilter = () => {
+    setDateFrom('');
+    setDateTo('');
+    setQuickDate('');
+  };
+ 
   // Compute filtered tickets
   const filteredTickets = ticketsData.filter(ticket => {
     const matchesStatus = filterStatus.includes('All') || filterStatus.includes(ticket.status);
@@ -390,7 +342,18 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
       }
     }
    
-    return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy;
+    // Date filter
+    let matchesDate = true;
+    if (dateFrom) {
+      const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+      if (!created || dayjs(created).isBefore(dayjs(dateFrom), 'day')) matchesDate = false;
+    }
+    if (dateTo) {
+      const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+      if (!created || dayjs(created).isAfter(dayjs(dateTo), 'day')) matchesDate = false;
+    }
+   
+    return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy && matchesDate;
   });
  
   // Sort tickets by date
@@ -406,6 +369,150 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
   const inProgressTickets = ticketsData.filter(t => t.status === 'In Progress').length;
   const resolvedTickets = ticketsData.filter(t => t.status === 'Resolved').length;
   const closedTickets = ticketsData.filter(t => t.status === 'Closed').length;
+ 
+  function calculateTimes(ticket) {
+    let responseTime = '';
+    let resolutionTime = '';
+    const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+    let assigned = null;
+    let resolved = null;
+    if (ticket.customerResponses && Array.isArray(ticket.customerResponses)) {
+      for (const c of ticket.customerResponses) {
+        if (!assigned && c.message && /assigned to/i.test(c.message)) {
+          assigned = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
+        }
+        if (!resolved && c.message && /resolution updated/i.test(c.message)) {
+          resolved = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
+        }
+      }
+    }
+    // Fallback: if status is Resolved and lastUpdated exists
+    if (!resolved && ticket.status === 'Resolved' && ticket.lastUpdated) {
+      resolved = ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate() : new Date(ticket.lastUpdated);
+    }
+    if (created && assigned) responseTime = ((assigned - created) / 60000).toFixed(2);
+    if (assigned && resolved) resolutionTime = ((resolved - assigned) / 60000).toFixed(2);
+    return { responseTime, resolutionTime };
+  }
+ 
+  function safeCellValue(val) {
+    if (typeof val === 'string') return val.length > 10000 ? val.slice(0, 10000) + '... [truncated]' : val;
+    if (Array.isArray(val)) return `[${val.length} items]`;
+    if (typeof val === 'object' && val !== null) return '[object]';
+    return val ?? '';
+  }
+ 
+  function summarizeResponses(responses) {
+    if (!Array.isArray(responses) || responses.length === 0) return '';
+    // Summarize as count and first/last message
+    const first = responses[0]?.message ? responses[0].message.slice(0, 100) : '';
+    const last = responses[responses.length - 1]?.message ? responses[responses.length - 1].message.slice(0, 100) : '';
+    if (responses.length === 1) return first;
+    return `(${responses.length} msgs) First: ${first} | Last: ${last}`;
+  }
+
+  function getField(ticket, variants) {
+    for (const v of variants) {
+      if (ticket[v] !== undefined && ticket[v] !== null && ticket[v] !== '') return ticket[v];
+    }
+    return '';
+  }
+
+  function formatAssignedTo(assignedTo) {
+    if (!assignedTo) return '';
+    if (typeof assignedTo === 'string') return assignedTo;
+    if (typeof assignedTo === 'object') {
+      return assignedTo.name || assignedTo.email || JSON.stringify(assignedTo);
+    }
+    return '';
+  }
+
+  function downloadTicketsAsExcel(tickets) {
+    if (!tickets || tickets.length === 0) return;
+    // Define the export columns and their field mappings
+    const exportColumns = [
+      { label: 'Ticket Number', key: ['ticketNumber', 'id'] },
+      { label: 'Subject', key: ['subject'] },
+      { label: 'Module', key: ['module', 'Module'] },
+      { label: 'Type of Issue', key: ['typeOfIssue', 'type', 'issueType'] },
+      { label: 'Category', key: ['category', 'Category'] },
+      { label: 'Sub-Category', key: ['subCategory', 'sub_category', 'subCategoryName'] },
+      { label: 'Status', key: ['status'] },
+      { label: 'Priority', key: ['priority'] },
+      { label: 'Assigned To', key: ['assignedTo'] },
+      { label: 'Assigned By', key: ['assignedBy'] },
+      { label: 'Created By', key: ['customer', 'createdBy', 'email'] },
+      { label: 'Reported By', key: ['reportedBy'] },
+      { label: 'Last Updated', key: ['lastUpdated'] },
+      { label: 'Customer Responses', key: ['customerResponses'] },
+      { label: 'Employee Responses', key: ['employeeResponses'] },
+      { label: 'Response Time (min)', key: [] },
+      { label: 'Resolution Time (min)', key: [] },
+    ];
+    const rows = tickets.map(ticket => {
+      const times = calculateTimes(ticket);
+      return exportColumns.map(col => {
+        if (col.label === 'Assigned To') {
+          return formatAssignedTo(getField(ticket, col.key));
+        }
+        if (col.label === 'Last Updated') {
+          const val = getField(ticket, col.key);
+          return formatTimestamp(val);
+        }
+        if (col.label === 'Customer Responses') {
+          return summarizeResponses(ticket.customerResponses);
+        }
+        if (col.label === 'Employee Responses') {
+          return summarizeResponses(ticket.employeeResponses);
+        }
+        if (col.label === 'Response Time (min)') {
+          return times.responseTime;
+        }
+        if (col.label === 'Resolution Time (min)') {
+          return times.resolutionTime;
+        }
+        // Truncate large fields
+        let val = getField(ticket, col.key);
+        if (typeof val === 'string' && val.length > 10000) val = val.slice(0, 10000) + '... [truncated]';
+        if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
+        return val ?? '';
+      });
+    });
+    // Add header row
+    rows.unshift(exportColumns.map(col => col.label));
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
+    XLSX.writeFile(wb, 'tickets_export.xlsx');
+  }
+ 
+  // Add handler for checkbox
+  const handleCheckboxChange = (ticketId) => {
+    setSelectedTicketIds(prev =>
+      prev.includes(ticketId) ? prev.filter(id => id !== ticketId) : [...prev, ticketId]
+    );
+  };
+ 
+  // Add handler for select all
+  const handleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedTicketIds(sortedTickets.map(t => t.id));
+    } else {
+      setSelectedTicketIds([]);
+    }
+  };
+ 
+  const clearFilters = () => {
+    setFilterStatus(['All']);
+    setFilterPriority(['All']);
+    setFilterRaisedByEmployee('all');
+    setFilterRaisedByClient('all');
+    setSearchTerm('');
+    setFiltersApplied(false);
+    setDateFrom('');
+    setDateTo('');
+    setQuickDate('');
+  };
  
   if (loading) {
     return (
@@ -531,15 +638,15 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
             value={filterRaisedByEmployee}
             onChange={e => {
               setFilterRaisedByEmployee(e.target.value);
-              setFilterRaisedByClient('all'); // Reset client filter when employee filter changes
+              setFilterRaisedByClient('all');
             }}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 min-w-[140px]"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 min-w-[140px] text-black"
           >
             <option value="all">All Employees</option>
             <option value="me">Me</option>
             {employees.map(employee => (
-              <option key={employee.id} value={employee.id}>
-                {employee.displayName}
+              <option key={employee.id} value={employee.id} className="text-black">
+                {employee.displayName || employee.name || employee.email}
               </option>
             ))}
           </select>
@@ -550,14 +657,14 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
             value={filterRaisedByClient}
             onChange={e => {
               setFilterRaisedByClient(e.target.value);
-              setFilterRaisedByEmployee('all'); // Reset employee filter when client filter changes
+              setFilterRaisedByEmployee('all');
             }}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 min-w-[140px]"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 min-w-[140px] text-black"
           >
             <option value="all">All Clients</option>
             {clients.map(client => (
-              <option key={client.id} value={client.id}>
-                {client.displayName}
+              <option key={client.id} value={client.id} className="text-black">
+                {client.displayName || client.name || client.email}
               </option>
             ))}
           </select>
@@ -582,26 +689,47 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
             <option value="asc">Oldest</option>
           </select>
         </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">From</label>
+          <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setQuickDate(''); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">To</label>
+          <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setQuickDate(''); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">Quick Date</label>
+          <select
+            value={quickDate}
+            onChange={e => applyQuickDate(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50"
+          >
+            <option value="">Select...</option>
+            <option value="this_month">This Month</option>
+            <option value="this_week">This Week</option>
+            <option value="last_2_days">Last 2 Days</option>
+          </select>
+        </div>
         <button
           onClick={() => setFiltersApplied(true)}
-          className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
+          className="bg-orange-400 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
           type="button"
         >
           Search
         </button>
         <button
-          onClick={() => {
-            setFilterStatus(['All']);
-            setFilterPriority(['All']);
-            setFilterRaisedByEmployee('all');
-            setFilterRaisedByClient('all');
-            setSearchTerm('');
-            setFiltersApplied(false);
-          }}
+          onClick={clearFilters}
           className="ml-auto text-xs text-orange-600 hover:underline px-2 py-1 rounded"
           type="button"
         >
           Clear Filters
+        </button>
+        <button
+          onClick={() => downloadTicketsAsExcel(sortedTickets.filter(t => selectedTicketIds.includes(t.id)))}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+          disabled={selectedTicketIds.length === 0}
+        >
+          Download
         </button>
       </div>
  
@@ -612,6 +740,13 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <input
+                      type="checkbox"
+                      checked={selectedTicketIds.length === sortedTickets.length}
+                      onChange={e => handleSelectAll(e.target.checked)}
+                    />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Ticket ID
                   </th>
@@ -631,6 +766,9 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
                     Assigned To
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Reported By
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     -
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -642,9 +780,20 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
                 {sortedTickets.map((ticket) => (
                   <tr
                     key={ticket.id}
-                    onClick={() => handleTicketClick(ticket.id)}
+                    onClick={e => {
+                      // Prevent row click if checkbox is clicked
+                      if (e.target.type !== 'checkbox') handleTicketClick(ticket.id);
+                    }}
                     className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                   >
+                    <td className="px-2 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <input
+                        type="checkbox"
+                        checked={selectedTicketIds.includes(ticket.id)}
+                        onChange={() => handleCheckboxChange(ticket.id)}
+                        onClick={e => e.stopPropagation()}
+                      />
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {ticket.ticketNumber}
                     </td>
@@ -669,6 +818,9 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {ticket.reportedBy || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {ticket.assignedBy || '-'}

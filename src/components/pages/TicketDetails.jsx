@@ -103,6 +103,14 @@ function stripBase64Images(html) {
   return html.replace(/<img[^>]*src=['"]data:image\/[a-zA-Z0-9+\/;=]+['"][^>]*>/gi, '');
 }
 
+// Helper to check if a user is still a member of a project
+async function isUserStillProjectMember(email, projectId) {
+  const projectDoc = await getDoc(doc(db, 'projects', projectId));
+  if (!projectDoc.exists()) return false;
+  const members = projectDoc.data().members || [];
+  return members.some(m => m.email === email);
+}
+
 const TicketDetails = ({ ticketId, onBack, onAssign }) => {
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -521,6 +529,8 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
               authorRole: 'system',
             })
           });
+          // Update UI state immediately
+          setSelectedAssignee(assignee.email);
         }
       }
       // If only the assignee changed, call handleAssignTicket and do not send a comment email
@@ -547,7 +557,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           authorRole: 'user',
         };
         await updateDoc(ticketRef, { comments: arrayUnion(comment) });
-        // Refresh ticket
+        // Refresh ticket (always after any update)
         const updatedTicketSnap = await getDoc(ticketRef);
         if (updatedTicketSnap.exists()) {
           const ticketData = { id: updatedTicketSnap.id, ...updatedTicketSnap.data() };
@@ -558,17 +568,21 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
             return ta - tb;
           });
           setTicket({ ...ticketData, comments });
+          // Also update selectedAssignee to match new assignment
+          setSelectedAssignee(ticketData.assignedTo?.email || '');
         }
         // Send email to the client who raised the ticket (for comment)
-        let recipients = [];
-        if (ticket.reportedBy) {
-          recipients = [ticket.reportedBy];
-        } else if (ticket.email) {
-          recipients = [ticket.email];
+        let notifyEmail = null;
+        if (currentUserEmail === ticket.email || (ticket.reportedBy && currentUserEmail === ticket.reportedBy)) {
+          // Client is updating, notify assigned employee
+          notifyEmail = ticket.assignedTo?.email || null;
+        } else if (ticket.assignedTo && currentUserEmail === ticket.assignedTo.email) {
+          // Employee is updating, notify ticket raiser
+          notifyEmail = ticket.reportedBy || ticket.email || null;
         }
-        if (recipients.length > 0) {
+        if (notifyEmail && await isUserStillProjectMember(notifyEmail, ticket.projectId || ticket.project)) {
           const emailParams = {
-            to_email: recipients.join(','),
+            to_email: notifyEmail,
             to_name: ticket.customer || ticket.name || ticket.email,
             subject: `New update on Ticket ID: ${ticket.ticketNumber}`,
             ticket_number: ticket.ticketNumber,
@@ -578,7 +592,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
             assigned_by_email: currentUser.email,
             ticket_link: `https://articket.vercel.app`,
           };
-          await sendEmail(emailParams, 'template_igl3oxn');
+          const emailResult = await sendEmail(emailParams, 'template_igl3oxn');
         }
       }
       if (editReportedBy !== ticket.reportedBy) {
@@ -630,15 +644,17 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       setNewResponse('');
       setCommentAttachments([]);
       // Send email to the client who raised the ticket (for comment)
-      let recipients = [];
-      if (ticket.reportedBy) {
-        recipients = [ticket.reportedBy];
-      } else if (ticket.email) {
-        recipients = [ticket.email];
+      let notifyEmail = null;
+      if (currentUserEmail === ticket.email || (ticket.reportedBy && currentUserEmail === ticket.reportedBy)) {
+        // Client is updating, notify assigned employee
+        notifyEmail = ticket.assignedTo?.email || null;
+      } else if (ticket.assignedTo && currentUserEmail === ticket.assignedTo.email) {
+        // Employee is updating, notify ticket raiser
+        notifyEmail = ticket.reportedBy || ticket.email || null;
       }
-      if (recipients.length > 0) {
+      if (notifyEmail && await isUserStillProjectMember(notifyEmail, ticket.projectId || ticket.project)) {
         const emailParams = {
-          to_email: recipients.join(','),
+          to_email: notifyEmail,
           to_name: ticket.customer || ticket.name || ticket.email,
           subject: `New update on Ticket ID: ${ticket.ticketNumber}`,
           ticket_number: ticket.ticketNumber,
@@ -704,6 +720,13 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           authorName,
           authorRole: 'resolver',
           attachments: resolutionAttachments
+        }),
+        customerResponses: arrayUnion({
+          message: `Resolution updated`,
+          timestamp: new Date(),
+          authorEmail: currentUser?.email,
+          authorName,
+          authorRole: 'resolver',
         })
       });
       // Refresh ticket
@@ -720,16 +743,17 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       }
       setResolutionAttachments([]);
       // Send email to the client who raised the ticket (for resolution)
-      let recipients = [];
-      if (ticket.reportedBy) {
-        recipients = [ticket.reportedBy];
-      } else if (ticket.email) {
-        recipients = [ticket.email];
+      let notifyEmail = null;
+      if (currentUserEmail === ticket.email || (ticket.reportedBy && currentUserEmail === ticket.reportedBy)) {
+        // Client is updating, notify assigned employee
+        notifyEmail = ticket.assignedTo?.email || null;
+      } else if (ticket.assignedTo && currentUserEmail === ticket.assignedTo.email) {
+        // Employee is updating, notify ticket raiser
+        notifyEmail = ticket.reportedBy || ticket.email || null;
       }
-      console.log('[DEBUG] Resolution email recipients:', recipients);
-      if (recipients.length > 0) {
+      if (notifyEmail && await isUserStillProjectMember(notifyEmail, ticket.projectId || ticket.project)) {
         const emailParams = {
-          to_email: recipients.join(','),
+          to_email: notifyEmail,
           to_name: ticket.customer || ticket.name || ticket.email,
           subject: `Resolution provided for Ticket ID: ${ticket.ticketNumber}`,
           ticket_number: ticket.ticketNumber,
@@ -739,11 +763,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           assigned_by_email: currentUser.email,
           ticket_link: `https://articket.vercel.app`,
         };
-        console.log('[DEBUG] Resolution emailParams:', emailParams);
         const emailResult = await sendEmail(emailParams, 'template_igl3oxn');
-        console.log('[DEBUG] sendEmail result:', emailResult);
-      } else {
-        console.error('[DEBUG] No recipients found for resolution email.');
       }
     } catch (err) {
       console.error('Error saving resolution:', err);
@@ -1322,7 +1342,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                         disabled={isSaving}
                       >
                         {statusOptions.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          <option key={opt.value} value={opt.value} disabled={opt.value === 'Resolved' && !(ticket.assignedTo && ticket.assignedTo.email)}>{opt.label}</option>
                         ))}
                       </select>
                     ) : (
@@ -1441,6 +1461,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                 formats={['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet', 'link', 'image']}
                 className="bg-white rounded-xl border-2 border-gray-200 focus:border-blue-500 min-h-[120px]"
                 placeholder="Add a resolution... (You can paste screenshots directly here)"
+                readOnly={!(ticket.assignedTo && ticket.assignedTo.email)}
               />
               {/* Render preview thumbnails for images in the resolution */}
               {resolutionText && (
@@ -1455,8 +1476,10 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                 accept="image/*,application/pdf,video/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt"
                 onChange={handleResolutionAttachmentChange}
                 className="hidden"
+                disabled={!(ticket.assignedTo && ticket.assignedTo.email)}
               />
-              <label htmlFor="resolution-attachment-input" className="inline-flex items-center cursor-pointer text-blue-600 hover:text-blue-800 mb-2">
+              <label htmlFor="resolution-attachment-input" className={`inline-flex items-center cursor-pointer text-blue-600 hover:text-blue-800 mb-2 ${!(ticket.assignedTo && ticket.assignedTo.email) ? 'opacity-50 pointer-events-none' : ''}`}
+              >
                 <Paperclip className="w-5 h-5 mr-1" />
                 <span>Choose file(s)</span>
               </label>
@@ -1464,7 +1487,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                 <button
                   className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-50"
                   onClick={handleSaveResolution}
-                  disabled={isSavingResolution || !resolutionText.trim() || !resolutionStatus}
+                  disabled={isSavingResolution || !resolutionText.trim() || !resolutionStatus || !(ticket.assignedTo && ticket.assignedTo.email)}
                 >
                   {isSavingResolution ? 'Saving...' : 'Submit'}
                 </button>

@@ -37,7 +37,8 @@ import {
 import LogoutModal from './LogoutModal';
 import TicketDetails from './TicketDetails';
 import { computeKPIsForTickets, exportKpiToExcelWithChartImage } from './ProjectManagerDashboard';
- 
+import * as XLSX from 'xlsx';
+
 // Animated count-up hook
 function useCountUp(target, duration = 1200) {
   const [count, setCount] = useState(0);
@@ -61,7 +62,7 @@ function useCountUp(target, duration = 1200) {
   }, [target, duration]);
   return count;
 }
- 
+
 const getStatusIcon = (status) => {
   switch (status) {
     case 'Open': return <AlertCircle className="w-4 h-4 text-blue-500" />;
@@ -87,7 +88,7 @@ const getStatusBadge = (status) => {
       return `${baseClasses} bg-gray-100 text-gray-800`;
   }
 };
- 
+
 const ClientHeadDashboard = () => {
   const navigate = useNavigate();
   const [clients, setClients] = useState([]);
@@ -114,12 +115,28 @@ const ClientHeadDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedTicketId, setSelectedTicketId] = useState(null);
- 
+
   // Animated counts for priorities
   const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
   const mediumCount = useCountUp(tickets.filter(t => t.priority === 'Medium').length);
   const lowCount = useCountUp(tickets.filter(t => t.priority === 'Low').length);
- 
+
+  // KPI filter state
+  const [kpiFromDate, setKpiFromDate] = useState('');
+  const [kpiToDate, setKpiToDate] = useState('');
+  const [kpiPeriod, setKpiPeriod] = useState('custom');
+  const [appliedKpiFromDate, setAppliedKpiFromDate] = useState('');
+  const [appliedKpiToDate, setAppliedKpiToDate] = useState('');
+  const [appliedKpiPeriod, setAppliedKpiPeriod] = useState('custom');
+
+  // Add state for filter UI
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [period, setPeriod] = useState('custom');
+  const [appliedFromDate, setAppliedFromDate] = useState('');
+  const [appliedToDate, setAppliedToDate] = useState('');
+  const [appliedPeriod, setAppliedPeriod] = useState('custom');
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
@@ -163,7 +180,7 @@ const ClientHeadDashboard = () => {
     });
     return () => { if (unsubscribe) unsubscribe(); };
   }, [authChecked, user, db]);
- 
+
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
@@ -227,7 +244,7 @@ const ClientHeadDashboard = () => {
       fetchDashboardData();
     }
   }, [authChecked, user, db]);
- 
+
   const handleLogout = async () => {
     setSigningOut(true);
     try {
@@ -240,10 +257,10 @@ const ClientHeadDashboard = () => {
       setShowLogoutModal(false);
     }
   };
- 
+
   const handleLogoutClick = () => setShowLogoutModal(true);
   const handleLogoutCancel = () => setShowLogoutModal(false);
- 
+
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, active: activeTab === 'dashboard' },
     { id: 'team', label: 'Team', icon: Users, active: activeTab === 'team' },
@@ -251,7 +268,7 @@ const ClientHeadDashboard = () => {
     { id: 'kpi', label: 'KPI Reports', icon: BarChart3, active: activeTab === 'kpi' },
     { id: 'create', label: 'Create Ticket', icon: Plus, active: activeTab === 'create' },
   ];
- 
+
   const renderSidebarItem = (item) => {
     const IconComponent = item.icon;
     return (
@@ -275,7 +292,83 @@ const ClientHeadDashboard = () => {
       </button>
     );
   };
- 
+
+  const handleKpiFilterApply = () => {
+    setAppliedKpiFromDate(kpiFromDate);
+    setAppliedKpiToDate(kpiToDate);
+    setAppliedKpiPeriod(kpiPeriod);
+  };
+
+  const handleKpiFilterReset = () => {
+    setKpiFromDate('');
+    setKpiToDate('');
+    setKpiPeriod('custom');
+    setAppliedKpiFromDate('');
+    setAppliedKpiToDate('');
+    setAppliedKpiPeriod('custom');
+  };
+
+  // Filter bar handlers
+  const handleFilterApply = () => {
+    setAppliedFromDate(fromDate);
+    setAppliedToDate(toDate);
+    setAppliedPeriod(period);
+  };
+  const handleFilterReset = () => {
+    setFromDate('');
+    setToDate('');
+    setPeriod('custom');
+    setAppliedFromDate('');
+    setAppliedToDate('');
+    setAppliedPeriod('custom');
+  };
+
+  function getField(ticket, ...keys) {
+    for (const key of keys) {
+      if (ticket[key]) return ticket[key];
+    }
+    return '';
+  }
+
+  function downloadTicketsAsExcel(tickets) {
+    if (!tickets || tickets.length === 0) return;
+    // Define the desired columns and their mapping
+    const columns = [
+      { header: 'Ticket ID', keys: ['ticketNumber', 'id'] },
+      { header: 'Subject', keys: ['subject'] },
+      { header: 'Module', keys: ['module', 'Module'] },
+      { header: 'Type of Issue', keys: ['typeOfIssue', 'type_of_issue', 'type', 'Type of Issue'] },
+      { header: 'Category', keys: ['category', 'Category'] },
+      { header: 'Sub-Category', keys: ['subCategory', 'sub_category', 'sub-category', 'Sub-Category'] },
+      { header: 'Status', keys: ['status', 'Status'] },
+      { header: 'Priority', keys: ['priority', 'Priority'] },
+      { header: 'Assigned To', keys: ['assignedTo', 'assigned_to', 'Assigned To'] },
+      { header: 'Created By', keys: ['customer', 'createdBy', 'Created By', 'email'] },
+      { header: 'Reported By', keys: ['reportedBy', 'Reported By'] },
+    ];
+    // Build rows
+    const rows = tickets.map(ticket =>
+      columns.map(col => {
+        if (col.header === 'Assigned To') {
+          const at = ticket.assignedTo;
+          if (typeof at === 'object' && at) return at.name || at.email || '';
+          return at || '';
+        }
+        if (col.header === 'Created By') {
+          return getField(ticket, ...col.keys);
+        }
+        return getField(ticket, ...col.keys);
+      })
+    );
+    // Add header
+    rows.unshift(columns.map(col => col.header));
+    // Create worksheet and workbook
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
+    XLSX.writeFile(wb, 'tickets_export.xlsx');
+  }
+
   if (!authChecked || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -283,17 +376,55 @@ const ClientHeadDashboard = () => {
       </div>
     );
   }
- 
+
   // Find the project where the client head is a member
   const myProject = projects.find(project => (project.members || []).some(m => m.email === user?.email && m.role === 'client_head'));
- 
+
   // Filter tickets for current user (assigned to or raised by)
   const currentUserEmail = user?.email;
-  const myTickets = tickets.filter(t =>
+  let myTickets = tickets.filter(t =>
     (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
     t.email === currentUserEmail
   );
- 
+  // Only show unresolved tickets (case-insensitive, trim whitespace)
+  myTickets = myTickets.filter(t => String(t.status).trim().toLowerCase() !== 'resolved');
+
+  // Filter myTickets based on appliedFromDate, appliedToDate, appliedPeriod
+  let filteredMyTickets = myTickets;
+  if (appliedPeriod === 'week') {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0,0,0,0);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= startOfWeek && created <= now;
+    });
+  } else if (appliedPeriod === 'month') {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= startOfMonth && created <= now;
+    });
+  } else if (appliedPeriod === 'last2days') {
+    const now = new Date();
+    const twoDaysAgo = new Date(now);
+    twoDaysAgo.setDate(now.getDate() - 2);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= twoDaysAgo && created <= now;
+    });
+  } else if (appliedFromDate && appliedToDate) {
+    const from = new Date(appliedFromDate);
+    const to = new Date(appliedToDate);
+    to.setHours(23,59,59,999);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= from && created <= to;
+    });
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* LogoutModal always rendered above, not blurred */}
@@ -479,43 +610,83 @@ const ClientHeadDashboard = () => {
                     </div>
                   </button>
                 </div>
- 
+
                 {/* My Project Tickets Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-4">My Tickets</h2>
+                  <div className="flex flex-wrap gap-4 mb-4 items-end">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
+                      <input type="date" className="border rounded px-2 py-1 text-sm" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">To Date</label>
+                      <input type="date" className="border rounded px-2 py-1 text-sm" value={toDate} onChange={e => setToDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Period</label>
+                      <select className="border rounded px-2 py-1 text-sm" value={period} onChange={e => setPeriod(e.target.value)}>
+                        <option value="custom">Custom</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                        <option value="last2days">Last 2 Days</option>
+                      </select>
+                    </div>
+                    <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold" onClick={() => downloadTicketsAsExcel(filteredMyTickets)}>Download</button>
+                    <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold" onClick={handleFilterApply}>Apply</button>
+                    <button className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded font-semibold" onClick={handleFilterReset}>Reset</button>
+                  </div>
                   {selectedTicketId ? (
                     <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
-                  ) : myTickets.length === 0 ? (
+                  ) : filteredMyTickets.length === 0 ? (
                     <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {myTickets.map((ticket, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 flex flex-col gap-2 hover:shadow-lg transition cursor-pointer group"
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {filteredMyTickets.map((ticket) => (
+                            <tr
+                              key={ticket.id}
                           onClick={() => setSelectedTicketId(ticket.id)}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-blue-700 text-lg">{ticket.ticketNumber}</span>
-                              <span className="font-semibold text-gray-900 text-base">{ticket.subject}</span>
-                            </div>
-                            <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition" />
-                          </div>
-                          <div className="flex items-center gap-3 text-sm mb-1">
-                            <span className={getStatusBadge(ticket.status)}>{getStatusIcon(ticket.status)} {ticket.status}</span>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ticket.priority === 'High' ? 'bg-red-100 text-red-700' : ticket.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{ticket.priority}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <Calendar className="w-4 h-4" />
-                            <span>{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</span>
-                          </div>
-                        </div>
-                      ))}
+                              className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
+                            >
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                                  ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                                  ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {ticket.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.lastUpdated ? (ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate().toLocaleString() : new Date(ticket.lastUpdated).toLocaleString()) : ''}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>
- 
+
                 {/* Charts and Analytics Section */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   {/* Status Distribution Line Chart */}
@@ -544,7 +715,7 @@ const ClientHeadDashboard = () => {
                       </ResponsiveContainer>
                     </div>
                   </div>
- 
+
                   {/* Priority Distribution */}
                   <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
                     <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
@@ -570,7 +741,7 @@ const ClientHeadDashboard = () => {
                     </div>
                   </div>
                 </div>
- 
+
                 {/* Quick Actions */}
                 <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
                   <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
@@ -610,7 +781,7 @@ const ClientHeadDashboard = () => {
                 </div>
               </div>
             )}
- 
+
             {/* Other tabs content */}
             {activeTab === 'team' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
@@ -633,30 +804,78 @@ const ClientHeadDashboard = () => {
                 </div>
               </div>
             )}
- 
+
             {activeTab === 'clients' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">Clients Management</h2>
                 {/* Clients management content */}
               </div>
             )}
- 
+
             {activeTab === 'tickets' && (
               <ClientHeadTickets />
             )}
- 
+
             {activeTab === 'create' && (
               <Ticketing />
             )}
- 
+
             {activeTab === 'kpi' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-blue-600" />KPI Reports</h2>
+                {/* KPI Filters */}
+                <div className="flex flex-wrap gap-4 mb-6 items-end">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
+                    <input type="date" className="border rounded px-2 py-1 text-sm" value={kpiFromDate} onChange={e => setKpiFromDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">To Date</label>
+                    <input type="date" className="border rounded px-2 py-1 text-sm" value={kpiToDate} onChange={e => setKpiToDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Period</label>
+                    <select className="border rounded px-2 py-1 text-sm" value={kpiPeriod} onChange={e => setKpiPeriod(e.target.value)}>
+                      <option value="custom">Custom</option>
+                      <option value="week">This Week</option>
+                      <option value="month">This Month</option>
+                    </select>
+                  </div>
+                  <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold" onClick={handleKpiFilterApply}>Apply</button>
+                  <button className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded font-semibold" onClick={handleKpiFilterReset}>Reset</button>
+                </div>
                 {tickets.length === 0 ? (
                   <div className="text-gray-500">No tickets found for KPI analysis.</div>
                 ) : (
                   (() => {
-                    const kpi = computeKPIsForTickets(tickets);
+                    // Filter tickets by applied date range/period for KPI
+                    let filteredTickets = tickets;
+                    if (appliedKpiPeriod === 'week') {
+                      const now = new Date();
+                      const startOfWeek = new Date(now);
+                      startOfWeek.setDate(now.getDate() - now.getDay());
+                      startOfWeek.setHours(0,0,0,0);
+                      filteredTickets = tickets.filter(t => {
+                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                        return created && created >= startOfWeek && created <= now;
+                      });
+                    } else if (appliedKpiPeriod === 'month') {
+                      const now = new Date();
+                      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                      filteredTickets = tickets.filter(t => {
+                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                        return created && created >= startOfMonth && created <= now;
+                      });
+                    } else if (appliedKpiFromDate && appliedKpiToDate) {
+                      const from = new Date(appliedKpiFromDate);
+                      const to = new Date(appliedKpiToDate);
+                      to.setHours(23,59,59,999);
+                      filteredTickets = tickets.filter(t => {
+                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                        return created && created >= from && created <= to;
+                      });
+                    }
+                    const kpi = computeKPIsForTickets(filteredTickets);
                     return (
                       <>
                         <div className="mb-4">
@@ -728,7 +947,7 @@ const ClientHeadDashboard = () => {
     </div>
   );
 };
- 
+
 export default ClientHeadDashboard;
  
  

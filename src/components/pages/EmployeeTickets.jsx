@@ -6,7 +6,9 @@ import { BsTicketFill, BsFolderFill } from 'react-icons/bs';
 import TicketDetails from './TicketDetails';
 import { sendEmail } from '../../utils/sendEmail';
 import PropTypes from 'prop-types';
- 
+import * as XLSX from 'xlsx';
+import dayjs from 'dayjs';
+
 const EmployeeTickets = ({ selectedProjectId }) => {
   const [ticketsData, setTicketsData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +31,10 @@ const EmployeeTickets = ({ selectedProjectId }) => {
   const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false);
   const statusDropdownRef = useRef(null);
   const priorityDropdownRef = useRef(null);
- 
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [quickDate, setQuickDate] = useState('');
+
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
       if (user) {
@@ -43,110 +48,46 @@ const EmployeeTickets = ({ selectedProjectId }) => {
         }
         if (!currentProject) {
           // Fallback to user's project if no selectedProjectId
-        try {
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            const userData = userDocSnap.data();
-            currentProject = userData.project || 'General';
-            setUserProject(currentProject);
-            setCurrentUserData(userData);
-          } else {
-            setUserProject('General');
+          try {
+            const userDocRef = doc(db, 'users', user.uid);
+            const userDocSnap = await getDoc(userDocRef);
+            if (userDocSnap.exists()) {
+              const userData = userDocSnap.data();
+              currentProject = userData.project || 'General';
+              setUserProject(currentProject);
+              setCurrentUserData(userData);
+            } else {
+              setUserProject('General');
               currentProject = 'General';
-          }
-        } catch (err) {
-          setError('Failed to load user project.');
-          setUserProject('General');
+            }
+          } catch (err) {
+            setError('Failed to load user project.');
+            setUserProject('General');
             currentProject = 'General';
           }
         } else {
           setUserProject(currentProject);
         }
- 
-        // Fetch employees and clients for the current project
+
+        // Fetch employees and clients for the current project from projects collection
         try {
-          const usersRef = collection(db, 'users');
-          // Fetch employees
-          const employeesQuery = query(
-            usersRef,
-            where('project', '==', currentProject),
-            where('role', '==', 'employee')
-          );
-          const employeesSnapshot = await getDocs(employeesQuery);
-          const employeesList = [];
-          const employeeEmails = new Set();
-          const employeeNameCounts = {};
- 
-          employeesSnapshot.forEach((doc) => {
-            const userData = doc.data();
-            if (!employeeEmails.has(userData.email)) {
-              employeeEmails.add(userData.email);
-              const displayName = userData.firstName && userData.lastName
-                ? `${userData.firstName} ${userData.lastName}`.trim()
-                : userData.email.split('@')[0];
-              employeeNameCounts[displayName] = (employeeNameCounts[displayName] || 0) + 1;
-              employeesList.push({
-                id: doc.id,
-                email: userData.email,
-                name: displayName
-              });
-            }
-          });
-          employeesList.sort((a, b) => a.name.localeCompare(b.name));
-          employeesList.forEach(emp => {
-            if (employeeNameCounts[emp.name] > 1) {
-              const emailPart = emp.email.split('@')[0];
-              emp.displayName = `${emp.name} (${emailPart})`;
-            } else {
-              emp.displayName = emp.name;
-            }
-          });
-          setEmployees(employeesList);
- 
-          // Fetch clients
-          const clientsQuery = query(
-            usersRef,
-            where('project', '==', currentProject),
-            where('role', '==', 'client')
-          );
-          const clientsSnapshot = await getDocs(clientsQuery);
-          const clientsList = [];
-          const clientEmails = new Set();
-          const clientNameCounts = {};
- 
-          clientsSnapshot.forEach((doc) => {
-            const userData = doc.data();
-            if (userData.email !== user.email && !clientEmails.has(userData.email)) {
-              clientEmails.add(userData.email);
-              const displayName = userData.firstName && userData.lastName
-                ? `${userData.firstName} ${userData.lastName}`.trim()
-                : userData.email.split('@')[0];
-              clientNameCounts[displayName] = (clientNameCounts[displayName] || 0) + 1;
-              clientsList.push({
-                id: doc.id,
-                email: userData.email,
-                name: displayName
-              });
-            }
-          });
-          clientsList.sort((a, b) => a.name.localeCompare(b.name));
-          clientsList.forEach(client => {
-            if (clientNameCounts[client.name] > 1) {
-              const emailPart = client.email.split('@')[0];
-              client.displayName = `${client.name} (${emailPart})`;
-            } else {
-              client.displayName = client.name;
-            }
-          });
-          setClients(clientsList);
- 
-          console.log('Fetched employees:', employeesList);
-          console.log('Fetched clients:', clientsList);
+          const projectsRef = collection(db, 'projects');
+          const q = query(projectsRef, where('name', '==', currentProject));
+          const snapshot = await getDocs(q);
+          if (!snapshot.empty) {
+            const projectDoc = snapshot.docs[0].data();
+            const members = projectDoc.members || [];
+            setEmployees(members.filter(m => m.role === 'employee' || m.role === 'project_manager'));
+            setClients(members.filter(m => m.role === 'client' || m.role === 'client_head'));
+          } else {
+            setEmployees([]);
+            setClients([]);
+          }
         } catch (err) {
-          console.error('Error fetching users:', err);
+          setEmployees([]);
+          setClients([]);
         }
- 
+
         // Query tickets for the selected/current project
         const ticketsCollectionRef = collection(db, 'tickets');
         const q = query(
@@ -175,7 +116,7 @@ const EmployeeTickets = ({ selectedProjectId }) => {
     });
     return () => unsubscribeAuth();
   }, [selectedProjectId]);
- 
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) setStatusDropdownOpen(false);
@@ -184,21 +125,21 @@ const EmployeeTickets = ({ selectedProjectId }) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
- 
+
   const summarize = (arr, allLabel, options) => {
     if (arr.includes('All')) return allLabel;
     if (arr.length === 0) return allLabel;
     return arr.join(', ');
   };
- 
+
   const handleTicketClick = (ticketId) => {
     setSelectedTicketId(ticketId);
   };
- 
+
   const handleBackToTickets = () => {
     setSelectedTicketId(null);
   };
- 
+
   const handleCheckboxFilter = (filter, setFilter, value) => {
     if (value === 'All') {
       setFilter(['All']);
@@ -215,7 +156,32 @@ const EmployeeTickets = ({ selectedProjectId }) => {
       });
     }
   };
- 
+
+  // Date filter logic
+  const applyQuickDate = (type) => {
+    setQuickDate(type);
+    let from = '';
+    let to = '';
+    const now = dayjs();
+    if (type === 'this_month') {
+      from = now.startOf('month').format('YYYY-MM-DD');
+      to = now.endOf('month').format('YYYY-MM-DD');
+    } else if (type === 'this_week') {
+      from = now.startOf('week').format('YYYY-MM-DD');
+      to = now.endOf('week').format('YYYY-MM-DD');
+    } else if (type === 'last_2_days') {
+      from = now.subtract(2, 'day').format('YYYY-MM-DD');
+      to = now.format('YYYY-MM-DD');
+    }
+    setDateFrom(from);
+    setDateTo(to);
+  };
+  const clearDateFilter = () => {
+    setDateFrom('');
+    setDateTo('');
+    setQuickDate('');
+  };
+
   // Filter tickets based on all criteria
   const filteredTickets = ticketsData.filter(ticket => {
     const matchesStatus = filterStatus.includes('All') || filterStatus.includes(ticket.status);
@@ -223,7 +189,7 @@ const EmployeeTickets = ({ selectedProjectId }) => {
     const matchesSearch =
       ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase());
-   
+
     // Check both employee and client filters
     let matchesRaisedBy = true;
     const ticketUser = employees.find(emp => emp.email === ticket.email)
@@ -231,7 +197,7 @@ const EmployeeTickets = ({ selectedProjectId }) => {
       : clients.find(client => client.email === ticket.email)
         ? 'client'
         : null;
- 
+
     if (ticketUser === 'employee') {
       if (filterRaisedByEmployee === 'all') {
         matchesRaisedBy = true;
@@ -251,17 +217,28 @@ const EmployeeTickets = ({ selectedProjectId }) => {
         matchesRaisedBy = selectedClient ? ticket.email === selectedClient.email : false;
       }
     }
-   
-    return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy;
+
+    // Date filter
+    let matchesDate = true;
+    if (dateFrom) {
+      const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+      if (!created || dayjs(created).isBefore(dayjs(dateFrom), 'day')) matchesDate = false;
+    }
+    if (dateTo) {
+      const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+      if (!created || dayjs(created).isAfter(dayjs(dateTo), 'day')) matchesDate = false;
+    }
+
+    return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy && matchesDate;
   });
- 
+
   // Sort tickets by date
   const sortedTickets = [...filteredTickets].sort((a, b) => {
     const dateA = a.created?.toDate ? a.created.toDate() : new Date(a.created);
     const dateB = b.created?.toDate ? b.created.toDate() : new Date(b.created);
     return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
   });
- 
+
   const handleAssignTicket = async (ticketId, selectedUserEmail) => {
     // Find the ticket
     const ticket = ticketsData.find(t => t.id === ticketId);
@@ -307,7 +284,7 @@ const EmployeeTickets = ({ selectedProjectId }) => {
     console.log('Assignment emailParams:', emailParams);
     await sendEmail(emailParams, 'template_igl3oxn');
   };
- 
+
   const handleUnassignTicket = async (ticketId) => {
     if (!ticketId || !auth.currentUser) return;
     const ticketRef = doc(db, 'tickets', ticketId);
@@ -321,14 +298,76 @@ const EmployeeTickets = ({ selectedProjectId }) => {
       console.error('Error unassigning ticket:', err);
     }
   };
- 
+
   // Ticket counts for cards
   const totalTickets = ticketsData.length;
   const openTickets = ticketsData.filter(t => t.status === 'Open').length;
   const inProgressTickets = ticketsData.filter(t => t.status === 'In Progress').length;
   const resolvedTickets = ticketsData.filter(t => t.status === 'Resolved').length;
   const closedTickets = ticketsData.filter(t => t.status === 'Closed').length;
- 
+
+  function calculateTimes(ticket) {
+    // Response Time: created to first assignment (first comment with 'Assigned to')
+    let responseTime = '';
+    let resolutionTime = '';
+    const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+    let assigned = null;
+    let resolved = null;
+    if (ticket.customerResponses && Array.isArray(ticket.customerResponses)) {
+      for (const c of ticket.customerResponses) {
+        if (!assigned && c.message && /assigned to/i.test(c.message)) {
+          assigned = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
+        }
+        if (!resolved && c.message && /resolution updated/i.test(c.message)) {
+          resolved = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
+        }
+      }
+    }
+    if (created && assigned) responseTime = ((assigned - created) / 60000).toFixed(2);
+    if (assigned && resolved) resolutionTime = ((resolved - assigned) / 60000).toFixed(2);
+    return { responseTime, resolutionTime };
+  }
+
+  function safeCellValue(val) {
+    if (typeof val === 'string') return val.length > 10000 ? val.slice(0, 10000) + '... [truncated]' : val;
+    if (Array.isArray(val)) return `[${val.length} items]`;
+    if (typeof val === 'object' && val !== null) return '[object]';
+    return val ?? '';
+  }
+
+  function downloadTicketsAsExcel(tickets) {
+    if (!tickets || tickets.length === 0) return;
+    const allKeys = Array.from(new Set(tickets.flatMap(ticket => Object.keys(ticket))));
+    // Ensure ticketNumber is first
+    const keys = ['ticketNumber', ...allKeys.filter(k => k !== 'ticketNumber')];
+    const columns = [...keys, 'Response Time (min)', 'Resolution Time (min)'];
+    const rows = tickets.map(ticket => {
+      const times = calculateTimes(ticket);
+      return [
+        ...columns.slice(0, -2).map(key => safeCellValue(ticket[key])),
+        times.responseTime,
+        times.resolutionTime
+      ];
+    });
+    rows.unshift(columns);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
+    XLSX.writeFile(wb, 'tickets_export.xlsx');
+  }
+
+  const clearFilters = () => {
+    setFilterStatus(['All']);
+    setFilterPriority(['All']);
+    setFilterRaisedByEmployee('all');
+    setFilterRaisedByClient('all');
+    setSearchTerm('');
+    setFiltersApplied(false);
+    setDateFrom('');
+    setDateTo('');
+    setQuickDate('');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -339,7 +378,7 @@ const EmployeeTickets = ({ selectedProjectId }) => {
       </div>
     );
   }
- 
+
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -350,11 +389,11 @@ const EmployeeTickets = ({ selectedProjectId }) => {
       </div>
     );
   }
- 
+
   if (selectedTicketId) {
     return <TicketDetails ticketId={selectedTicketId} onBack={handleBackToTickets} onAssign={handleAssignTicket} />;
   }
- 
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
@@ -362,28 +401,28 @@ const EmployeeTickets = ({ selectedProjectId }) => {
           <div className="bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-xl px-6 py-4 flex items-center w-full shadow">
             <h1 className="text-3xl font-bold text-white flex items-center">
               <BsTicketFill className="mr-3 text-white" /> Tickets
-          </h1>
-          {/* Ticket Stats Cards */}
+            </h1>
+            {/* Ticket Stats Cards */}
             <div className="flex gap-2 ml-8">
               <div className="bg-white bg-opacity-80 rounded-lg shadow border border-gray-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
                 <span className="text-xs text-gray-700">Total</span>
-              <span className="text-lg font-bold text-gray-900">{totalTickets}</span>
-            </div>
+                <span className="text-lg font-bold text-gray-900">{totalTickets}</span>
+              </div>
               <div className="bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-lg shadow border border-orange-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
                 <span className="text-xs text-white">Open</span>
                 <span className="text-lg font-bold text-white">{openTickets}</span>
-            </div>
-            <div className="bg-yellow-50 rounded-lg shadow border border-yellow-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-yellow-600">In Progress</span>
-              <span className="text-lg font-bold text-yellow-700">{inProgressTickets}</span>
-            </div>
-            <div className="bg-green-50 rounded-lg shadow border border-green-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-green-600">Resolved</span>
-              <span className="text-lg font-bold text-green-700">{resolvedTickets}</span>
-            </div>
-            <div className="bg-gray-50 rounded-lg shadow border border-gray-200 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-gray-600">Closed</span>
-              <span className="text-lg font-bold text-gray-700">{closedTickets}</span>
+              </div>
+              <div className="bg-yellow-50 rounded-lg shadow border border-yellow-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+                <span className="text-xs text-yellow-600">In Progress</span>
+                <span className="text-lg font-bold text-yellow-700">{inProgressTickets}</span>
+              </div>
+              <div className="bg-green-50 rounded-lg shadow border border-green-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+                <span className="text-xs text-green-600">Resolved</span>
+                <span className="text-lg font-bold text-green-700">{resolvedTickets}</span>
+              </div>
+              <div className="bg-gray-50 rounded-lg shadow border border-gray-200 px-3 py-2 flex flex-col items-center min-w-[70px]">
+                <span className="text-xs text-gray-600">Closed</span>
+                <span className="text-lg font-bold text-gray-700">{closedTickets}</span>
               </div>
             </div>
           </div>
@@ -392,7 +431,7 @@ const EmployeeTickets = ({ selectedProjectId }) => {
           <p className="text-gray-700 mt-2">{userProject}</p>
         )}
       </div>
- 
+
       <div className="flex justify-between items-center mb-8">
         <Link
           to="/employeedashboard?tab=create"
@@ -402,7 +441,7 @@ const EmployeeTickets = ({ selectedProjectId }) => {
           Create New Ticket
         </Link>
       </div>
- 
+
       {/* Filters Bar */}
       <div className="flex flex-wrap items-center gap-4 mb-6 bg-white p-4 rounded-xl shadow border border-gray-100">
         <div>
@@ -451,15 +490,15 @@ const EmployeeTickets = ({ selectedProjectId }) => {
             value={filterRaisedByEmployee}
             onChange={e => {
               setFilterRaisedByEmployee(e.target.value);
-              setFilterRaisedByClient('all'); // Reset client filter when employee filter changes
+              setFilterRaisedByClient('all');
             }}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50 min-w-[140px]"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50 min-w-[140px] text-black"
           >
             <option value="all">All Employees</option>
             <option value="me">Me</option>
             {employees.map(employee => (
-              <option key={employee.id} value={employee.email}>
-                {employee.displayName}
+              <option key={employee.id} value={employee.id} className="text-black">
+                {employee.displayName || employee.name || employee.email}
               </option>
             ))}
           </select>
@@ -470,14 +509,14 @@ const EmployeeTickets = ({ selectedProjectId }) => {
             value={filterRaisedByClient}
             onChange={e => {
               setFilterRaisedByClient(e.target.value);
-              setFilterRaisedByEmployee('all'); // Reset employee filter when client filter changes
+              setFilterRaisedByEmployee('all');
             }}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50 min-w-[140px]"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50 min-w-[140px] text-black"
           >
             <option value="all">All Clients</option>
             {clients.map(client => (
-              <option key={client.id} value={client.email}>
-                {client.displayName}
+              <option key={client.id} value={client.id} className="text-black">
+                {client.displayName || client.name || client.email}
               </option>
             ))}
           </select>
@@ -502,6 +541,27 @@ const EmployeeTickets = ({ selectedProjectId }) => {
             <option value="asc">Oldest</option>
           </select>
         </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">From</label>
+          <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setQuickDate(''); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">To</label>
+          <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setQuickDate(''); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">Quick Date</label>
+          <select
+            value={quickDate}
+            onChange={e => applyQuickDate(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50"
+          >
+            <option value="">Select...</option>
+            <option value="this_month">This Month</option>
+            <option value="this_week">This Week</option>
+            <option value="last_2_days">Last 2 Days</option>
+          </select>
+        </div>
         <button
           onClick={() => setFiltersApplied(true)}
           className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
@@ -510,21 +570,21 @@ const EmployeeTickets = ({ selectedProjectId }) => {
           Search
         </button>
         <button
-          onClick={() => {
-            setFilterStatus(['All']);
-            setFilterPriority(['All']);
-            setFilterRaisedByEmployee('all');
-            setFilterRaisedByClient('all');
-            setSearchTerm('');
-            setFiltersApplied(false);
-          }}
+          onClick={clearFilters}
           className="ml-auto text-xs text-orange-600 hover:underline px-2 py-1 rounded"
           type="button"
         >
           Clear Filters
         </button>
+        {/* <button
+          onClick={() => downloadTicketsAsExcel(sortedTickets)}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+          type="button"
+        >
+          Download
+        </button> */}
       </div>
- 
+
       {/* Only show tickets if filtersApplied is true */}
       {filtersApplied && sortedTickets.length > 0 ? (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
@@ -546,6 +606,9 @@ const EmployeeTickets = ({ selectedProjectId }) => {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Raised By
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Reported By
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Last Updated
@@ -585,6 +648,9 @@ const EmployeeTickets = ({ selectedProjectId }) => {
                       {ticket.customer}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {ticket.reportedBy || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {ticket.lastUpdated ? new Date(ticket.lastUpdated.toDate()).toLocaleString() : 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -604,7 +670,7 @@ const EmployeeTickets = ({ selectedProjectId }) => {
     </div>
   );
 };
- 
+
 EmployeeTickets.defaultProps = {
   selectedProjectId: null,
 };
@@ -612,5 +678,5 @@ EmployeeTickets.defaultProps = {
 EmployeeTickets.propTypes = {
   selectedProjectId: PropTypes.string,
 };
- 
+
 export default EmployeeTickets;

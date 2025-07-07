@@ -433,10 +433,15 @@ function Projects() {
           }
         }
       }
-      // Check if the user is a member of any other project
-      const isStillMember = projects.some(p =>
-        p.id !== projectId && (p.members || []).some(m => m.email === memberToDelete.email)
-      );
+      // Robust: Query all projects from Firestore to check if user is still a member anywhere
+      const allProjectsSnapshot = await getDocs(collection(db, 'projects'));
+      let isStillMember = false;
+      allProjectsSnapshot.forEach(docSnap => {
+        const members = docSnap.data().members || [];
+        if (members.some(m => m.email === memberToDelete.email)) {
+          isStillMember = true;
+        }
+      });
       if (!isStillMember) {
         // Only delete user doc if not a member of any other project
         const allUsersQuery = query(collection(db, 'users'), where('email', '==', memberToDelete.email));

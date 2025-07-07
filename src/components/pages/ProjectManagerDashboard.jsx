@@ -20,7 +20,8 @@ import {
   Loader2,
   RefreshCw,
   FileText,
-  X
+  X,
+  Clock
 } from 'lucide-react';
 import { collection, query, where, getDocs, getFirestore, doc, getDoc,onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -65,15 +66,27 @@ export function computeKPIsForTickets(tickets) {
   const details = tickets.map(ticket => {
     // Find created time
     const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
-    // Find assignment time (first comment with 'Assigned to <name>' and authorRole 'user' or 'system')
+    // Find assignment time (first comment with 'Assigned to' or 'Ticket assigned to' and authorRole 'user' or 'system')
     let assigned = null;
     let resolved = null;
     if (ticket.comments && Array.isArray(ticket.comments)) {
       for (const c of ticket.comments) {
-        if (!assigned && c.message && c.message.toLowerCase().includes('assigned to') && c.authorRole && (c.authorRole === 'user' || c.authorRole === 'system')) {
+        // Assignment: match both 'Assigned to' and 'Ticket assigned to' (case-insensitive)
+        if (
+          !assigned &&
+          c.message &&
+          (/assigned to/i.test(c.message)) &&
+          c.authorRole && (c.authorRole === 'user' || c.authorRole === 'system')
+        ) {
           assigned = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
         }
-        if (!resolved && c.message && c.message.toLowerCase().includes('resolution updated') && c.authorRole && c.authorRole === 'resolver') {
+        // Resolution: match any 'Resolution updated' (case-insensitive)
+        if (
+          !resolved &&
+          c.message &&
+          (/resolution updated/i.test(c.message)) &&
+          c.authorRole && c.authorRole === 'resolver'
+        ) {
           resolved = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
         }
       }
@@ -269,6 +282,52 @@ export async function exportKpiToExcelWithChartImage(kpiData, chartId, projectNa
   }
 }
 
+function getField(ticket, ...keys) {
+  for (const key of keys) {
+    if (ticket[key]) return ticket[key];
+  }
+  return '';
+}
+
+function downloadTicketsAsExcel(tickets) {
+  if (!tickets || tickets.length === 0) return;
+  // Define the desired columns and their mapping
+  const columns = [
+    { header: 'Ticket ID', keys: ['ticketNumber', 'id'] },
+    { header: 'Subject', keys: ['subject'] },
+    { header: 'Module', keys: ['module', 'Module'] },
+    { header: 'Type of Issue', keys: ['typeOfIssue', 'type_of_issue', 'type', 'Type of Issue'] },
+    { header: 'Category', keys: ['category', 'Category'] },
+    { header: 'Sub-Category', keys: ['subCategory', 'sub_category', 'sub-category', 'Sub-Category'] },
+    { header: 'Status', keys: ['status', 'Status'] },
+    { header: 'Priority', keys: ['priority', 'Priority'] },
+    { header: 'Assigned To', keys: ['assignedTo', 'assigned_to', 'Assigned To'] },
+    { header: 'Created By', keys: ['customer', 'createdBy', 'Created By', 'email'] },
+    { header: 'Reported By', keys: ['reportedBy', 'Reported By'] },
+  ];
+  // Build rows
+  const rows = tickets.map(ticket =>
+    columns.map(col => {
+      if (col.header === 'Assigned To') {
+        const at = ticket.assignedTo;
+        if (typeof at === 'object' && at) return at.name || at.email || '';
+        return at || '';
+      }
+      if (col.header === 'Created By') {
+        return getField(ticket, ...col.keys);
+      }
+      return getField(ticket, ...col.keys);
+    })
+  );
+  // Add header
+  rows.unshift(columns.map(col => col.header));
+  // Create worksheet and workbook
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
+  XLSX.writeFile(wb, 'tickets_export.xlsx');
+}
+
 const ProjectManagerDashboard = () => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
@@ -295,6 +354,13 @@ const ProjectManagerDashboard = () => {
   const [showMobilePopup, setShowMobilePopup] = useState(false);
   const [showSwitchProjectModal, setShowSwitchProjectModal] = useState(false);
   const [selectedTicketId, setSelectedTicketId] = useState(null);
+  const [kpiFromDate, setKpiFromDate] = useState('');
+  const [kpiToDate, setKpiToDate] = useState('');
+  const [kpiPeriod, setKpiPeriod] = useState('custom');
+  // Add applied filter state
+  const [appliedKpiFromDate, setAppliedKpiFromDate] = useState('');
+  const [appliedKpiToDate, setAppliedKpiToDate] = useState('');
+  const [appliedKpiPeriod, setAppliedKpiPeriod] = useState('custom');
 
   // Animated counts for priorities
   const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
@@ -303,6 +369,29 @@ const ProjectManagerDashboard = () => {
 
   // Add state to track if a ticket is being viewed in detail
   const [viewingTicket, setViewingTicket] = useState(false);
+
+  // Add state for filter UI
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [period, setPeriod] = useState('custom');
+  const [appliedFromDate, setAppliedFromDate] = useState('');
+  const [appliedToDate, setAppliedToDate] = useState('');
+  const [appliedPeriod, setAppliedPeriod] = useState('custom');
+
+  // Filter bar handlers
+  const handleFilterApply = () => {
+    setAppliedFromDate(fromDate);
+    setAppliedToDate(toDate);
+    setAppliedPeriod(period);
+  };
+  const handleFilterReset = () => {
+    setFromDate('');
+    setToDate('');
+    setPeriod('custom');
+    setAppliedFromDate('');
+    setAppliedToDate('');
+    setAppliedPeriod('custom');
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -439,10 +528,50 @@ const ProjectManagerDashboard = () => {
 
   // Filter tickets for current user (assigned to or raised by)
   const currentUserEmail = user?.email;
-  const myTickets = tickets.filter(t =>
+  let myTickets = tickets.filter(t =>
     (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
     t.email === currentUserEmail
   );
+  // Only show unresolved tickets
+  myTickets = myTickets.filter(t => t.status !== 'Resolved');
+
+  // Filter myTickets based on appliedFromDate, appliedToDate, appliedPeriod
+  let filteredMyTickets = myTickets;
+  if (appliedPeriod === 'week') {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0,0,0,0);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= startOfWeek && created <= now;
+    });
+  } else if (appliedPeriod === 'month') {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= startOfMonth && created <= now;
+    });
+  } else if (appliedPeriod === 'last2days') {
+    const now = new Date();
+    const twoDaysAgo = new Date(now);
+    twoDaysAgo.setDate(now.getDate() - 2);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= twoDaysAgo && created <= now;
+    });
+  } else if (appliedFromDate && appliedToDate) {
+    const from = new Date(appliedFromDate);
+    const to = new Date(appliedToDate);
+    to.setHours(23,59,59,999);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= from && created <= to;
+    });
+  }
+  // Only show unresolved tickets (case-insensitive, trim whitespace)
+  filteredMyTickets = filteredMyTickets.filter(t => String(t.status).trim().toLowerCase() !== 'resolved');
 
   // Add this after the useEffect that fetches projects
   useEffect(() => {
@@ -472,6 +601,21 @@ const ProjectManagerDashboard = () => {
     });
     return () => { if (unsubscribe) unsubscribe(); };
   }, [authChecked, user, db, selectedProjectId, projects]);
+
+  const handleKpiFilterApply = () => {
+    setAppliedKpiFromDate(kpiFromDate);
+    setAppliedKpiToDate(kpiToDate);
+    setAppliedKpiPeriod(kpiPeriod);
+  };
+
+  const handleKpiFilterReset = () => {
+    setKpiFromDate('');
+    setKpiToDate('');
+    setKpiPeriod('custom');
+    setAppliedKpiFromDate('');
+    setAppliedKpiToDate('');
+    setAppliedKpiPeriod('custom');
+  };
 
   if (!authChecked || loading) {
     return (
@@ -630,36 +774,152 @@ const ProjectManagerDashboard = () => {
           <main className="flex-1 overflow-auto p-6 sm:p-4 xs:p-2">
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
+                {/* Ticket Summary Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-6">
+                  <button 
+                    onClick={() => setActiveTab('tickets')}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Total Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.length}</p>
+                        <p className="text-xs text-gray-500 mt-1">All project tickets</p>
+                      </div>
+                      <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center group-hover:bg-orange-100 transition-colors">
+                        <FileText className="w-6 h-6 text-orange-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('tickets')}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => (t.assignedTo && t.assignedTo.email === currentUserEmail) || t.email === currentUserEmail).length}</p>
+                        <p className="text-xs text-gray-500 mt-1">My tickets</p>
+                      </div>
+                      <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center group-hover:bg-orange-100 transition-colors">
+                        <User className="w-6 h-6 text-orange-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('tickets')}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Open Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Open').length}</p>
+                        <p className="text-xs text-gray-500 mt-1">Needs attention</p>
+                      </div>
+                      <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center group-hover:bg-orange-100 transition-colors">
+                        <AlertCircle className="w-6 h-6 text-orange-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('tickets')}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">In Progress</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'In Progress').length}</p>
+                        <p className="text-xs text-gray-500 mt-1">Being worked on</p>
+                      </div>
+                      <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center group-hover:bg-orange-100 transition-colors">
+                        <Clock className="w-6 h-6 text-orange-600" />
+                      </div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('tickets')}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition-all duration-300 text-left group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Resolved</p>
+                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Resolved').length}</p>
+                        <p className="text-xs text-gray-500 mt-1">Completed</p>
+                      </div>
+                      <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center group-hover:bg-orange-100 transition-colors">
+                        <CheckCircle className="w-6 h-6 text-orange-600" />
+                      </div>
+                    </div>
+                  </button>
+                </div>
+                {/* My Project Tickets Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-4">My Project Tickets</h2>
+                  <div className="flex flex-wrap gap-4 mb-4 items-end">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
+                      <input type="date" className="border rounded px-2 py-1 text-sm" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">To Date</label>
+                      <input type="date" className="border rounded px-2 py-1 text-sm" value={toDate} onChange={e => setToDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Period</label>
+                      <select className="border rounded px-2 py-1 text-sm" value={period} onChange={e => setPeriod(e.target.value)}>
+                        <option value="custom">Custom</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                        <option value="last2days">Last 2 Days</option>
+                      </select>
+                    </div>
+                    <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold" onClick={() => downloadTicketsAsExcel(filteredMyTickets)}>Download</button>
+                    <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold" onClick={handleFilterApply}>Apply</button>
+                    <button className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded font-semibold" onClick={handleFilterReset}>Reset</button>
+                  </div>
                   {selectedTicketId ? (
                     <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
-                  ) : myTickets.length === 0 ? (
-                    <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>
+                  ) : filteredMyTickets.length === 0 ? (
+                    <div className="text-gray-500">No tickets found for selected filters.</div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="min-w-full text-xs text-left text-gray-700 border">
-                        <thead>
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
                           <tr>
-                            <th className="py-1 px-2">Ticket #</th>
-                            <th className="py-1 px-2">Subject</th>
-                            <th className="py-1 px-2">Status</th>
-                            <th className="py-1 px-2">Priority</th>
-                            <th className="py-1 px-2">Created</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
                           </tr>
                         </thead>
-                        <tbody>
-                          {myTickets.map((ticket, idx) => (
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {filteredMyTickets.map((ticket) => (
                             <tr
-                              key={idx}
-                              className="border-t cursor-pointer hover:bg-orange-50"
+                              key={ticket.id}
                               onClick={() => setSelectedTicketId(ticket.id)}
+                              className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                             >
-                              <td className="py-1 px-2">{ticket.ticketNumber}</td>
-                              <td className="py-1 px-2">{ticket.subject}</td>
-                              <td className="py-1 px-2">{ticket.status}</td>
-                              <td className="py-1 px-2">{ticket.priority}</td>
-                              <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                                  ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                                  ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {ticket.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.lastUpdated ? (ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate().toLocaleString() : new Date(ticket.lastUpdated).toLocaleString()) : ''}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -777,11 +1037,59 @@ const ProjectManagerDashboard = () => {
             {activeTab === 'kpi' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-orange-600" />KPI Reports</h2>
+                {/* KPI Filters */}
+                <div className="flex flex-wrap gap-4 mb-6 items-end">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
+                    <input type="date" className="border rounded px-2 py-1 text-sm" value={kpiFromDate} onChange={e => setKpiFromDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">To Date</label>
+                    <input type="date" className="border rounded px-2 py-1 text-sm" value={kpiToDate} onChange={e => setKpiToDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Period</label>
+                    <select className="border rounded px-2 py-1 text-sm" value={kpiPeriod} onChange={e => setKpiPeriod(e.target.value)}>
+                      <option value="custom">Custom</option>
+                      <option value="week">This Week</option>
+                      <option value="month">This Month</option>
+                    </select>
+                  </div>
+                  <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold" onClick={handleKpiFilterApply}>Apply</button>
+                  <button className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded font-semibold" onClick={handleKpiFilterReset}>Reset</button>
+                </div>
                 {tickets.length === 0 ? (
                   <div className="text-gray-500">No tickets found for KPI analysis.</div>
                 ) : (
                   (() => {
-                    const kpi = computeKPIsForTickets(tickets);
+                    // Filter tickets by applied date range/period for KPI
+                    let filteredTickets = tickets;
+                    if (appliedKpiPeriod === 'week') {
+                      const now = new Date();
+                      const startOfWeek = new Date(now);
+                      startOfWeek.setDate(now.getDate() - now.getDay());
+                      startOfWeek.setHours(0,0,0,0);
+                      filteredTickets = tickets.filter(t => {
+                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                        return created && created >= startOfWeek && created <= now;
+                      });
+                    } else if (appliedKpiPeriod === 'month') {
+                      const now = new Date();
+                      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                      filteredTickets = tickets.filter(t => {
+                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                        return created && created >= startOfMonth && created <= now;
+                      });
+                    } else if (appliedKpiFromDate && appliedKpiToDate) {
+                      const from = new Date(appliedKpiFromDate);
+                      const to = new Date(appliedKpiToDate);
+                      to.setHours(23,59,59,999);
+                      filteredTickets = tickets.filter(t => {
+                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                        return created && created >= from && created <= to;
+                      });
+                    }
+                    const kpi = computeKPIsForTickets(filteredTickets);
                     return (
                       <>
                         <div className="mb-4">

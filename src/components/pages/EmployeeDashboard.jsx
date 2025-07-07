@@ -26,6 +26,8 @@ import EmployeeTickets from './EmployeeTickets'; // Import the EmployeeTickets c
 import LogoutModal from './LogoutModal';
 import { Modal } from 'antd'; // Add this import if you use Ant Design, or use a custom modal
 import TicketDetails from './TicketDetails';
+import { saveAs } from 'file-saver';
+import * as XLSX from 'xlsx';
  
 function EmployeeDashboard() {
   const [tickets, setTickets] = useState([]);
@@ -49,6 +51,12 @@ function EmployeeDashboard() {
   const [roleChangeToast, setRoleChangeToast] = useState({ show: false, message: '' });
   const [showSwitchProjectModal, setShowSwitchProjectModal] = useState(false);
   const [selectedTicketId, setSelectedTicketId] = useState(null);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [period, setPeriod] = useState('custom');
+  const [appliedFromDate, setAppliedFromDate] = useState('');
+  const [appliedToDate, setAppliedToDate] = useState('');
+  const [appliedPeriod, setAppliedPeriod] = useState('custom');
  
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
@@ -134,7 +142,16 @@ function EmployeeDashboard() {
                 adminResponses: data.adminResponses || [],
                 customerResponses: data.customerResponses || [],
                 customer: data.customer || 'Unknown',
-                project: data.project || 'General'
+                project: data.project || 'General',
+                assignedTo: data.assignedTo || null,
+                assignedBy: data.assignedBy || null,
+                lastUpdated: data.lastUpdated || null,
+                priority: data.priority || 'Medium',
+                email: data.email || null,
+                module: data.module || '',
+                typeOfIssue: data.typeOfIssue || '',
+                category: data.category || '',
+                subCategory: data.subCategory || ''
               });
             });
             // Sort tickets by created date
@@ -185,7 +202,16 @@ function EmployeeDashboard() {
               adminResponses: data.adminResponses || [],
               customerResponses: data.customerResponses || [],
               customer: data.customer || 'Unknown',
-              project: data.project || 'General'
+              project: data.project || 'General',
+              assignedTo: data.assignedTo || null,
+              assignedBy: data.assignedBy || null,
+              lastUpdated: data.lastUpdated || null,
+              priority: data.priority || 'Medium',
+              email: data.email || null,
+              module: data.module || '',
+              typeOfIssue: data.typeOfIssue || '',
+              category: data.category || '',
+              subCategory: data.subCategory || ''
             });
           });
           allTickets = allTickets.filter(t => !batchTickets.some(bt => bt.id === t.id)).concat(batchTickets);
@@ -315,6 +341,112 @@ function EmployeeDashboard() {
     }
     return () => { if (unsubscribe) unsubscribe(); };
   }, [navigate]);
+ 
+  // Filter bar handlers
+  const handleFilterApply = () => {
+    setAppliedFromDate(fromDate);
+    setAppliedToDate(toDate);
+    setAppliedPeriod(period);
+  };
+  const handleFilterReset = () => {
+    setFromDate('');
+    setToDate('');
+    setPeriod('custom');
+    setAppliedFromDate('');
+    setAppliedToDate('');
+    setAppliedPeriod('custom');
+  };
+ 
+  // Only show tickets assigned to the current user (employee) or raised by them
+  const currentUserEmail = user?.email;
+  let myTickets = tickets.filter(t =>
+    (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
+    t.email === currentUserEmail
+  );
+  // Filter myTickets based on appliedFromDate, appliedToDate, appliedPeriod
+  let filteredMyTickets = myTickets;
+  if (appliedPeriod === 'week') {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0,0,0,0);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= startOfWeek && created <= now;
+    });
+  } else if (appliedPeriod === 'month') {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= startOfMonth && created <= now;
+    });
+  } else if (appliedPeriod === 'last2days') {
+    const now = new Date();
+    const twoDaysAgo = new Date(now);
+    twoDaysAgo.setDate(now.getDate() - 2);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= twoDaysAgo && created <= now;
+    });
+  } else if (appliedFromDate && appliedToDate) {
+    const from = new Date(appliedFromDate);
+    const to = new Date(appliedToDate);
+    to.setHours(23,59,59,999);
+    filteredMyTickets = myTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= from && created <= to;
+    });
+  }
+  // Only show unresolved tickets (case-insensitive, trim whitespace)
+  filteredMyTickets = filteredMyTickets.filter(t => String(t.status).trim().toLowerCase() !== 'resolved');
+ 
+  function getField(ticket, ...keys) {
+    for (const key of keys) {
+      if (ticket[key]) return ticket[key];
+    }
+    return '';
+  }
+  function downloadTicketsAsExcel(tickets) {
+    if (!tickets || tickets.length === 0) return;
+    // Define the desired columns and their mapping
+    const columns = [
+      { header: 'Ticket ID', key: 'ticketNumber' },
+      { header: 'Subject', key: 'subject' },
+      { header: 'Module', key: 'module' },
+      { header: 'Type of Issue', key: 'typeOfIssue' },
+      { header: 'Category', key: 'category' },
+      { header: 'Sub-Category', key: 'subCategory' },
+      { header: 'Status', key: 'status' },
+      { header: 'Priority', key: 'priority' },
+      { header: 'Assigned To', key: 'assignedTo' },
+      { header: 'Created By', key: 'createdBy' },
+      { header: 'Reported By', key: 'reportedBy' },
+    ];
+    // Build rows: first row is header, then ticket rows
+    const rows = [columns.map(col => col.header)];
+    tickets.forEach(ticket => {
+      rows.push([
+        getField(ticket, 'ticketNumber', 'ticket_number', 'ticketId', 'ticket_id'),
+        getField(ticket, 'subject', 'Subject'),
+        getField(ticket, 'module', 'Module'),
+        getField(ticket, 'typeOfIssue', 'type_of_issue', 'typeOfissue', 'type_of_Issue', 'type', 'Type of Issue'),
+        getField(ticket, 'category', 'Category'),
+        getField(ticket, 'subCategory', 'sub_category', 'sub-category', 'Sub-Category'),
+        getField(ticket, 'status', 'Status'),
+        getField(ticket, 'priority', 'Priority'),
+        ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-',
+        ticket.customer || ticket.createdBy || '',
+        ticket.reportedBy || ticket.email || ''
+      ]);
+    });
+    // Create worksheet and workbook
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Tickets');
+    // Export to file
+    XLSX.writeFile(workbook, 'tickets_export.xlsx');
+  }
  
   if (error) {
     return (
@@ -465,7 +597,7 @@ function EmployeeDashboard() {
             {activeTab === 'dashboard' && (
               <div className="space-y-6">
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
                     <div className="flex items-center justify-between">
                       <div>
@@ -510,53 +642,82 @@ function EmployeeDashboard() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </div> */}
  
-                {/* My Project Tickets Table */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                {/* My Tickets Table */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-4">My Tickets</h2>
+                  <div className="flex flex-wrap gap-4 mb-4 items-end">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
+                      <input type="date" className="border rounded px-2 py-1 text-sm" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">To Date</label>
+                      <input type="date" className="border rounded px-2 py-1 text-sm" value={toDate} onChange={e => setToDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Period</label>
+                      <select className="border rounded px-2 py-1 text-sm" value={period} onChange={e => setPeriod(e.target.value)}>
+                        <option value="custom">Custom</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                        <option value="last2days">Last 2 Days</option>
+                      </select>
+                    </div>
+                    <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold" onClick={handleFilterApply}>Apply</button>
+                    <button className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded font-semibold" onClick={handleFilterReset}>Reset</button>
+                    <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold" onClick={() => downloadTicketsAsExcel(filteredMyTickets)}>Download</button>
+                  </div>
                   {selectedTicketId ? (
                     <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
-                  ) : (() => {
-                    const currentUserEmail = user?.email;
-                    const myTickets = tickets.filter(t =>
-                      (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
-                      t.email === currentUserEmail
-                    );
-                    if (myTickets.length === 0) {
-                      return <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>;
-                    }
-                    return (
+                  ) : filteredMyTickets.length === 0 ? (
+                    <div className="text-gray-500">No tickets found for selected filters.</div>
+                  ) : (
                       <div className="overflow-x-auto">
-                        <table className="min-w-full text-xs text-left text-gray-700 border">
-                          <thead>
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
                             <tr>
-                              <th className="py-1 px-2">Ticket #</th>
-                              <th className="py-1 px-2">Subject</th>
-                              <th className="py-1 px-2">Status</th>
-                              <th className="py-1 px-2">Priority</th>
-                              <th className="py-1 px-2">Created</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
                             </tr>
                           </thead>
-                          <tbody>
-                            {myTickets.map((ticket, idx) => (
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {filteredMyTickets.map((ticket) => (
                               <tr
-                                key={idx}
-                                className="border-t cursor-pointer hover:bg-orange-50"
+                              key={ticket.id}
                                 onClick={() => setSelectedTicketId(ticket.id)}
+                              className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                               >
-                                <td className="py-1 px-2">{ticket.ticketNumber}</td>
-                                <td className="py-1 px-2">{ticket.subject}</td>
-                                <td className="py-1 px-2">{ticket.status}</td>
-                                <td className="py-1 px-2">{ticket.priority}</td>
-                                <td className="py-1 px-2">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                                  ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                                  ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {ticket.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
-                    );
-                  })()}
+                  )}
                 </div>
  
                 {/* Quick Actions */}

@@ -272,8 +272,8 @@ function Admin() {
         onClick={() => handleNavigation(item.id)}
         className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
           item.active
-            ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg'
-            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            ? 'bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] text-white shadow-lg'
+            : 'text-gray-600 hover:bg-orange-100 hover:text-orange-700'
         }`}
         title={isSidebarCollapsed ? item.label : ''}
       >
@@ -335,7 +335,7 @@ function Admin() {
         </div>
         <button
           onClick={() => setShowAddUserModal(true)}
-          className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl"
+          className="px-4 py-2 bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] text-white rounded-xl hover:from-[#FFB86C] hover:to-[#FFA14A] transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl"
         >
           <UserPlus className="w-5 h-5" />
           <span>Add User</span>
@@ -351,7 +351,7 @@ function Admin() {
             placeholder="Search users..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-200"
           />
         </div>
         <div className="flex items-center space-x-2">
@@ -359,8 +359,8 @@ function Admin() {
             onClick={() => setUserFilter('all')}
             className={`px-4 py-2 rounded-xl transition-all duration-200 ${
               userFilter === 'all'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                ? 'bg-orange-600 text-white'
+                : 'bg-white text-gray-600 border border-gray-200 hover:bg-orange-50'
             }`}
           >
             All
@@ -369,8 +369,8 @@ function Admin() {
             onClick={() => setUserFilter('employee')}
             className={`px-4 py-2 rounded-xl transition-all duration-200 ${
               userFilter === 'employee'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                ? 'bg-orange-600 text-white'
+                : 'bg-white text-gray-600 border border-gray-200 hover:bg-orange-50'
             }`}
           >
             Employees
@@ -379,8 +379,8 @@ function Admin() {
             onClick={() => setUserFilter('client')}
             className={`px-4 py-2 rounded-xl transition-all duration-200 ${
               userFilter === 'client'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                ? 'bg-orange-600 text-white'
+                : 'bg-white text-gray-600 border border-gray-200 hover:bg-orange-50'
             }`}
           >
             Clients
@@ -395,12 +395,12 @@ function Admin() {
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center space-x-3">
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                  user.userType === 'client' ? 'bg-purple-100' : 'bg-blue-100'
+                  user.userType === 'client' ? 'bg-purple-100' : 'bg-orange-100'
                 }`}>
                   {user.userType === 'client' ? (
                     <User className="w-6 h-6 text-purple-600" />
                   ) : (
-                    <Briefcase className="w-6 h-6 text-blue-600" />
+                    <Briefcase className="w-6 h-6 text-orange-500" />
                   )}
                 </div>
                 <div>
@@ -672,7 +672,7 @@ function Admin() {
           <div className="p-6 border-b border-gray-200 flex items-center justify-between">
             {!isSidebarCollapsed && (
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
+                <div className="w-10 h-10 bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-xl flex items-center justify-center">
                   <MessageSquare className="w-6 h-6 text-white" />
                 </div>
                 <div>
@@ -702,7 +702,7 @@ function Admin() {
           <div className="p-6 border-t border-gray-200">
             {!isSidebarCollapsed && (
               <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full flex items-center justify-center">
+                <div className="w-8 h-8 bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] rounded-full flex items-center justify-center">
                   <User className="w-4 h-4 text-white" />
                 </div>
                 <div>
@@ -783,7 +783,7 @@ function Admin() {
                     type="text"
                     value={userFormData.name}
                     onChange={(e) => setUserFormData({ ...userFormData, name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
                     placeholder="Enter full name"
                     required
                   />
@@ -795,7 +795,7 @@ function Admin() {
                     type="email"
                     value={userFormData.email}
                     onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
                     placeholder="Enter email"
                     required
                   />
@@ -807,7 +807,7 @@ function Admin() {
                     type="password"
                     value={userFormData.password}
                     onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
                     placeholder="Enter password"
                     required
                   />
@@ -819,7 +819,7 @@ function Admin() {
                     type="tel"
                     value={userFormData.phone}
                     onChange={(e) => setUserFormData({ ...userFormData, phone: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
                     placeholder="Enter phone number"
                   />
                 </div>
@@ -830,7 +830,7 @@ function Admin() {
                     type="text"
                     value={userFormData.company}
                     onChange={(e) => setUserFormData({ ...userFormData, company: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
                     placeholder="Enter company name"
                   />
                 </div>
@@ -843,8 +843,8 @@ function Admin() {
                       onClick={() => setUserFormData({ ...userFormData, userType: 'employee', role: 'employee' })}
                       className={`flex items-center justify-center p-4 rounded-xl border-2 transition-all duration-200 ${
                         userFormData.userType === 'employee'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                          : 'border-gray-200 hover:border-blue-200'
+                          ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-sm'
+                          : 'border-gray-200 hover:border-orange-200'
                       }`}
                     >
                       <div className="text-center">
@@ -857,8 +857,8 @@ function Admin() {
                       onClick={() => setUserFormData({ ...userFormData, userType: 'client', role: 'client' })}
                       className={`flex items-center justify-center p-4 rounded-xl border-2 transition-all duration-200 ${
                         userFormData.userType === 'client'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                          : 'border-gray-200 hover:border-blue-200'
+                          ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-sm'
+                          : 'border-gray-200 hover:border-orange-200'
                       }`}
                     >
                       <div className="text-center">
@@ -879,8 +879,8 @@ function Admin() {
                           onClick={() => setUserFormData({ ...userFormData, role: 'employee' })}
                           className={`p-3 rounded-xl border-2 transition-all duration-200 ${
                             userFormData.role === 'employee'
-                              ? 'border-blue-500 bg-blue-50 text-blue-700'
-                              : 'border-gray-200 hover:border-blue-200'
+                              ? 'border-orange-500 bg-orange-50 text-orange-700'
+                              : 'border-gray-200 hover:border-orange-200'
                           }`}
                         >
                           Employee
@@ -890,8 +890,8 @@ function Admin() {
                           onClick={() => setUserFormData({ ...userFormData, role: 'manager' })}
                           className={`p-3 rounded-xl border-2 transition-all duration-200 ${
                             userFormData.role === 'manager'
-                              ? 'border-blue-500 bg-blue-50 text-blue-700'
-                              : 'border-gray-200 hover:border-blue-200'
+                              ? 'border-orange-500 bg-orange-50 text-orange-700'
+                              : 'border-gray-200 hover:border-orange-200'
                           }`}
                         >
                           Project Manager
@@ -904,8 +904,8 @@ function Admin() {
                           onClick={() => setUserFormData({ ...userFormData, role: 'client' })}
                           className={`p-3 rounded-xl border-2 transition-all duration-200 ${
                             userFormData.role === 'client'
-                              ? 'border-blue-500 bg-blue-50 text-blue-700'
-                              : 'border-gray-200 hover:border-blue-200'
+                              ? 'border-orange-500 bg-orange-50 text-orange-700'
+                              : 'border-gray-200 hover:border-orange-200'
                           }`}
                         >
                           Client
@@ -915,8 +915,8 @@ function Admin() {
                           onClick={() => setUserFormData({ ...userFormData, role: 'head' })}
                           className={`p-3 rounded-xl border-2 transition-all duration-200 ${
                             userFormData.role === 'head'
-                              ? 'border-blue-500 bg-blue-50 text-blue-700'
-                              : 'border-gray-200 hover:border-blue-200'
+                              ? 'border-orange-500 bg-orange-50 text-orange-700'
+                              : 'border-gray-200 hover:border-orange-200'
                           }`}
                         >
                           Client Head
@@ -936,7 +936,7 @@ function Admin() {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors"
+                    className="px-4 py-2 bg-gradient-to-r from-[#FFA14A] to-[#FFB86C] text-white rounded-xl hover:from-[#FFB86C] hover:to-[#FFA14A] transition-colors"
                   >
                     Add User
                   </button>

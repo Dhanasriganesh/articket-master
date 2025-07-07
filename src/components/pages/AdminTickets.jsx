@@ -203,7 +203,7 @@ function AdminTickets() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
         <div className="flex items-center gap-4">
         <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-            <BsTicketFill className="mr-3 text-blue-600" /> Tickets
+            <BsTicketFill className="mr-3 text-orange-500" /> Tickets
         </h1>
           {/* Ticket Stats Cards */}
           <div className="flex gap-2">
@@ -211,9 +211,9 @@ function AdminTickets() {
               <span className="text-xs text-gray-500">Total</span>
               <span className="text-lg font-bold text-gray-900">{totalTickets}</span>
             </div>
-            <div className="bg-blue-50 rounded-lg shadow border border-blue-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
-              <span className="text-xs text-blue-600">Open</span>
-              <span className="text-lg font-bold text-blue-700">{openTickets}</span>
+            <div className="bg-orange-50 rounded-lg shadow border border-orange-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
+              <span className="text-xs text-orange-600">Open</span>
+              <span className="text-lg font-bold text-orange-700">{openTickets}</span>
             </div>
             <div className="bg-yellow-50 rounded-lg shadow border border-yellow-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
               <span className="text-xs text-yellow-600">In Progress</span>
@@ -241,7 +241,7 @@ function AdminTickets() {
               }}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'live'
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-orange-500 text-orange-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -317,14 +317,14 @@ function AdminTickets() {
             placeholder="Search by subject or ID..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50"
           />
         </div>
         <button
           onClick={() => setFiltersApplied(true)}
           className={`px-4 py-2 text-white rounded-lg transition-colors ${
             activeTab === 'live'
-              ? 'bg-blue-600 hover:bg-blue-700'
+              ? 'bg-orange-600 hover:bg-orange-700'
               : 'bg-red-600 hover:bg-red-700'
           }`}
         >
@@ -338,7 +338,7 @@ function AdminTickets() {
             setSearchTerm('');
             setFiltersApplied(false);
           }}
-          className="text-xs text-blue-600 hover:underline px-2 py-1 rounded"
+          className="text-xs text-orange-600 hover:underline px-2 py-1 rounded"
         >
           Clear Filters
         </button>
@@ -370,7 +370,7 @@ function AdminTickets() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                        ticket.status === 'Open' ? 'bg-orange-100 text-orange-800' :
                         ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
                         ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
                         'bg-gray-100 text-gray-800'
@@ -384,7 +384,7 @@ function AdminTickets() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatTimestamp(ticket.lastUpdated)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <button
-                        className="text-blue-600 hover:underline mr-2"
+                        className="text-orange-600 hover:underline mr-2"
                         onClick={e => { e.stopPropagation(); handleEditTicket(ticket); }}
                       >Edit</button>
                       <button
@@ -474,7 +474,7 @@ function AdminTickets() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
                 >
                   Save Changes
                 </button>

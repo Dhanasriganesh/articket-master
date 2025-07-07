@@ -6,6 +6,8 @@ import { BsTicketFill, BsFolderFill } from 'react-icons/bs';
 import TicketDetails from './TicketDetails';
 import { sendEmail } from '../../utils/sendEmail';
 import { fetchProjectMemberEmails } from '../../utils/emailUtils';
+import * as XLSX from 'xlsx';
+import dayjs from 'dayjs';
  
 // Helper to safely format timestamps
 function formatTimestamp(ts) {
@@ -44,6 +46,9 @@ const ClientHeadTickets = ({ setActiveTab }) => {
   const [projectMembers, setProjectMembers] = useState([]);
   const [employeeMembers, setEmployeeMembers] = useState([]);
   const [clientMembers, setClientMembers] = useState([]);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [quickDate, setQuickDate] = useState('');
  
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
@@ -222,6 +227,31 @@ const ClientHeadTickets = ({ setActiveTab }) => {
     }
   };
  
+  // Date filter logic
+  const applyQuickDate = (type) => {
+    setQuickDate(type);
+    let from = '';
+    let to = '';
+    const now = dayjs();
+    if (type === 'this_month') {
+      from = now.startOf('month').format('YYYY-MM-DD');
+      to = now.endOf('month').format('YYYY-MM-DD');
+    } else if (type === 'this_week') {
+      from = now.startOf('week').format('YYYY-MM-DD');
+      to = now.endOf('week').format('YYYY-MM-DD');
+    } else if (type === 'last_2_days') {
+      from = now.subtract(2, 'day').format('YYYY-MM-DD');
+      to = now.format('YYYY-MM-DD');
+    }
+    setDateFrom(from);
+    setDateTo(to);
+  };
+  const clearFilters = () => {
+    setDateFrom('');
+    setDateTo('');
+    setQuickDate('');
+  };
+ 
   // Compute filtered tickets
   const filteredTickets = ticketsData.filter(ticket => {
     const matchesStatus = filterStatus.includes('All') || filterStatus.includes(ticket.status);
@@ -246,7 +276,18 @@ const ClientHeadTickets = ({ setActiveTab }) => {
       }
     }
    
-    return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy;
+    // Date filter
+    let matchesDate = true;
+    if (dateFrom) {
+      const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+      if (!created || dayjs(created).isBefore(dayjs(dateFrom), 'day')) matchesDate = false;
+    }
+    if (dateTo) {
+      const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+      if (!created || dayjs(created).isAfter(dayjs(dateTo), 'day')) matchesDate = false;
+    }
+   
+    return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy && matchesDate;
   });
  
   // Sort tickets by date
@@ -262,6 +303,55 @@ const ClientHeadTickets = ({ setActiveTab }) => {
   const inProgressTickets = ticketsData.filter(t => t.status === 'In Progress').length;
   const resolvedTickets = ticketsData.filter(t => t.status === 'Resolved').length;
   const closedTickets = ticketsData.filter(t => t.status === 'Closed').length;
+ 
+  function calculateTimes(ticket) {
+    let responseTime = '';
+    let resolutionTime = '';
+    const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+    let assigned = null;
+    let resolved = null;
+    if (ticket.customerResponses && Array.isArray(ticket.customerResponses)) {
+      for (const c of ticket.customerResponses) {
+        if (!assigned && c.message && /assigned to/i.test(c.message)) {
+          assigned = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
+        }
+        if (!resolved && c.message && /resolution updated/i.test(c.message)) {
+          resolved = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
+        }
+      }
+    }
+    if (created && assigned) responseTime = ((assigned - created) / 60000).toFixed(2);
+    if (assigned && resolved) resolutionTime = ((resolved - assigned) / 60000).toFixed(2);
+    return { responseTime, resolutionTime };
+  }
+ 
+  function safeCellValue(val) {
+    if (typeof val === 'string') return val.length > 10000 ? val.slice(0, 10000) + '... [truncated]' : val;
+    if (Array.isArray(val)) return `[${val.length} items]`;
+    if (typeof val === 'object' && val !== null) return '[object]';
+    return val ?? '';
+  }
+ 
+  function downloadTicketsAsExcel(tickets) {
+    if (!tickets || tickets.length === 0) return;
+    const allKeys = Array.from(new Set(tickets.flatMap(ticket => Object.keys(ticket))));
+    // Ensure ticketNumber is first
+    const keys = ['ticketNumber', ...allKeys.filter(k => k !== 'ticketNumber')];
+    const columns = [...keys, 'Response Time (min)', 'Resolution Time (min)'];
+    const rows = tickets.map(ticket => {
+      const times = calculateTimes(ticket);
+      return [
+        ...columns.slice(0, -2).map(key => safeCellValue(ticket[key])),
+        times.responseTime,
+        times.resolutionTime
+      ];
+    });
+    rows.unshift(columns);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
+    XLSX.writeFile(wb, 'tickets_export.xlsx');
+  }
  
   if (loading) {
     return (
@@ -424,117 +514,22 @@ const ClientHeadTickets = ({ setActiveTab }) => {
             <option value="asc">Oldest</option>
           </select>
         </div>
-        <button
-          onClick={() => setFiltersApplied(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold ml-2"
-          type="button"
-        >
-          Search
-        </button>
-        <button
-          onClick={() => {
-            setFilterStatus(['All']);
-            setFilterPriority(['All']);
-            setFilterRaisedByEmployee('all');
-            setFilterRaisedByClient('all');
-            setSearchTerm('');
-            setFiltersApplied(false);
-          }}
-          className="ml-auto text-xs text-blue-600 hover:underline px-2 py-1 rounded"
-          type="button"
-        >
-          Clear Filters
-        </button>
-      </div>
- 
-      {/* Only show tickets if filtersApplied is true */}
-      {filtersApplied && sortedTickets.length > 0 ? (
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Ticket ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Subject
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Priority
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Raised By
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Assigned To
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Assigned By
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Last Updated
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {sortedTickets.map((ticket) => (
-                  <tr
-                    key={ticket.id}
-                    onClick={() => handleTicketClick(ticket.id)}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {ticket.ticketNumber}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ticket.subject}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
-                        ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
-                        ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {ticket.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ticket.priority}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ticket.customer}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {(() => {
-                        // Always just show the assignee's name/email or '-'. No assign dropdown for client head.
-                        return ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-';
-                      })()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ticket.assignedBy || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatTimestamp(ticket.lastUpdated)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mr-2">Quick Date</label>
+          <select
+            value={quickDate}
+            onChange={e => applyQuickDate(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50"
+          >
+            <option value="">Select...</option>
+            <option value="this_month">This Month</option>
+            <option value="this_week">This Week</option>
+            <option value="last_2_days">Last 2 Days</option>
+          </select>
         </div>
-      ) : filtersApplied ? (
-        <div className="text-gray-400 text-center py-12">No tickets found for selected filters.</div>
-      ) : (
-        <div className="text-gray-400 text-center py-12">Select filters and click 'Apply Filters' to view tickets.</div>
-      )}
+      </div>
     </>
   );
 };
  
 export default ClientHeadTickets;
- 
