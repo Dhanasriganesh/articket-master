@@ -188,11 +188,17 @@ function Projects() {
           updatedBy: currentAdmin.uid,
           projects: arrayUnion(selectedProject.id), // Add project to user's projects array
         };
-        if (formData.userType === 'client') {
-          updateData.project = selectedProject.name;
-        } else {
-          updateData.project = selectedProject.name; // Save project name for employees too
+        // --- Ensure project is always an array of names ---
+        let currentProjects = userData && Array.isArray(userData.project)
+          ? userData.project
+          : userData && userData.project
+            ? [userData.project]
+            : [];
+        if (!currentProjects.includes(selectedProject.name)) {
+          currentProjects.push(selectedProject.name);
         }
+        updateData.project = currentProjects;
+        // --- End array logic ---
         await updateDoc(userRef, updateData);
         showNotification(`${formData.email} details updated and added to project.`);
       } else {
@@ -207,13 +213,9 @@ function Projects() {
           createdBy: currentAdmin.uid,
           status: 'pending', // Indicates account needs to be created
           password: password, // Store password temporarily for account creation
-          projects: [selectedProject.id] // Initialize projects array with current project
+          projects: [selectedProject.id], // Initialize projects array with current project
+          project: [selectedProject.name], // Always as array
         };
-        if (formData.userType === 'client') {
-          setData.project = selectedProject.name;
-        } else {
-          setData.project = selectedProject.name; // Save project name for employees too
-        }
         await setDoc(userRef, setData);
         showNotification(`${formData.email} has been added to the project. Account will be created when they first log in.`);
       }

@@ -279,7 +279,7 @@ const EmployeeTickets = ({ selectedProjectId }) => {
       project: ticket.project,
       category: ticket.category,
       priority: ticket.priority,
-      ticket_link: `https://articket.vercel.app`,
+      ticket_link: `https://articket-master.vercel.app/login`,
     };
     console.log('Assignment emailParams:', emailParams);
     await sendEmail(emailParams, 'template_igl3oxn');

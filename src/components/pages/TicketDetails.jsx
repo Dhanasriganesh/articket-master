@@ -590,7 +590,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
             is_comment: true,
             assigned_by_name: currentUserName,
             assigned_by_email: currentUser.email,
-            ticket_link: `https://articket.vercel.app`,
+            ticket_link: `https://articket-master.vercel.app/login`,
           };
           const emailResult = await sendEmail(emailParams, 'template_igl3oxn');
         }
@@ -662,7 +662,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           is_comment: true,
           assigned_by_name: currentUserName,
           assigned_by_email: currentUser.email,
-          ticket_link: `https://articket.vercel.app`,
+          ticket_link: `https://articket-master.vercel.app/login`,
         };
         await sendEmail(emailParams, 'template_igl3oxn');
       }
@@ -761,7 +761,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           is_resolution: true,
           assigned_by_name: currentUserName,
           assigned_by_email: currentUser.email,
-          ticket_link: `https://articket.vercel.app`,
+          ticket_link: `https://articket-master.vercel.app/login`,
         };
         const emailResult = await sendEmail(emailParams, 'template_igl3oxn');
       }

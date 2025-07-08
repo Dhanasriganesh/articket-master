@@ -467,7 +467,10 @@ function Client({ selectedProjectId, selectedProjectName }) {
       // Update the ticket with its Firestore doc ID
       await updateDoc(docRef, { ticketId: docRef.id });
       // Fetch project members' emails for ticket creation notification
-      const memberEmails = await fetchProjectMemberEmails(ticketData.project);
+      console.log('DEBUG: ticketData.project =', ticketData.project);
+      const projectName = Array.isArray(ticketData.project) ? ticketData.project[0] : ticketData.project;
+      const memberEmails = await fetchProjectMemberEmails(projectName);
+      console.log('DEBUG: memberEmails returned =', memberEmails);
       let toEmail = '';
       if (memberEmails && memberEmails.length) {
         toEmail = memberEmails.join(',');
@@ -476,7 +479,7 @@ function Client({ selectedProjectId, selectedProjectName }) {
       } else if (ticketData.email) {
         toEmail = ticketData.email;
       }
-      console.log('Final toEmail for notification:', toEmail);
+      console.log('DEBUG: Final toEmail for notification:', toEmail);
       if (toEmail) {
         const emailParams = {
           to_email: toEmail,
@@ -490,7 +493,7 @@ function Client({ selectedProjectId, selectedProjectName }) {
           priority: ticketData.priority,
           description: ticketData.description,
           attachments: ticketData.attachments?.map(a => a.name).join(', ') || '',
-          ticket_link: `https://articket.vercel.app`,
+          ticket_link: `https://articket-master.vercel.app/login`,
           ticket_number: ticketNumber,
           subject: ` # ${ticketNumber} - ${ticketData.subject}`,
           reportedBy: ticketData.reportedBy || '',

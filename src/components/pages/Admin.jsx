@@ -103,11 +103,13 @@ function Admin() {
     ticketsOverTime: []
   });
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [allProjects, setAllProjects] = useState([]);
 
   useEffect(() => {
     fetchStats();
     fetchUsers();
     fetchTicketStats();
+    fetchProjects();
  
     // Handle clicks outside the dropdown
     const handleClickOutside = (event) => {
@@ -233,6 +235,15 @@ function Admin() {
     }
   };
 
+  const fetchProjects = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, 'projects'));
+      setAllProjects(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+    }
+  };
+
   const handleLogoutClick = () => {
     setShowLogoutModal(true);
   };
@@ -289,13 +300,25 @@ function Admin() {
   const handleAddUser = async (e) => {
     e.preventDefault();
     try {
+      // Ensure project is always an array of names
+      let projectField = userFormData.project;
+      if (projectField && !Array.isArray(projectField)) {
+        projectField = [projectField];
+      }
+      // Map selected project names to their IDs
+      const selectedProjects = allProjects.filter(p => projectField && projectField.includes(p.name));
+      const projectIds = selectedProjects.map(p => p.id);
+      const projectNames = selectedProjects.map(p => p.name);
+
       const userRef = await addDoc(collection(db, 'users'), {
         ...userFormData,
+        project: projectNames, // Always store as array of names
+        projects: projectIds,  // Store as array of IDs
         createdAt: new Date().toISOString(),
         status: 'active'
       });
       
-      setUsers([...users, { id: userRef.id, ...userFormData }]);
+      setUsers([...users, { id: userRef.id, ...userFormData, project: projectNames, projects: projectIds }]);
       setShowAddUserModal(false);
       setUserFormData({
         email: '',
@@ -919,11 +942,29 @@ function Admin() {
                               : 'border-gray-200 hover:border-orange-200'
                           }`}
                         >
-                          Client Head
+                          Client Manager
                         </button>
                       </>
                     )}
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Projects</label>
+                  <select
+                    multiple
+                    value={userFormData.project || []}
+                    onChange={e => {
+                      const options = Array.from(e.target.selectedOptions, option => option.value);
+                      setUserFormData({ ...userFormData, project: options });
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl"
+                  >
+                    {allProjects.map(proj => (
+                      <option key={proj.id} value={proj.name}>{proj.name}</option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-gray-400">Hold Ctrl (Windows) or Cmd (Mac) to select multiple projects.</span>
                 </div>
 
                 <div className="flex justify-end space-x-3 pt-4">
