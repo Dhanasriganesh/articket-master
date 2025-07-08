@@ -263,32 +263,49 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
     const fetchEmployees = async () => {
       if (!ticket?.project) return;
       const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('project', '==', ticket.project), where('role', 'in', ['employee', 'project_manager']));
-      const snapshot = await getDocs(q);
-      const emps = snapshot.docs.map(doc => {
-        const data = doc.data();
-        let name = '';
-        if (data.firstName && data.lastName) {
-          name = `${data.firstName} ${data.lastName}`.trim();
-        } else if (data.firstName) {
-          name = data.firstName;
-        } else if (data.lastName) {
-          name = data.lastName;
-        } else {
-          name = data.email.split('@')[0];
-        }
-        // Add a label for project managers
-        if (data.role === 'project_manager') {
-          name += ' (Project Manager)';
-        }
-        return {
-          id: doc.id,
+      let q;
+      if (Array.isArray(ticket.project)) {
+        // If ticket.project is an array, fetch users whose project contains any of these
+        q = query(usersRef, where('project', 'array-contains-any', ticket.project), where('role', 'in', ['employee', 'project_manager']));
+        const snapshot = await getDocs(q);
+        const emps = snapshot.docs.map(doc => {
+          const data = doc.data();
+          let name = '';
+          if (data.firstName && data.lastName) {
+            name = `${data.firstName} ${data.lastName}`.trim();
+          } else if (data.firstName) {
+            name = data.firstName;
+          } else if (data.lastName) {
+            name = data.lastName;
+          } else {
+            name = data.email.split('@')[0];
+          }
+          if (data.role === 'project_manager') {
+            name += ' (Project Manager)';
+          }
+          return {
+            id: doc.id,
+            email: data.email,
+            name,
+            role: data.role
+          };
+        });
+        setEmployees(emps);
+      } else {
+        // If ticket.project is a string, fetch users whose project is string or array containing this
+        const q1 = query(usersRef, where('project', '==', ticket.project), where('role', 'in', ['employee', 'project_manager']));
+        const q2 = query(usersRef, where('project', 'array-contains', ticket.project), where('role', 'in', ['employee', 'project_manager']));
+        const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+        const emps1 = snap1.docs.map(doc => doc.data());
+        const emps2 = snap2.docs.map(doc => doc.data());
+        const allEmps = [...emps1, ...emps2].filter((v, i, a) => a.findIndex(t => t.email === v.email) === i);
+        setEmployees(allEmps.map(data => ({
+          id: data.id,
           email: data.email,
-          name,
+          name: data.firstName && data.lastName ? `${data.firstName} ${data.lastName}` : (data.firstName || data.lastName || data.email.split('@')[0]),
           role: data.role
-        };
-      });
-      setEmployees(emps);
+        })));
+      }
     };
     const fetchCurrentUserRole = async () => {
       const currentUser = auth.currentUser;
@@ -517,7 +534,12 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           }
         }
         if (assignee) {
-          updates.assignedTo = { email: assignee.email, name: assignee.name, role: assignee.role };
+          updates.assignedTo = {
+            email: assignee.email,
+            name: assignee.name,
+            role: assignee.role,
+            assignedAt: new Date()
+          };
           commentMsg.push(`Assigned to ${assignee.name}`);
           // Always add an assignment comment for KPI
           await updateDoc(ticketRef, {
@@ -538,7 +560,34 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         Object.keys(updates).length === 1 && updates.assignedTo
       );
       if (onlyAssigneeChanged) {
-        await onAssign(ticket.id, updates.assignedTo.email);
+        // Patch: Always update the ticket document with assignedTo
+        updates.lastUpdated = serverTimestamp();
+        await updateDoc(ticketRef, updates);
+        // Add comment
+        const currentUser = auth.currentUser;
+        let authorName = currentUserName;
+        if (!authorName) authorName = currentUser?.displayName || (currentUser?.email?.split('@')[0] || '');
+        const comment = {
+          message: commentMsg.join('; '),
+          timestamp: new Date(),
+          authorEmail: currentUser?.email,
+          authorName,
+          authorRole: 'user',
+        };
+        await updateDoc(ticketRef, { comments: arrayUnion(comment) });
+        // Refresh ticket (always after any update)
+        const updatedTicketSnap = await getDoc(ticketRef);
+        if (updatedTicketSnap.exists()) {
+          const ticketData = { id: updatedTicketSnap.id, ...updatedTicketSnap.data() };
+          let comments = ticketData.comments || [];
+          comments.sort((a, b) => {
+            const ta = a.timestamp?.seconds ? a.timestamp.seconds : (a.timestamp?._seconds || new Date(a.timestamp).getTime()/1000 || 0);
+            const tb = b.timestamp?.seconds ? b.timestamp.seconds : (b.timestamp?._seconds || new Date(b.timestamp).getTime()/1000 || 0);
+            return ta - tb;
+          });
+          setTicket({ ...ticketData, comments });
+          setSelectedAssignee(ticketData.assignedTo?.email || '');
+        }
         setIsSaving(false);
         return;
       }

@@ -36,7 +36,7 @@ import {
 } from 'recharts';
 import LogoutModal from './LogoutModal';
 import TicketDetails from './TicketDetails';
-import { computeKPIsForTickets, exportKpiToExcelWithChartImage } from './ProjectManagerDashboard';
+import { computeKPIsForTickets, exportKpiToExcelWithChartImage, SLA_RULES } from './ProjectManagerDashboard';
 import * as XLSX from 'xlsx';
 
 // Animated count-up hook
@@ -137,6 +137,12 @@ const ClientHeadDashboard = () => {
   const [appliedToDate, setAppliedToDate] = useState('');
   const [appliedPeriod, setAppliedPeriod] = useState('custom');
 
+  // Add state for selected KPI month
+  const [kpiSelectedMonth, setKpiSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  });
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
@@ -182,6 +188,48 @@ const ClientHeadDashboard = () => {
   }, [authChecked, user, db]);
 
   useEffect(() => {
+    if (!authChecked || !user || !selectedProjectId || !projects.length) return;
+    setIsLoading(true);
+    setError(null);
+    let unsubscribe1, unsubscribe2;
+    // Use project name for ticket queries
+    const selectedProjectName = projects.find(p => p.id === selectedProjectId)?.name || '';
+    if (!selectedProjectName) {
+      setTickets([]);
+      setIsLoading(false);
+      return;
+    }
+    const ticketsCollectionRef = collection(db, 'tickets');
+    const q1 = query(ticketsCollectionRef, where('project', '==', selectedProjectName));
+    const q2 = query(ticketsCollectionRef, where('project', 'array-contains', selectedProjectName));
+    let ticketsMap = {};
+    unsubscribe1 = onSnapshot(q1, (snapshot) => {
+      snapshot.docs.forEach(doc => {
+        ticketsMap[doc.id] = { id: doc.id, ...doc.data() };
+      });
+      setTickets(Object.values(ticketsMap));
+      setIsLoading(false);
+    }, (error) => {
+      setError('Failed to load tickets.');
+      setIsLoading(false);
+    });
+    unsubscribe2 = onSnapshot(q2, (snapshot) => {
+      snapshot.docs.forEach(doc => {
+        ticketsMap[doc.id] = { id: doc.id, ...doc.data() };
+      });
+      setTickets(Object.values(ticketsMap));
+      setIsLoading(false);
+    }, (error) => {
+      setError('Failed to load tickets.');
+      setIsLoading(false);
+    });
+    return () => {
+      if (unsubscribe1) unsubscribe1();
+      if (unsubscribe2) unsubscribe2();
+    };
+  }, [authChecked, user, db, selectedProjectId, projects]);
+
+  useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         if (!user) return;
@@ -215,23 +263,12 @@ const ClientHeadDashboard = () => {
           ...doc.data()
         }));
         setClients(clientsData);
-        // Fetch tickets for the client head's project only
-        let ticketsData = [];
-        if (clientHeadProject) {
-          const ticketsQuery = query(collection(db, 'tickets'), where('project', '==', clientHeadProject));
-        const ticketsSnapshot = await getDocs(ticketsQuery);
-          ticketsData = ticketsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        }
-        setTickets(ticketsData);
         // Update stats
         setStats({
           totalClients: clientsData.length,
           activeProjects: projects.filter(project => project.status === 'active').length,
-          pendingTickets: ticketsData.filter(ticket => ticket.status === 'Open').length,
-          resolvedTickets: ticketsData.filter(ticket => ticket.status === 'Closed').length
+          pendingTickets: tickets.filter(ticket => ticket.status === 'Open').length,
+          resolvedTickets: tickets.filter(ticket => ticket.status === 'Closed').length
         });
         setLoading(false);
       } catch (error) {
@@ -662,29 +699,29 @@ const ClientHeadDashboard = () => {
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {filteredMyTickets.map((ticket) => (
+                          {computeKPIsForTickets(myTickets).details.map((row, idx) => (
                             <tr
-                              key={ticket.id}
-                          onClick={() => setSelectedTicketId(ticket.id)}
+                              key={idx}
+                              onClick={() => setSelectedTicketId(row.ticketNumber)}
                               className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                             >
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{row.ticketNumber}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.subject}</td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
-                                  ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
-                                  ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
+                                  row.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                                  row.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                                  row.status === 'Resolved' ? 'bg-green-100 text-green-800' :
                                   'bg-gray-100 text-gray-800'
                                 }`}>
-                                  {ticket.status}
+                                  {row.status}
                                 </span>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.lastUpdated ? (ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate().toLocaleString() : new Date(ticket.lastUpdated).toLocaleString()) : ''}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.priority}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.customer}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.assignedTo ? (row.assignedTo.name || row.assignedTo.email) : '-'}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.assignedBy || '-'}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.lastUpdated ? (row.lastUpdated.toDate ? row.lastUpdated.toDate().toLocaleString() : new Date(row.lastUpdated).toLocaleString()) : ''}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -829,6 +866,19 @@ const ClientHeadDashboard = () => {
             {activeTab === 'kpi' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-blue-600" />KPI Reports</h2>
+                {/* SLA Table */}
+                <div className="mb-6">
+                  <h3 className="text-md font-semibold mb-2">SLA Table</h3>
+                  <table className="min-w-full text-xs text-left text-gray-700 border mb-4">
+                    <thead><tr><th className="py-1 px-2">Priority</th><th className="py-1 px-2">Initial Response Time</th><th className="py-1 px-2">Resolution Time</th></tr></thead>
+                    <tbody>
+                      <tr><td className="py-1 px-2">Critical</td><td className="py-1 px-2">10 min</td><td className="py-1 px-2">1 hour</td></tr>
+                      <tr><td className="py-1 px-2">High</td><td className="py-1 px-2">1 hour</td><td className="py-1 px-2">2 hours</td></tr>
+                      <tr><td className="py-1 px-2">Medium</td><td className="py-1 px-2">2 hours</td><td className="py-1 px-2">6 hours</td></tr>
+                      <tr><td className="py-1 px-2">Low</td><td className="py-1 px-2">6 hours</td><td className="py-1 px-2">1 day</td></tr>
+                    </tbody>
+                  </table>
+                </div>
                 {/* KPI Filters */}
                 <div className="flex flex-wrap gap-4 mb-6 items-end">
                   <div>
@@ -844,7 +894,11 @@ const ClientHeadDashboard = () => {
                     <select className="border rounded px-2 py-1 text-sm" value={kpiPeriod} onChange={e => setKpiPeriod(e.target.value)}>
                       <option value="custom">Custom</option>
                       <option value="week">This Week</option>
+                      <option value="last2weeks">Last 2 Weeks</option>
+                      <option value="last3weeks">Last 3 Weeks</option>
                       <option value="month">This Month</option>
+                      <option value="last2months">Last 2 Months</option>
+                      <option value="last3months">Last 3 Months</option>
                     </select>
                   </div>
                   <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold" onClick={handleKpiFilterApply}>Apply</button>
@@ -854,63 +908,91 @@ const ClientHeadDashboard = () => {
                   <div className="text-gray-500">No tickets found for KPI analysis.</div>
                 ) : (
                   (() => {
-                    // Filter tickets by applied date range/period for KPI
-                    let filteredTickets = tickets;
-                    if (appliedKpiPeriod === 'week') {
-                      const now = new Date();
-                      const startOfWeek = new Date(now);
-                      startOfWeek.setDate(now.getDate() - now.getDay());
-                      startOfWeek.setHours(0,0,0,0);
-                      filteredTickets = tickets.filter(t => {
-                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                        return created && created >= startOfWeek && created <= now;
-                      });
-                    } else if (appliedKpiPeriod === 'month') {
-                      const now = new Date();
-                      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-                      filteredTickets = tickets.filter(t => {
-                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                        return created && created >= startOfMonth && created <= now;
-                      });
-                    } else if (appliedKpiFromDate && appliedKpiToDate) {
-                      const from = new Date(appliedKpiFromDate);
-                      const to = new Date(appliedKpiToDate);
-                      to.setHours(23,59,59,999);
-                      filteredTickets = tickets.filter(t => {
-                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                        return created && created >= from && created <= to;
-                      });
-                    }
-                    const kpi = computeKPIsForTickets(filteredTickets);
+                    // Parse selected month
+                    const [selYear, selMonth] = kpiSelectedMonth.split('-').map(Number);
+                    // 1. Filter tickets for selected month
+                    const monthTickets = tickets.filter(t => {
+                      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                      return created && created.getFullYear() === selYear && created.getMonth() + 1 === selMonth;
+                    });
+                    // 2. Group by week-of-month
+                    const weekLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+                    let weekMap = { 'Week 1': [], 'Week 2': [], 'Week 3': [], 'Week 4': [] };
+                    monthTickets.forEach(ticket => {
+                      const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+                      if (!created) return;
+                      const day = created.getDate();
+                      let week = '';
+                      if (day <= 7) week = 'Week 1';
+                      else if (day <= 14) week = 'Week 2';
+                      else if (day <= 21) week = 'Week 3';
+                      else week = 'Week 4';
+                      weekMap[week].push(ticket);
+                    });
+                    // 3. Aggregate KPIs for each week
+                    const chartData = weekLabels.map(label => {
+                      const groupTickets = weekMap[label];
+                      if (!groupTickets || groupTickets.length === 0) {
+                        return { period: label, open: 0, closed: 0, response: 0, resolution: 0, breached: 0 };
+                      }
+                      const kpi = computeKPIsForTickets(groupTickets);
+                      return {
+                        period: label,
+                        open: kpi.openCount,
+                        closed: kpi.closedCount,
+                        response: kpi.avgResponse ? Number((kpi.avgResponse/1000/60).toFixed(2)) : 0,
+                        resolution: kpi.avgResolution ? Number((kpi.avgResolution/1000/60).toFixed(2)) : 0,
+                        breached: kpi.breachedCount
+                      };
+                    });
+                    // 4. Custom vertical label renderer
+                    const VerticalBarLabel = ({ x, y, width, height, value, name }) => {
+                      if (height < 20) return null;
+                      return (
+                        <g>
+                          <text
+                            x={x + width / 2}
+                            y={y + height / 2}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize={Math.max(10, Math.min(width, height) / 3)}
+                            fill="#fff"
+                            transform={`rotate(-90, ${x + width / 2}, ${y + height / 2})`}
+                            style={{ pointerEvents: 'none', fontWeight: 600 }}
+                          >
+                            {name}
+                          </text>
+                        </g>
+                      );
+                    };
+                    // 5. Render grouped bar chart
                     return (
                       <>
-                        <div className="mb-4">
-                          <div><b>Total Tickets Assigned:</b> {kpi.count}</div>
-                          <div><b>Avg. Response Time:</b> {kpi.avgResponse ? (kpi.avgResponse/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
-                          <div><b>Avg. Resolution Time:</b> {kpi.avgResolution ? (kpi.avgResolution/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
+                        <div className="mb-4 flex gap-4 items-center">
+                          <span className="font-semibold text-gray-700">Month:</span>
+                          <input type="month" value={kpiSelectedMonth} onChange={e => setKpiSelectedMonth(e.target.value)} className="border rounded px-2 py-1 text-sm" />
                         </div>
                         <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart">
-                          <h3 className="text-lg font-semibold mb-2">KPI Bar Chart</h3>
+                          <h3 className="text-lg font-semibold mb-2">KPI Bar Chart ({kpiSelectedMonth})</h3>
                           <ResponsiveContainer width="100%" height={250}>
-                            <BarChart data={kpi.details.map(row => ({
-                              name: row.ticketNumber,
-                              'Response Time (min)': row.responseTime ? (row.responseTime/1000/60) : 0,
-                              'Resolution Time (min)': row.resolutionTime ? (row.resolutionTime/1000/60) : 0,
-                            }))}>
+                            <BarChart data={chartData}>
                               <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="name" />
+                              <XAxis dataKey="period" />
                               <YAxis />
                               <Tooltip />
                               <Legend />
-                              <Bar dataKey="Response Time (min)" fill="#8884d8" />
-                              <Bar dataKey="Resolution Time (min)" fill="#82ca9d" />
+                              <Bar dataKey="open" name="open" fill="#F2994A" label={props => <VerticalBarLabel {...props} name="open" />} />
+                              <Bar dataKey="closed" name="close" fill="#34495E" label={props => <VerticalBarLabel {...props} name="close" />} />
+                              <Bar dataKey="response" name="response time" fill="#56CCF2" label={props => <VerticalBarLabel {...props} name="response time" />} />
+                              <Bar dataKey="resolution" name="resolution time" fill="#BB6BD9" label={props => <VerticalBarLabel {...props} name="resolution time" />} />
+                              <Bar dataKey="breached" name="breached" fill="#EB5757" label={props => <VerticalBarLabel {...props} name="breached" />} />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
                         <div className="flex gap-4 mb-4">
                           <button
                             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
-                            onClick={() => exportKpiToExcelWithChartImage(kpi, 'kpi-bar-chart', projects.find(p => p.id === selectedProjectId)?.name || '')}
+                            onClick={() => exportKpiToExcelWithChartImage(computeKPIsForTickets(tickets), 'kpi-bar-chart', projects.find(p => p.id === selectedProjectId)?.name || '')}
                           >
                             Export to Excel
                           </button>
@@ -922,19 +1004,23 @@ const ClientHeadDashboard = () => {
                                 <th className="py-1 px-2">Ticket #</th>
                                 <th className="py-1 px-2">Subject</th>
                                 <th className="py-1 px-2">Assignee</th>
+                                <th className="py-1 px-2">Priority</th>
                                 <th className="py-1 px-2">Response Time</th>
                                 <th className="py-1 px-2">Resolution Time</th>
+                                <th className="py-1 px-2">Breached</th>
                                 <th className="py-1 px-2">Status</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {kpi.details.map((row, idx) => (
+                              {computeKPIsForTickets(myTickets).details.map((row, idx) => (
                                 <tr key={idx} className="border-t">
                                   <td className="py-1 px-2">{row.ticketNumber}</td>
                                   <td className="py-1 px-2">{row.subject}</td>
-                                  <td className="py-1 px-2">{row.assignee}</td>
+                                  <td className="py-1 px-2">{row.assignee || '-'}</td>
+                                  <td className="py-1 px-2">{row.priority}</td>
                                   <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
                                   <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                  <td className="py-1 px-2">{row.breached ? <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Breached</span> : <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">OK</span>}</td>
                                   <td className="py-1 px-2">{row.status}</td>
                                 </tr>
                               ))}

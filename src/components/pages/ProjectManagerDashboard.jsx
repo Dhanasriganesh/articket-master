@@ -36,6 +36,14 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import TicketDetails from './TicketDetails';
 
+// SLA rules in minutes
+export const SLA_RULES = {
+  critical: { response: 10, resolution: 60 },
+  high: { response: 60, resolution: 120 },
+  medium: { response: 120, resolution: 360 },
+  low: { response: 360, resolution: 1440 }
+};
+
 // Animated count-up hook (same as ClientDashboard)
 function useCountUp(target, duration = 1200) {
   const [count, setCount] = useState(0);
@@ -62,16 +70,27 @@ function useCountUp(target, duration = 1200) {
 
 // Utility to compute KPI metrics from ticket data (reuse from TeamManagement)
 export function computeKPIsForTickets(tickets) {
-  let totalResponse = 0, totalResolution = 0, count = 0;
+  let totalResponse = 0, totalResolution = 0, count = 0, breachedCount = 0;
+  let openCount = 0, closedCount = 0;
   const details = tickets.map(ticket => {
     // Find created time
     const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+    // Defensive assignedTo access
+    const assignedTo = ticket.assignedTo;
+    let assignedToEmail = undefined;
+    if (assignedTo) {
+      if (typeof assignedTo.get === 'function') {
+        assignedToEmail = assignedTo.get('email');
+      } else {
+        assignedToEmail = assignedTo.email;
+      }
+    }
+    console.log('Ticket', ticket.ticketNumber, 'assignedTo:', assignedTo);
     // Find assignment time (first comment with 'Assigned to' or 'Ticket assigned to' and authorRole 'user' or 'system')
     let assigned = null;
     let resolved = null;
     if (ticket.comments && Array.isArray(ticket.comments)) {
       for (const c of ticket.comments) {
-        // Assignment: match both 'Assigned to' and 'Ticket assigned to' (case-insensitive)
         if (
           !assigned &&
           c.message &&
@@ -80,7 +99,6 @@ export function computeKPIsForTickets(tickets) {
         ) {
           assigned = c.timestamp?.toDate ? c.timestamp.toDate() : (c.timestamp ? new Date(c.timestamp) : null);
         }
-        // Resolution: match any 'Resolution updated' (case-insensitive)
         if (
           !resolved &&
           c.message &&
@@ -91,28 +109,62 @@ export function computeKPIsForTickets(tickets) {
         }
       }
     }
+    // Fallback for assignment: use assignedTo.assignedAt or lastUpdated if not Open
+    if (!assigned) {
+      if (assignedTo && (assignedTo.assignedAt || (typeof assignedTo.get === 'function' && assignedTo.get('assignedAt')))) {
+        const assignedAt = typeof assignedTo.get === 'function' ? assignedTo.get('assignedAt') : assignedTo.assignedAt;
+        assigned = assignedAt?.toDate ? assignedAt.toDate() : (assignedAt ? new Date(assignedAt) : null);
+      } else if (ticket.lastUpdated && ticket.status !== 'Open') {
+        assigned = ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate() : new Date(ticket.lastUpdated);
+      }
+    }
     // Fallback: if ticket.status is Resolved and lastUpdated exists
     if (!resolved && ticket.status === 'Resolved' && ticket.lastUpdated) {
       resolved = ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate() : new Date(ticket.lastUpdated);
     }
     // Only count if assigned
-    if (ticket.assignedTo && ticket.assignedTo.email) {
-      count++;
+    if (assignedTo && assignedToEmail) {
       let responseTime = assigned && created ? (assigned - created) : null;
       let resolutionTime = resolved && assigned ? (resolved - assigned) : null;
+      // Debug output
+      if (!created) {
+        console.log('Ticket', ticket.ticketNumber, 'skipped: no created date');
+      } else if (!assigned) {
+        console.log('Ticket', ticket.ticketNumber, 'skipped: no assigned time');
+      } else {
+        console.log('Ticket', ticket.ticketNumber, 'included:', { responseTime, resolutionTime });
+      }
+      count++;
       if (responseTime) totalResponse += responseTime;
       if (resolutionTime) totalResolution += resolutionTime;
+      // SLA breach logic
+      let breached = false;
+      let priority = (ticket.priority || '').toLowerCase();
+      let sla = SLA_RULES[priority];
+      if (sla) {
+        if ((responseTime && responseTime > sla.response * 60 * 1000) ||
+            (resolutionTime && resolutionTime > sla.resolution * 60 * 1000)) {
+          breached = true;
+          breachedCount++;
+        }
+      }
+      if (ticket.status === 'Open') openCount++;
+      if (ticket.status === 'Closed') closedCount++;
       return {
         ticketNumber: ticket.ticketNumber,
         subject: ticket.subject,
-        assignee: ticket.assignedTo?.email,
+        assignee: assignedToEmail,
         responseTime,
         resolutionTime,
         status: ticket.status,
         created,
         assigned,
-        resolved
+        resolved,
+        breached,
+        priority: ticket.priority
       };
+    } else {
+      console.log('Ticket', ticket.ticketNumber, 'skipped: no assignedTo.email');
     }
     return null;
   }).filter(Boolean);
@@ -120,6 +172,9 @@ export function computeKPIsForTickets(tickets) {
     count,
     avgResponse: count ? totalResponse / count : 0,
     avgResolution: count ? totalResolution / count : 0,
+    breachedCount,
+    openCount,
+    closedCount,
     details
   };
 }
@@ -393,6 +448,12 @@ const ProjectManagerDashboard = () => {
     setAppliedPeriod('custom');
   };
 
+  // Add state for selected KPI month
+  const [kpiSelectedMonth, setKpiSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  });
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
@@ -579,27 +640,36 @@ const ProjectManagerDashboard = () => {
     setLoading(true);
     let unsubscribe;
     const ticketsCollectionRef = collection(db, 'tickets');
-    let q;
-    if (selectedProjectId === 'all' && projects.length > 0) {
-      const projectIds = projects.map(p => p.id);
-      // Firestore 'in' query limit is 10, so batch if needed
-      // (implement batching if you expect >10 projects)
-      q = query(ticketsCollectionRef, where('projectId', 'in', projectIds));
-    } else {
-      q = query(ticketsCollectionRef, where('projectId', '==', selectedProjectId));
-    }
-    unsubscribe = onSnapshot(q, (snapshot) => {
-      const ticketsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setTickets(ticketsData);
-      setLoading(false);
-    }, (err) => {
+    // Use project name for ticket queries
+    const selectedProjectName = projects.find(p => p.id === selectedProjectId)?.name || '';
+    if (!selectedProjectName) {
       setTickets([]);
       setLoading(false);
+      return;
+    }
+    const q1 = query(ticketsCollectionRef, where('project', '==', selectedProjectName));
+    const q2 = query(ticketsCollectionRef, where('project', 'array-contains', selectedProjectName));
+    let ticketsMap = {};
+    let unsub1 = onSnapshot(q1, (snapshot) => {
+      snapshot.docs.forEach(doc => {
+        ticketsMap[doc.id] = { id: doc.id, ...doc.data() };
+      });
+      setTickets(Object.values(ticketsMap));
+      setLoading(false);
+    }, (err) => {
+      setLoading(false);
     });
-    return () => { if (unsubscribe) unsubscribe(); };
+    let unsub2 = onSnapshot(q2, (snapshot) => {
+      snapshot.docs.forEach(doc => {
+        ticketsMap[doc.id] = { id: doc.id, ...doc.data() };
+      });
+      setTickets(Object.values(ticketsMap));
+      setLoading(false);
+    }, (err) => {
+      setLoading(false);
+    });
+    unsubscribe = () => { unsub1(); unsub2(); };
+    return unsubscribe;
   }, [authChecked, user, db, selectedProjectId, projects]);
 
   const handleKpiFilterApply = () => {
@@ -615,6 +685,36 @@ const ProjectManagerDashboard = () => {
     setAppliedKpiFromDate('');
     setAppliedKpiToDate('');
     setAppliedKpiPeriod('custom');
+  };
+
+  // Helper to get week number and year
+  function getWeekYear(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+    return { week: weekNo, year: d.getUTCFullYear() };
+  }
+
+  // Add custom vertical label renderer
+  const VerticalBarLabel = ({ x, y, width, height, value, name }) => {
+    if (height < 20) return null;
+    return (
+      <g>
+        <text
+          x={x + width / 2}
+          y={y + height / 2}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize={Math.max(10, Math.min(width, height) / 3)}
+          fill="#fff"
+          transform={`rotate(-90, ${x + width / 2}, ${y + height / 2})`}
+          style={{ pointerEvents: 'none', fontWeight: 600 }}
+        >
+          {name}
+        </text>
+      </g>
+    );
   };
 
   if (!authChecked || loading) {
@@ -1037,6 +1137,19 @@ const ProjectManagerDashboard = () => {
             {activeTab === 'kpi' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-orange-600" />KPI Reports</h2>
+                {/* SLA Table */}
+                <div className="mb-6">
+                  <h3 className="text-md font-semibold mb-2">SLA Table</h3>
+                  <table className="min-w-full text-xs text-left text-gray-700 border mb-4">
+                    <thead><tr><th className="py-1 px-2">Priority</th><th className="py-1 px-2">Initial Response Time</th><th className="py-1 px-2">Resolution Time</th></tr></thead>
+                    <tbody>
+                      <tr><td className="py-1 px-2">Critical</td><td className="py-1 px-2">10 min</td><td className="py-1 px-2">1 hour</td></tr>
+                      <tr><td className="py-1 px-2">High</td><td className="py-1 px-2">1 hour</td><td className="py-1 px-2">2 hours</td></tr>
+                      <tr><td className="py-1 px-2">Medium</td><td className="py-1 px-2">2 hours</td><td className="py-1 px-2">6 hours</td></tr>
+                      <tr><td className="py-1 px-2">Low</td><td className="py-1 px-2">6 hours</td><td className="py-1 px-2">1 day</td></tr>
+                    </tbody>
+                  </table>
+                </div>
                 {/* KPI Filters */}
                 <div className="flex flex-wrap gap-4 mb-6 items-end">
                   <div>
@@ -1052,7 +1165,11 @@ const ProjectManagerDashboard = () => {
                     <select className="border rounded px-2 py-1 text-sm" value={kpiPeriod} onChange={e => setKpiPeriod(e.target.value)}>
                       <option value="custom">Custom</option>
                       <option value="week">This Week</option>
+                      <option value="last2weeks">Last 2 Weeks</option>
+                      <option value="last3weeks">Last 3 Weeks</option>
                       <option value="month">This Month</option>
+                      <option value="last2months">Last 2 Months</option>
+                      <option value="last3months">Last 3 Months</option>
                     </select>
                   </div>
                   <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold" onClick={handleKpiFilterApply}>Apply</button>
@@ -1073,12 +1190,44 @@ const ProjectManagerDashboard = () => {
                         const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
                         return created && created >= startOfWeek && created <= now;
                       });
+                    } else if (appliedKpiPeriod === 'last2weeks') {
+                      const now = new Date();
+                      const startOf2Weeks = new Date(now);
+                      startOf2Weeks.setDate(now.getDate() - now.getDay() - 7);
+                      startOf2Weeks.setHours(0,0,0,0);
+                      filteredTickets = tickets.filter(t => {
+                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                        return created && created >= startOf2Weeks && created <= now;
+                      });
+                    } else if (appliedKpiPeriod === 'last3weeks') {
+                      const now = new Date();
+                      const startOf3Weeks = new Date(now);
+                      startOf3Weeks.setDate(now.getDate() - now.getDay() - 14);
+                      startOf3Weeks.setHours(0,0,0,0);
+                      filteredTickets = tickets.filter(t => {
+                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                        return created && created >= startOf3Weeks && created <= now;
+                      });
                     } else if (appliedKpiPeriod === 'month') {
                       const now = new Date();
                       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
                       filteredTickets = tickets.filter(t => {
                         const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
                         return created && created >= startOfMonth && created <= now;
+                      });
+                    } else if (appliedKpiPeriod === 'last2months') {
+                      const now = new Date();
+                      const startOf2Months = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                      filteredTickets = tickets.filter(t => {
+                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                        return created && created >= startOf2Months && created <= now;
+                      });
+                    } else if (appliedKpiPeriod === 'last3months') {
+                      const now = new Date();
+                      const startOf3Months = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+                      filteredTickets = tickets.filter(t => {
+                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                        return created && created >= startOf3Months && created <= now;
                       });
                     } else if (appliedKpiFromDate && appliedKpiToDate) {
                       const from = new Date(appliedKpiFromDate);
@@ -1090,6 +1239,67 @@ const ProjectManagerDashboard = () => {
                       });
                     }
                     const kpi = computeKPIsForTickets(filteredTickets);
+                    // 1. Determine week or month grouping
+                    let groupBy = 'week';
+                    if (appliedKpiPeriod.startsWith('month')) groupBy = 'month';
+                    // 2. Get last 4 weeks or months
+                    const now = new Date();
+                    let periods = [];
+                    if (groupBy === 'week') {
+                      let temp = [];
+                      for (let i = 3; i >= 0; i--) {
+                        const d = new Date(now);
+                        d.setDate(d.getDate() - d.getDay() - (i * 7));
+                        const { week, year } = getWeekYear(d);
+                        temp.push({ label: `Week ${week} (${year})`, week, year });
+                      }
+                      periods = temp;
+                    } else {
+                      let temp = [];
+                      for (let i = 3; i >= 0; i--) {
+                        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                        temp.push({ label: d.toLocaleString('default', { month: 'long', year: 'numeric' }), month: d.getMonth(), year: d.getFullYear() });
+                      }
+                      periods = temp;
+                    }
+                    // 3. Group tickets by period
+                    let groupMap = {};
+                    periods.forEach(p => groupMap[p.label] = []);
+                    filteredTickets.forEach(ticket => {
+                      const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+                      if (!created) return;
+                      if (groupBy === 'week') {
+                        const { week, year } = getWeekYear(created);
+                        const label = `Week ${week} (${year})`;
+                        if (groupMap[label]) groupMap[label].push(ticket);
+                      } else {
+                        const label = created.toLocaleString('default', { month: 'long', year: 'numeric' });
+                        if (groupMap[label]) groupMap[label].push(ticket);
+                      }
+                    });
+                    // 4. Aggregate KPIs for each group, always outputting all bars (zero if no data)
+                    const chartData = periods.map(p => {
+                      const groupTickets = groupMap[p.label] || [];
+                      if (groupTickets.length === 0) {
+                        return {
+                          period: p.label,
+                          open: 0,
+                          closed: 0,
+                          response: 0,
+                          resolution: 0,
+                          breached: 0
+                        };
+                      }
+                      const kpi = computeKPIsForTickets(groupTickets);
+                      return {
+                        period: p.label,
+                        open: kpi.openCount,
+                        closed: kpi.closedCount,
+                        response: kpi.avgResponse ? Number((kpi.avgResponse/1000/60).toFixed(2)) : 0,
+                        resolution: kpi.avgResolution ? Number((kpi.avgResolution/1000/60).toFixed(2)) : 0,
+                        breached: kpi.breachedCount
+                      };
+                    });
                     return (
                       <>
                         <div className="mb-4">
@@ -1098,31 +1308,70 @@ const ProjectManagerDashboard = () => {
                           <div><b>Avg. Resolution Time:</b> {kpi.avgResolution ? (kpi.avgResolution/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
                         </div>
                         {/* KPI Bar Chart */}
-                        <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart">
-                          <h3 className="text-lg font-semibold mb-2">KPI Bar Chart</h3>
-                          <ResponsiveContainer width="100%" height={250}>
-                            <BarChart data={kpi.details.map(row => ({
-                              name: row.ticketNumber,
-                              'Response Time (min)': row.responseTime ? (row.responseTime/1000/60) : 0,
-                              'Resolution Time (min)': row.resolutionTime ? (row.resolutionTime/1000/60) : 0,
-                            }))}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="name" />
-                              <YAxis />
-                              <Tooltip />
-                              <Legend />
-                              <Bar dataKey="Response Time (min)" fill="#8884d8" />
-                              <Bar dataKey="Resolution Time (min)" fill="#82ca9d" />
-                            </BarChart>
-                          </ResponsiveContainer>
+                        <div className="mb-4 flex gap-4 items-center">
+                          <span className="font-semibold text-gray-700">Month:</span>
+                          <input type="month" value={kpiSelectedMonth} onChange={e => setKpiSelectedMonth(e.target.value)} className="border rounded px-2 py-1 text-sm" />
                         </div>
+                        {(() => {
+                          // Parse selected month
+                          const [selYear, selMonth] = kpiSelectedMonth.split('-').map(Number);
+                          // 1. Filter tickets for selected month
+                          const monthTickets = filteredTickets.filter(t => {
+                            const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                            return created && created.getFullYear() === selYear && created.getMonth() + 1 === selMonth;
+                          });
+                          // 2. Group by week-of-month
+                          const weekLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+                          let weekMap = { 'Week 1': [], 'Week 2': [], 'Week 3': [], 'Week 4': [] };
+                          monthTickets.forEach(ticket => {
+                            const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+                            if (!created) return;
+                            const day = created.getDate();
+                            let week = '';
+                            if (day <= 7) week = 'Week 1';
+                            else if (day <= 14) week = 'Week 2';
+                            else if (day <= 21) week = 'Week 3';
+                            else week = 'Week 4';
+                            weekMap[week].push(ticket);
+                          });
+                          // 3. Aggregate KPIs for each week
+                          const chartData = weekLabels.map(label => {
+                            const groupTickets = weekMap[label];
+                            if (!groupTickets || groupTickets.length === 0) {
+                              return { period: label, open: 0, closed: 0, response: 0, resolution: 0, breached: 0 };
+                            }
+                            const kpi = computeKPIsForTickets(groupTickets);
+                            return {
+                              period: label,
+                              open: kpi.openCount,
+                              closed: kpi.closedCount,
+                              response: kpi.avgResponse ? Number((kpi.avgResponse/1000/60).toFixed(2)) : 0,
+                              resolution: kpi.avgResolution ? Number((kpi.avgResolution/1000/60).toFixed(2)) : 0,
+                              breached: kpi.breachedCount
+                            };
+                          });
+                          // 4. Render grouped bar chart
+                          return (
+                            <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart">
+                              <h3 className="text-lg font-semibold mb-2">KPI Bar Chart ({kpiSelectedMonth})</h3>
+                              <ResponsiveContainer width="100%" height={250}>
+                                <BarChart data={chartData}>
+                                  <CartesianGrid strokeDasharray="3 3" />
+                                  <XAxis dataKey="period" />
+                                  <YAxis />
+                                  <Tooltip />
+                                  <Legend />
+                                  <Bar dataKey="open" name="open" fill="#F2994A" label={props => <VerticalBarLabel {...props} name="open" />} />
+                                  <Bar dataKey="closed" name="close" fill="#34495E" label={props => <VerticalBarLabel {...props} name="close" />} />
+                                  <Bar dataKey="response" name="response time" fill="#56CCF2" label={props => <VerticalBarLabel {...props} name="response time" />} />
+                                  <Bar dataKey="resolution" name="resolution time" fill="#BB6BD9" label={props => <VerticalBarLabel {...props} name="resolution time" />} />
+                                  <Bar dataKey="breached" name="breached" fill="#EB5757" label={props => <VerticalBarLabel {...props} name="breached" />} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          );
+                        })()}
                         <div className="flex gap-4 mb-4">
-                          {/* <button
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
-                            onClick={() => downloadKpiCsv(kpi, projects.find(p => p.id === selectedProjectId)?.name || '')}
-                          >
-                            Download CSV
-                          </button> */}
                           <button
                             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
                             onClick={() => exportKpiToExcelWithChartImage(kpi, 'kpi-bar-chart', projects.find(p => p.id === selectedProjectId)?.name || '')}
@@ -1137,8 +1386,10 @@ const ProjectManagerDashboard = () => {
                                 <th className="py-1 px-2">Ticket #</th>
                                 <th className="py-1 px-2">Subject</th>
                                 <th className="py-1 px-2">Assignee</th>
+                                <th className="py-1 px-2">Priority</th>
                                 <th className="py-1 px-2">Response Time</th>
                                 <th className="py-1 px-2">Resolution Time</th>
+                                <th className="py-1 px-2">Breached</th>
                                 <th className="py-1 px-2">Status</th>
                               </tr>
                             </thead>
@@ -1148,8 +1399,10 @@ const ProjectManagerDashboard = () => {
                                   <td className="py-1 px-2">{row.ticketNumber}</td>
                                   <td className="py-1 px-2">{row.subject}</td>
                                   <td className="py-1 px-2">{row.assignee}</td>
+                                  <td className="py-1 px-2">{row.priority}</td>
                                   <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
                                   <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                  <td className="py-1 px-2">{row.breached ? <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Breached</span> : <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">OK</span>}</td>
                                   <td className="py-1 px-2">{row.status}</td>
                                 </tr>
                               ))}
