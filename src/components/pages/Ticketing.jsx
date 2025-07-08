@@ -203,13 +203,27 @@ function Client({ selectedProjectId, selectedProjectName }) {
   useEffect(() => {
     if (isLoading || !formData.project) {
       setClientMembers([]);
-        return;
-      }
+      return;
+    }
     const fetchClientMembers = async () => {
       const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('project', '==', formData.project), where('role', 'in', ['client', 'client_head']));
-      const snapshot = await getDocs(q);
-      const clients = snapshot.docs.map(doc => {
+      // Query for clients (project as string)
+      const qString = query(usersRef, where('project', '==', formData.project), where('role', 'in', ['client', 'client_head', 'employee']));
+      // Query for employees (project as array)
+      const qArray = query(usersRef, where('project', 'array-contains', formData.project), where('role', 'in', ['client', 'client_head', 'employee']));
+      const [snapshotString, snapshotArray] = await Promise.all([
+        getDocs(qString),
+        getDocs(qArray)
+      ]);
+      // Merge and deduplicate by email
+      const allDocs = [...snapshotString.docs, ...snapshotArray.docs];
+      const seenEmails = new Set();
+      const clients = allDocs.filter(doc => {
+        const data = doc.data();
+        if (seenEmails.has(data.email)) return false;
+        seenEmails.add(data.email);
+        return true;
+      }).map(doc => {
         const data = doc.data();
         let name = '';
         if (data.firstName && data.lastName) {
@@ -223,6 +237,8 @@ function Client({ selectedProjectId, selectedProjectName }) {
         }
         if (data.role === 'client_head') {
           name += ' (Client Head)';
+        } else if (data.role === 'employee') {
+          name += ' (Employee)';
         }
         return {
           id: doc.id,
@@ -230,7 +246,7 @@ function Client({ selectedProjectId, selectedProjectName }) {
           name,
         };
       });
-      console.log('Fetched client users for project', formData.project, ':', clients);
+      console.log('Fetched client and employee users for project', formData.project, ':', clients);
       setClientMembers(clients);
     };
     fetchClientMembers();

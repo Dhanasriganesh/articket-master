@@ -382,9 +382,15 @@ const ClientHeadDashboard = () => {
 
   // Filter tickets for current user (assigned to or raised by)
   const currentUserEmail = user?.email;
+  // Get all client and employee emails for the current project
+  const clientAndEmployeeEmails = (myProject?.members || [])
+    .filter(m => m.role === 'client' || m.userType === 'client' || m.role === 'employee' || m.userType === 'employee')
+    .map(m => m.email);
+
+  // Filter tickets assigned to the client head or raised by any client or employee in the project
   let myTickets = tickets.filter(t =>
     (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
-    t.email === currentUserEmail
+    (t.email && clientAndEmployeeEmails.includes(t.email))
   );
   // Only show unresolved tickets (case-insensitive, trim whitespace)
   myTickets = myTickets.filter(t => String(t.status).trim().toLowerCase() !== 'resolved');

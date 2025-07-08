@@ -1,6 +1,6 @@
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
-
+ 
 // NOTE: The 'project' field in user documents should always be an array of project names, even if the user is in only one project (e.g., ['VMM']).
 export const fetchProjectMemberEmails = async (projectName) => {
   if (!projectName) return [];
