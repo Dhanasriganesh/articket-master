@@ -851,7 +851,7 @@ function ClientDashboard() {
             {activeTab === 'settings' && (
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
                 <h3 className="text-xl font-bold text-gray-900 mb-4">Settings</h3>
-                <p className="text-gray-600">Account settings will be available here.</p>
+                <p className="text-gray-500">Account settings will be available here.</p>
               </div>
             )}
           </main>
