@@ -143,6 +143,12 @@ const ClientHeadDashboard = () => {
     return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   });
 
+  // Add state for selected Trends month
+  const [trendsSelectedMonth, setTrendsSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  });
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
@@ -468,6 +474,41 @@ const ClientHeadDashboard = () => {
     });
   }
 
+  // Trends chart data grouping (similar to KPI bar chart, but for selected month)
+  const [trendsYear, trendsMonth] = trendsSelectedMonth.split('-').map(Number);
+  const trendsMonthTickets = filteredMyTickets.filter(t => {
+    const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+    return created && created.getFullYear() === trendsYear && created.getMonth() + 1 === trendsMonth;
+  });
+  const weekLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+  let weekMap = { 'Week 1': [], 'Week 2': [], 'Week 3': [], 'Week 4': [] };
+  trendsMonthTickets.forEach(ticket => {
+    const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+    if (!created) return;
+    const day = created.getDate();
+    let week = '';
+    if (day <= 7) week = 'Week 1';
+    else if (day <= 14) week = 'Week 2';
+    else if (day <= 21) week = 'Week 3';
+    else week = 'Week 4';
+    weekMap[week].push(ticket);
+  });
+  const trendsChartData = weekLabels.map(label => {
+    const groupTickets = weekMap[label];
+    if (!groupTickets || groupTickets.length === 0) {
+      return { period: label, open: 0, closed: 0, resolved: 0 };
+    }
+    const kpi = computeKPIsForTickets(groupTickets);
+    // Count resolved tickets
+    const resolvedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
+    return {
+      period: label,
+      open: kpi.openCount,
+      closed: kpi.closedCount,
+      resolved: resolvedCount
+    };
+  });
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* LogoutModal always rendered above, not blurred */}
@@ -732,28 +773,32 @@ const ClientHeadDashboard = () => {
 
                 {/* Charts and Analytics Section */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Status Distribution Line Chart */}
+                  {/* Status Distribution Line Chart (Trends) */}
                   <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
                       <TrendingUp className="w-5 h-5 mr-2 text-blue-600" />
-                      Ticket Status Trends
+                       Trends
                     </h3>
+                    {/* Trends Month Filter */}
+                    <div className="mb-4 flex gap-4 items-center">
+                      <span className="font-semibold text-gray-700">Month:</span>
+                      <input type="month" value={trendsSelectedMonth} onChange={e => setTrendsSelectedMonth(e.target.value)} className="border rounded px-2 py-1 text-sm" />
+                    </div>
+                    {/* Trends Line Chart */}
                     <div className="h-64 bg-gray-50 rounded-lg p-4">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart
-                          data={[
-                            { name: 'Open', value: tickets.filter(t => t.status === 'Open').length },
-                            { name: 'In Progress', value: tickets.filter(t => t.status === 'In Progress').length },
-                            { name: 'Resolved', value: tickets.filter(t => t.status === 'Resolved').length },
-                            { name: 'Closed', value: tickets.filter(t => t.status === 'Closed').length }
-                          ]}
+                          data={trendsChartData}
                           margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
                         >
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
+                          <XAxis dataKey="period" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
                           <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
                           <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
-                          <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={3} dot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Legend />
+                          <Line type="monotone" dataKey="open" name="Open" stroke="#F2994A" strokeWidth={3} dot={{ r: 6, fill: '#F2994A', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Line type="monotone" dataKey="closed" name="Closed" stroke="#34495E" strokeWidth={3} dot={{ r: 6, fill: '#34495E', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Line type="monotone" dataKey="resolved" name="Resolved" stroke="#27AE60" strokeWidth={3} dot={{ r: 6, fill: '#27AE60', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
@@ -763,7 +808,7 @@ const ClientHeadDashboard = () => {
                   <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
                     <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
                       <BarChart3 className="w-5 h-5 mr-2 text-blue-600" />
-                      Ticket Priority Distribution
+                      Priority Distribution
                     </h3>
                     <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
                       <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center">
@@ -911,10 +956,11 @@ const ClientHeadDashboard = () => {
                     // Parse selected month
                     const [selYear, selMonth] = kpiSelectedMonth.split('-').map(Number);
                     // 1. Filter tickets for selected month
-                    const monthTickets = tickets.filter(t => {
+                    const monthTickets = myTickets.filter(t => {
                       const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
                       return created && created.getFullYear() === selYear && created.getMonth() + 1 === selMonth;
                     });
+                    const monthKpiDetails = computeKPIsForTickets(monthTickets).details;
                     // 2. Group by week-of-month
                     const weekLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
                     let weekMap = { 'Week 1': [], 'Week 2': [], 'Week 3': [], 'Week 4': [] };
@@ -998,34 +1044,38 @@ const ClientHeadDashboard = () => {
                           </button>
                         </div>
                         <div className="overflow-x-auto">
-                          <table className="min-w-full text-xs text-left text-gray-700 border">
-                            <thead>
-                              <tr>
-                                <th className="py-1 px-2">Ticket #</th>
-                                <th className="py-1 px-2">Subject</th>
-                                <th className="py-1 px-2">Assignee</th>
-                                <th className="py-1 px-2">Priority</th>
-                                <th className="py-1 px-2">Response Time</th>
-                                <th className="py-1 px-2">Resolution Time</th>
-                                <th className="py-1 px-2">Breached</th>
-                                <th className="py-1 px-2">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {computeKPIsForTickets(myTickets).details.map((row, idx) => (
-                                <tr key={idx} className="border-t">
-                                  <td className="py-1 px-2">{row.ticketNumber}</td>
-                                  <td className="py-1 px-2">{row.subject}</td>
-                                  <td className="py-1 px-2">{row.assignee || '-'}</td>
-                                  <td className="py-1 px-2">{row.priority}</td>
-                                  <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                                  <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                                  <td className="py-1 px-2">{row.breached ? <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Breached</span> : <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">OK</span>}</td>
-                                  <td className="py-1 px-2">{row.status}</td>
+                          {monthTickets.length === 0 ? (
+                            <div className="text-gray-500">No tickets found for the selected month.</div>
+                          ) : (
+                            <table className="min-w-full text-xs text-left text-gray-700 border">
+                              <thead>
+                                <tr>
+                                  <th className="py-1 px-2">Ticket #</th>
+                                  <th className="py-1 px-2">Subject</th>
+                                  <th className="py-1 px-2">Assignee</th>
+                                  <th className="py-1 px-2">Priority</th>
+                                  <th className="py-1 px-2">Response Time</th>
+                                  <th className="py-1 px-2">Resolution Time</th>
+                                  <th className="py-1 px-2">Breached</th>
+                                  <th className="py-1 px-2">Status</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody>
+                                {monthKpiDetails.map((row, idx) => (
+                                  <tr key={idx} className="border-t">
+                                    <td className="py-1 px-2">{row.ticketNumber}</td>
+                                    <td className="py-1 px-2">{row.subject}</td>
+                                    <td className="py-1 px-2">{row.assignee || '-'}</td>
+                                    <td className="py-1 px-2">{row.priority}</td>
+                                    <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                    <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                    <td className="py-1 px-2">{row.breached ? <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Breached</span> : <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">OK</span>}</td>
+                                    <td className="py-1 px-2">{row.status}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
                         </div>
                       </>
                     );

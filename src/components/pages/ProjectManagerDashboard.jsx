@@ -1300,6 +1300,13 @@ const ProjectManagerDashboard = () => {
                         breached: kpi.breachedCount
                       };
                     });
+                    // Place this before the return statement, after filteredTickets and kpi are defined:
+                    const [selYear, selMonth] = kpiSelectedMonth.split('-').map(Number);
+                    const monthTickets = filteredTickets.filter(t => {
+                      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+                      return created && created.getFullYear() === selYear && created.getMonth() + 1 === selMonth;
+                    });
+                    const monthKpiDetails = computeKPIsForTickets(monthTickets).details;
                     return (
                       <>
                         <div className="mb-4">
@@ -1380,34 +1387,38 @@ const ProjectManagerDashboard = () => {
                           </button>
                         </div>
                         <div className="overflow-x-auto">
-                          <table className="min-w-full text-xs text-left text-gray-700 border">
-                            <thead>
-                              <tr>
-                                <th className="py-1 px-2">Ticket #</th>
-                                <th className="py-1 px-2">Subject</th>
-                                <th className="py-1 px-2">Assignee</th>
-                                <th className="py-1 px-2">Priority</th>
-                                <th className="py-1 px-2">Response Time</th>
-                                <th className="py-1 px-2">Resolution Time</th>
-                                <th className="py-1 px-2">Breached</th>
-                                <th className="py-1 px-2">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {kpi.details.map((row, idx) => (
-                                <tr key={idx} className="border-t">
-                                  <td className="py-1 px-2">{row.ticketNumber}</td>
-                                  <td className="py-1 px-2">{row.subject}</td>
-                                  <td className="py-1 px-2">{row.assignee}</td>
-                                  <td className="py-1 px-2">{row.priority}</td>
-                                  <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                                  <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                                  <td className="py-1 px-2">{row.breached ? <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Breached</span> : <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">OK</span>}</td>
-                                  <td className="py-1 px-2">{row.status}</td>
+                          {monthTickets.length === 0 ? (
+                            <div className="text-gray-500">No tickets found for the selected month.</div>
+                          ) : (
+                            <table className="min-w-full text-xs text-left text-gray-700 border">
+                              <thead>
+                                <tr>
+                                  <th className="py-1 px-2">Ticket #</th>
+                                  <th className="py-1 px-2">Subject</th>
+                                  <th className="py-1 px-2">Assignee</th>
+                                  <th className="py-1 px-2">Priority</th>
+                                  <th className="py-1 px-2">Response Time</th>
+                                  <th className="py-1 px-2">Resolution Time</th>
+                                  <th className="py-1 px-2">Breached</th>
+                                  <th className="py-1 px-2">Status</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody>
+                                {monthKpiDetails.map((row, idx) => (
+                                  <tr key={idx} className="border-t">
+                                    <td className="py-1 px-2">{row.ticketNumber}</td>
+                                    <td className="py-1 px-2">{row.subject}</td>
+                                    <td className="py-1 px-2">{row.assignee || '-'}</td>
+                                    <td className="py-1 px-2">{row.priority}</td>
+                                    <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                    <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
+                                    <td className="py-1 px-2">{row.breached ? <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Breached</span> : <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">OK</span>}</td>
+                                    <td className="py-1 px-2">{row.status}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
                         </div>
                       </>
                     );
