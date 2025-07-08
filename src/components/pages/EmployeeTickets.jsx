@@ -88,24 +88,38 @@ const EmployeeTickets = ({ selectedProjectId }) => {
           setClients([]);
         }
 
-        // Query tickets for the selected/current project
+        // Query tickets for the selected/current project (support both string and array fields)
         const ticketsCollectionRef = collection(db, 'tickets');
-        const q = query(
-          ticketsCollectionRef,
-          where('project', '==', currentProject)
-        );
-        const unsubscribeTickets = onSnapshot(q, (snapshot) => {
-          const tickets = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          setTicketsData(tickets);
+        const qString = query(ticketsCollectionRef, where('project', '==', currentProject));
+        const qArray = query(ticketsCollectionRef, where('project', 'array-contains', currentProject));
+
+        let allTickets = [];
+        let unsubString, unsubArray;
+
+        unsubString = onSnapshot(qString, (snapshot) => {
+          const stringTickets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          allTickets = [...stringTickets, ...(allTickets.filter(t => !stringTickets.some(s => s.id === t.id)))];
+          setTicketsData(Array.from(new Map(allTickets.map(t => [t.id, t])).values()));
           setLoading(false);
         }, (err) => {
           setError('Failed to load tickets for your project.');
           setLoading(false);
         });
-        return () => unsubscribeTickets();
+
+        unsubArray = onSnapshot(qArray, (snapshot) => {
+          const arrayTickets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          allTickets = [...arrayTickets, ...(allTickets.filter(t => !arrayTickets.some(a => a.id === t.id)))];
+          setTicketsData(Array.from(new Map(allTickets.map(t => [t.id, t])).values()));
+          setLoading(false);
+        }, (err) => {
+          setError('Failed to load tickets for your project.');
+          setLoading(false);
+        });
+
+        return () => {
+          unsubString && unsubString();
+          unsubArray && unsubArray();
+        };
       } else {
         setLoading(false);
         setTicketsData([]);

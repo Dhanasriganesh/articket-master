@@ -131,22 +131,37 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
           }
           return () => unsubscribes.forEach(unsub => unsub());
         } else {
-          const q = query(
-            ticketsCollectionRef,
-            where('projectId', '==', selectedProjectId)
-          );
-          const unsubscribeTickets = onSnapshot(q, (snapshot) => {
-            const tickets = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }));
-            setTicketsData(tickets);
+          // Listen for both string and array 'project' fields
+          const qString = query(ticketsCollectionRef, where('project', '==', selectedProjectName));
+          const qArray = query(ticketsCollectionRef, where('project', 'array-contains', selectedProjectName));
+
+          let allTickets = [];
+          let unsubString, unsubArray;
+
+          unsubString = onSnapshot(qString, (snapshot) => {
+            const stringTickets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            allTickets = [...stringTickets, ...(allTickets.filter(t => !stringTickets.some(s => s.id === t.id)))];
+            setTicketsData(Array.from(new Map(allTickets.map(t => [t.id, t])).values()));
             setLoading(false);
           }, (err) => {
-            setError('Failed to load tickets for the project.');
+            setError('Failed to load tickets for your project.');
             setLoading(false);
           });
-          return () => unsubscribeTickets();
+
+          unsubArray = onSnapshot(qArray, (snapshot) => {
+            const arrayTickets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            allTickets = [...arrayTickets, ...(allTickets.filter(t => !arrayTickets.some(a => a.id === t.id)))];
+            setTicketsData(Array.from(new Map(allTickets.map(t => [t.id, t])).values()));
+            setLoading(false);
+          }, (err) => {
+            setError('Failed to load tickets for your project.');
+            setLoading(false);
+          });
+
+          return () => {
+            unsubString && unsubString();
+            unsubArray && unsubArray();
+          };
         }
       } else {
         console.log('No user authenticated in ProjectManagerTickets.jsx');

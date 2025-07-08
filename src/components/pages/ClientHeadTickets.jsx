@@ -105,6 +105,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [quickDate, setQuickDate] = useState('');
+  const [userProjects, setUserProjects] = useState([]); // For employees with multiple projects
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async user => {
@@ -116,7 +117,14 @@ const ClientHeadTickets = ({ setActiveTab }) => {
         if (userDocSnap.exists()) {
           const userData = userDocSnap.data();
           setCurrentUserData(userData);
-          setSelectedProject(userData.project || 'VMM');
+          // Handle project as array or string
+          if (Array.isArray(userData.project)) {
+            setUserProjects(userData.project);
+            setSelectedProject(userData.project[0] || 'VMM');
+          } else {
+            setUserProjects([userData.project || 'VMM']);
+            setSelectedProject(userData.project || 'VMM');
+          }
         }
         try {
           const filterData = sessionStorage.getItem('ticketFilter');
@@ -165,24 +173,38 @@ const ClientHeadTickets = ({ setActiveTab }) => {
       setLoading(false);
     };
     fetchProjectMembers();
-    // Fetch tickets for the project
+    // Fetch tickets for the project (support both string and array fields)
     const ticketsCollectionRef = collection(db, 'tickets');
-    const qTickets = query(
-      ticketsCollectionRef,
-      where('project', '==', selectedProject)
-    );
-    const unsubscribeTickets = onSnapshot(qTickets, (snapshot) => {
-      const tickets = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setTicketsData(tickets);
+    const qString = query(ticketsCollectionRef, where('project', '==', selectedProject));
+    const qArray = query(ticketsCollectionRef, where('project', 'array-contains', selectedProject));
+
+    let allTickets = [];
+    let unsubString, unsubArray;
+
+    unsubString = onSnapshot(qString, (snapshot) => {
+      const stringTickets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      allTickets = [...stringTickets, ...(allTickets.filter(t => !stringTickets.some(s => s.id === t.id)))];
+      setTicketsData(Array.from(new Map(allTickets.map(t => [t.id, t])).values()));
       setLoading(false);
     }, (err) => {
       setError('Failed to load tickets for the project.');
       setLoading(false);
     });
-    return () => unsubscribeTickets();
+
+    unsubArray = onSnapshot(qArray, (snapshot) => {
+      const arrayTickets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      allTickets = [...arrayTickets, ...(allTickets.filter(t => !arrayTickets.some(a => a.id === t.id)))];
+      setTicketsData(Array.from(new Map(allTickets.map(t => [t.id, t])).values()));
+      setLoading(false);
+    }, (err) => {
+      setError('Failed to load tickets for the project.');
+      setLoading(false);
+    });
+
+    return () => {
+      unsubString && unsubString();
+      unsubArray && unsubArray();
+    };
   }, [selectedProject]);
 
   useEffect(() => {
@@ -316,17 +338,22 @@ const ClientHeadTickets = ({ setActiveTab }) => {
       ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase());
    
-    // Check both employee and client filters
     let matchesRaisedBy = true;
-    if (filterRaisedByEmployee !== 'all') {
+    if (filterRaisedByEmployee === 'all' && filterRaisedByClient === 'all') {
+      matchesRaisedBy = true;
+    } else if (filterRaisedByEmployee !== 'all') {
       if (filterRaisedByEmployee === 'me') {
         matchesRaisedBy = ticket.email === currentUserEmail;
+      } else if (filterRaisedByEmployee === 'any') {
+        matchesRaisedBy = employeeMembers.some(emp => emp.email === ticket.email);
       } else {
         matchesRaisedBy = ticket.email === filterRaisedByEmployee;
       }
     } else if (filterRaisedByClient !== 'all') {
       if (filterRaisedByClient === 'me') {
         matchesRaisedBy = ticket.email === currentUserEmail;
+      } else if (filterRaisedByClient === 'any') {
+        matchesRaisedBy = clientMembers.some(client => client.email === ticket.email);
       } else {
         matchesRaisedBy = ticket.email === filterRaisedByClient;
       }
@@ -512,7 +539,8 @@ const ClientHeadTickets = ({ setActiveTab }) => {
             }}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 min-w-[140px]"
           >
-            <option value="all">All Employees</option>
+            <option value="all">All</option>
+            <option value="any">All Employees</option>
             <option value="me">Me</option>
             {employeeMembers.map(member => (
               <option key={member.email} value={member.email}>
@@ -531,7 +559,8 @@ const ClientHeadTickets = ({ setActiveTab }) => {
             }}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 min-w-[140px]"
           >
-            <option value="all">All Clients</option>
+            <option value="all">All</option>
+            <option value="any">All Clients</option>
             {clientMembers.map(member => (
               <option key={member.email} value={member.email}>
                 {member.firstName && member.lastName ? `${member.firstName} ${member.lastName}` : member.email.split('@')[0]}{member.role === 'client_head' ? ' (Client Head)' : ''}
@@ -674,6 +703,22 @@ const ClientHeadTickets = ({ setActiveTab }) => {
         <div className="text-gray-400 text-center py-12">No tickets found for selected filters.</div>
       ) : (
         <div className="text-gray-400 text-center py-12">Select filters and click 'Apply Filters' to view tickets.</div>
+      )}
+
+      {/* Add project selector for users with multiple projects */}
+      {userProjects.length > 1 && (
+        <div className="mb-4">
+          <label className="text-xs font-semibold text-gray-500 mr-2">Select Project</label>
+          <select
+            value={selectedProject}
+            onChange={e => setSelectedProject(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 min-w-[140px]"
+          >
+            {userProjects.map(proj => (
+              <option key={proj} value={proj}>{proj}</option>
+            ))}
+          </select>
+        </div>
       )}
     </>
   );
