@@ -21,7 +21,8 @@ import {
   RefreshCw,
   FileText,
   X,
-  Clock
+  Clock,
+  XCircle
 } from 'lucide-react';
 import { collection, query, where, getDocs, getFirestore, doc, getDoc,onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -416,11 +417,8 @@ const ProjectManagerDashboard = () => {
   const [appliedKpiFromDate, setAppliedKpiFromDate] = useState('');
   const [appliedKpiToDate, setAppliedKpiToDate] = useState('');
   const [appliedKpiPeriod, setAppliedKpiPeriod] = useState('custom');
-
-  // Animated counts for priorities
-  const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
-  const mediumCount = useCountUp(tickets.filter(t => t.priority === 'Medium').length);
-  const lowCount = useCountUp(tickets.filter(t => t.priority === 'Low').length);
+  // Add state for year filter
+  const [statsYearFilter, setStatsYearFilter] = useState('current');
 
   // Add state to track if a ticket is being viewed in detail
   const [viewingTicket, setViewingTicket] = useState(false);
@@ -432,6 +430,12 @@ const ProjectManagerDashboard = () => {
   const [appliedFromDate, setAppliedFromDate] = useState('');
   const [appliedToDate, setAppliedToDate] = useState('');
   const [appliedPeriod, setAppliedPeriod] = useState('custom');
+
+  // Add state for selected Trends month
+  const [trendsSelectedMonth, setTrendsSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  });
 
   // Filter bar handlers
   const handleFilterApply = () => {
@@ -717,6 +721,102 @@ const ProjectManagerDashboard = () => {
     );
   };
 
+  // Helper to get year from ticket
+  function getTicketYear(ticket) {
+    const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+    return created ? created.getFullYear() : null;
+  }
+
+  // Compute year for filtering
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const lastYear = currentYear - 1;
+  let yearToFilter = currentYear;
+  if (statsYearFilter === 'last') yearToFilter = lastYear;
+
+  // Filter tickets by year
+  const ticketsForStats = tickets.filter(t => getTicketYear(t) === yearToFilter);
+  const unclosedTicketsCount = ticketsForStats.filter(t => String(t.status).trim().toLowerCase() !== 'closed').length;
+  const closedTicketsCount = ticketsForStats.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
+  const openTicketsCount = ticketsForStats.filter(t => String(t.status).trim().toLowerCase() === 'open').length;
+  const inProgressTicketsCount = ticketsForStats.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length;
+  const resolvedTicketsCount = ticketsForStats.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
+  const criticalCount = ticketsForStats.filter(t => String(t.priority).trim().toLowerCase() === 'critical').length;
+  const highCount = ticketsForStats.filter(t => String(t.priority).trim().toLowerCase() === 'high').length;
+  const mediumCount = ticketsForStats.filter(t => String(t.priority).trim().toLowerCase() === 'medium').length;
+  const lowCount = ticketsForStats.filter(t => String(t.priority).trim().toLowerCase() === 'low').length;
+
+  // Filter tickets for table by year and applied filters
+  let filteredTableTickets = ticketsForStats;
+  if (appliedPeriod === 'week') {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0,0,0,0);
+    filteredTableTickets = filteredTableTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= startOfWeek && created <= now;
+    });
+  } else if (appliedPeriod === 'month') {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    filteredTableTickets = filteredTableTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= startOfMonth && created <= now;
+    });
+  } else if (appliedPeriod === 'last2days') {
+    const now = new Date();
+    const twoDaysAgo = new Date(now);
+    twoDaysAgo.setDate(now.getDate() - 2);
+    filteredTableTickets = filteredTableTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= twoDaysAgo && created <= now;
+    });
+  } else if (appliedFromDate && appliedToDate) {
+    const from = new Date(appliedFromDate);
+    const to = new Date(appliedToDate);
+    to.setHours(23,59,59,999);
+    filteredTableTickets = filteredTableTickets.filter(t => {
+      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+      return created && created >= from && created <= to;
+    });
+  }
+
+  // Trends chart data grouping (similar to ClientHeadDashboard)
+  const [trendsYear, trendsMonth] = trendsSelectedMonth.split('-').map(Number);
+  const trendsMonthTickets = ticketsForStats.filter(t => {
+    const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+    return created && created.getFullYear() === trendsYear && created.getMonth() + 1 === trendsMonth;
+  });
+  const weekLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+  let weekMap = { 'Week 1': [], 'Week 2': [], 'Week 3': [], 'Week 4': [] };
+  trendsMonthTickets.forEach(ticket => {
+    const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+    if (!created) return;
+    const day = created.getDate();
+    let week = '';
+    if (day <= 7) week = 'Week 1';
+    else if (day <= 14) week = 'Week 2';
+    else if (day <= 21) week = 'Week 3';
+    else week = 'Week 4';
+    weekMap[week].push(ticket);
+  });
+  const trendsChartData = weekLabels.map(label => {
+    const groupTickets = weekMap[label];
+    if (!groupTickets || groupTickets.length === 0) {
+      return { period: label, open: 0, closed: 0, resolved: 0 };
+    }
+    const openCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'open').length;
+    const closedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
+    const resolvedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
+    return {
+      period: label,
+      open: openCount,
+      closed: closedCount,
+      resolved: resolvedCount
+    };
+  });
+
   if (!authChecked || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -874,38 +974,53 @@ const ProjectManagerDashboard = () => {
           <main className="flex-1 overflow-auto p-6 sm:p-4 xs:p-2">
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
+                {/* Year Filter Dropdown */}
+                <div className="col-span-1 flex items-center mb-2">
+                  <label className="mr-2 font-semibold text-gray-700">Year:</label>
+                  <select
+                    className="border rounded px-2 py-1 text-sm"
+                    value={statsYearFilter}
+                    onChange={e => setStatsYearFilter(e.target.value)}
+                  >
+                    <option value="current">Current Year ({currentYear})</option>
+                    <option value="last">Last Year ({lastYear})</option>
+                  </select>
+                </div>
                 {/* Ticket Summary Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-6">
+                  {/* Unclosed Tickets Stat Card */}
                   <button 
                     onClick={() => setActiveTab('tickets')}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition-all duration-300 text-left group"
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-gray-600 mb-1">Total Tickets</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.length}</p>
-                        <p className="text-xs text-gray-500 mt-1">All project tickets</p>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Unclosed Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{unclosedTicketsCount}</p>
+                        <p className="text-xs text-gray-500 mt-1">All unclosed project tickets</p>
                       </div>
                       <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center group-hover:bg-orange-100 transition-colors">
                         <FileText className="w-6 h-6 text-orange-600" />
                       </div>
                     </div>
                   </button>
+                  {/* Closed Tickets Stat Card */}
                   <button 
                     onClick={() => setActiveTab('tickets')}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition-all duration-300 text-left group"
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-gray-600 mb-1">Tickets</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => (t.assignedTo && t.assignedTo.email === currentUserEmail) || t.email === currentUserEmail).length}</p>
-                        <p className="text-xs text-gray-500 mt-1">My tickets</p>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Closed Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{closedTicketsCount}</p>
+                        <p className="text-xs text-gray-500 mt-1">All closed project tickets</p>
                       </div>
-                      <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center group-hover:bg-orange-100 transition-colors">
-                        <User className="w-6 h-6 text-orange-600" />
+                      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center group-hover:bg-gray-200 transition-colors">
+                        <XCircle className="w-6 h-6 text-gray-600" />
                       </div>
                     </div>
                   </button>
+                  {/* Open Tickets Stat Card */}
                   <button 
                     onClick={() => setActiveTab('tickets')}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition-all duration-300 text-left group"
@@ -913,7 +1028,7 @@ const ProjectManagerDashboard = () => {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-600 mb-1">Open Tickets</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Open').length}</p>
+                        <p className="text-3xl font-bold text-gray-900">{openTicketsCount}</p>
                         <p className="text-xs text-gray-500 mt-1">Needs attention</p>
                       </div>
                       <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center group-hover:bg-orange-100 transition-colors">
@@ -921,6 +1036,7 @@ const ProjectManagerDashboard = () => {
                       </div>
                     </div>
                   </button>
+                  {/* In Progress Tickets Stat Card */}
                   <button 
                     onClick={() => setActiveTab('tickets')}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition-all duration-300 text-left group"
@@ -928,7 +1044,7 @@ const ProjectManagerDashboard = () => {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-600 mb-1">In Progress</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'In Progress').length}</p>
+                        <p className="text-3xl font-bold text-gray-900">{inProgressTicketsCount}</p>
                         <p className="text-xs text-gray-500 mt-1">Being worked on</p>
                       </div>
                       <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center group-hover:bg-orange-100 transition-colors">
@@ -936,6 +1052,7 @@ const ProjectManagerDashboard = () => {
                       </div>
                     </div>
                   </button>
+                  {/* Resolved Tickets Stat Card */}
                   <button 
                     onClick={() => setActiveTab('tickets')}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition-all duration-300 text-left group"
@@ -943,7 +1060,7 @@ const ProjectManagerDashboard = () => {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-600 mb-1">Resolved</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Resolved').length}</p>
+                        <p className="text-3xl font-bold text-gray-900">{resolvedTicketsCount}</p>
                         <p className="text-xs text-gray-500 mt-1">Completed</p>
                       </div>
                       <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center group-hover:bg-orange-100 transition-colors">
@@ -955,6 +1072,7 @@ const ProjectManagerDashboard = () => {
                 {/* My Project Tickets Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-4">My Project Tickets</h2>
+                  {/* Filter controls */}
                   <div className="flex flex-wrap gap-4 mb-4 items-end">
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
@@ -973,16 +1091,11 @@ const ProjectManagerDashboard = () => {
                         <option value="last2days">Last 2 Days</option>
                       </select>
                     </div>
-                    <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold" onClick={() => downloadTicketsAsExcel(filteredMyTickets)}>Download</button>
-                    <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold" onClick={handleFilterApply}>Apply</button>
+                    <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold" onClick={handleFilterApply}>Apply</button>
                     <button className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded font-semibold" onClick={handleFilterReset}>Reset</button>
                   </div>
-                  {selectedTicketId ? (
-                    <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
-                  ) : filteredMyTickets.length === 0 ? (
-                    <div className="text-gray-500">No tickets found for selected filters.</div>
-                  ) : (
-                    <div className="overflow-x-auto">
+                  <div className="overflow-x-auto">
+                    <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
@@ -997,86 +1110,99 @@ const ProjectManagerDashboard = () => {
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {filteredMyTickets.map((ticket) => (
-                            <tr
-                              key={ticket.id}
-                              onClick={() => setSelectedTicketId(ticket.id)}
-                              className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
-                            >
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
-                                  ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
-                                  ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {ticket.status}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.lastUpdated ? (ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate().toLocaleString() : new Date(ticket.lastUpdated).toLocaleString()) : ''}</td>
-                            </tr>
-                          ))}
+                          {filteredTableTickets
+                            .filter(ticket => String(ticket.status).trim().toLowerCase() !== 'closed')
+                            .sort((a, b) => {
+                              const dateA = a.created?.toDate ? a.created.toDate() : new Date(a.created);
+                              const dateB = b.created?.toDate ? b.created.toDate() : new Date(b.created);
+                              return dateB - dateA;
+                            })
+                            .map((ticket, idx) => (
+                              <tr
+                                key={ticket.id || idx}
+                                className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
+                              >
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                    ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                                    ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                                    ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {ticket.status}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.lastUpdated ? (ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate().toLocaleString() : new Date(ticket.lastUpdated).toLocaleString()) : ''}</td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
-                  )}
+                  </div>
                 </div>
-
-                <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                      <TrendingUp className="w-5 h-5 mr-2 text-orange-600" />
-                      Ticket Status Trends
-                    </h3>
-                    <div className="h-64 bg-gray-50 rounded-lg p-4">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart
-                          data={[
-                            { name: 'Open', value: tickets.filter(t => t.status === 'Open').length },
-                            { name: 'In Progress', value: tickets.filter(t => t.status === 'In Progress').length },
-                            { name: 'Resolved', value: tickets.filter(t => t.status === 'Resolved').length },
-                            { name: 'Closed', value: tickets.filter(t => t.status === 'Closed').length }
-                          ]}
-                          margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                          <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                          <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
-                          <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={3} dot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
-                        </LineChart>
-                      </ResponsiveContainer>
+                {/* Priority Distribution */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                    <BarChart3 className="w-5 h-5 mr-2 text-orange-600" />
+                    Priority Distribution
+                  </h3>
+                  <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
+                    <div className="flex-1 bg-pink-50 border border-pink-200 rounded-xl p-6 flex flex-col items-center">
+                      <Flag className="w-8 h-8 text-pink-600 mb-2" />
+                      <span className="text-2xl font-bold text-pink-700">{criticalCount}</span>
+                      <span className="text-sm font-medium text-pink-700 mt-1">Critical Priority</span>
+                    </div>
+                    <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center">
+                      <Flag className="w-8 h-8 text-red-500 mb-2" />
+                      <span className="text-2xl font-bold text-red-600">{highCount}</span>
+                      <span className="text-sm font-medium text-red-700 mt-1">High Priority</span>
+                    </div>
+                    <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex flex-col items-center">
+                      <Flag className="w-8 h-8 text-yellow-500 mb-2" />
+                      <span className="text-2xl font-bold text-yellow-600">{mediumCount}</span>
+                      <span className="text-sm font-medium text-yellow-700 mt-1">Medium Priority</span>
+                    </div>
+                    <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col items-center">
+                      <Flag className="w-8 h-8 text-green-500 mb-2" />
+                      <span className="text-2xl font-bold text-green-600">{lowCount}</span>
+                      <span className="text-sm font-medium text-green-700 mt-1">Low Priority</span>
                     </div>
                   </div>
-
-                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                      <BarChart3 className="w-5 h-5 mr-2 text-orange-600" />
-                      Ticket Priority Distribution
-                    </h3>
-                    <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
-                      <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center">
-                        <Flag className="w-8 h-8 text-red-500 mb-2" />
-                        <span className="text-2xl font-bold text-red-600">{highCount}</span>
-                        <span className="text-sm font-medium text-red-700 mt-1">High Priority</span>
-                      </div>
-                      <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex flex-col items-center">
-                        <Flag className="w-8 h-8 text-yellow-500 mb-2" />
-                        <span className="text-2xl font-bold text-yellow-600">{mediumCount}</span>
-                        <span className="text-sm font-medium text-yellow-700 mt-1">Medium Priority</span>
-                      </div>
-                      <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col items-center">
-                        <Flag className="w-8 h-8 text-green-500 mb-2" />
-                        <span className="text-2xl font-bold text-green-600">{lowCount}</span>
-                        <span className="text-sm font-medium text-green-700 mt-1">Low Priority</span>
-                      </div>
-                    </div>
+                </div>
+                {/* Trends Section */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                    <TrendingUp className="w-5 h-5 mr-2 text-orange-600" />
+                    Trends
+                  </h3>
+                  {/* Trends Month Filter */}
+                  <div className="mb-4 flex gap-4 items-center">
+                    <span className="font-semibold text-gray-700">Month:</span>
+                    <input type="month" value={trendsSelectedMonth} onChange={e => setTrendsSelectedMonth(e.target.value)} className="border rounded px-2 py-1 text-sm" />
+                  </div>
+                  {/* Trends Line Chart */}
+                  <div className="h-64 bg-gray-50 rounded-lg p-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={trendsChartData}
+                        margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="period" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
+                        <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
+                        <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
+                        <Legend />
+                        <Line type="monotone" dataKey="open" name="Open" stroke="#F2994A" strokeWidth={3} dot={{ r: 6, fill: '#F2994A', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                        <Line type="monotone" dataKey="closed" name="Closed" stroke="#34495E" strokeWidth={3} dot={{ r: 6, fill: '#34495E', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                        <Line type="monotone" dataKey="resolved" name="Resolved" stroke="#27AE60" strokeWidth={3} dot={{ r: 6, fill: '#27AE60', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
 
