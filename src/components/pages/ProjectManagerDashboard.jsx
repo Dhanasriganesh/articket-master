@@ -272,7 +272,7 @@ export async function exportKpiToExcelWithChartImage(kpiData, chartId, projectNa
   const worksheet = workbook.addWorksheet('KPI Report');
 
   // 2. Add table data
-  worksheet.addRow(['Ticket #','Subject','Assignee','Response Time (min)','Resolution Time (min)','Status']);
+  worksheet.addRow(['Ticket #','Subject','Assignee','Response Time (min)', 'Resolution Time (min)', 'Status']);
   kpiData.details.forEach(row => {
     worksheet.addRow([
       row.ticketNumber,
@@ -437,6 +437,29 @@ const ProjectManagerDashboard = () => {
     return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   });
 
+  // --- KPI Filter State ---
+  const [kpiSelectedYear, setKpiSelectedYear] = useState(() => {
+    const now = new Date();
+    return now.getFullYear();
+  });
+  const [kpiSelectedMonth, setKpiSelectedMonth] = useState(''); // '' means not set
+  // --- KPI Filter Handlers ---
+  const handleKpiPeriodChange = (val) => {
+    setKpiPeriod(val);
+    setKpiSelectedMonth('');
+    setKpiSelectedYear(new Date().getFullYear());
+  };
+  const handleKpiMonthChange = (val) => {
+    setKpiSelectedMonth(val);
+    setKpiPeriod('');
+    setKpiSelectedYear(Number(val.split('-')[0]));
+  };
+  const handleKpiYearChange = (val) => {
+    setKpiSelectedYear(Number(val));
+    setKpiSelectedMonth('');
+    setKpiPeriod('');
+  };
+
   // Filter bar handlers
   const handleFilterApply = () => {
     setAppliedFromDate(fromDate);
@@ -451,12 +474,6 @@ const ProjectManagerDashboard = () => {
     setAppliedToDate('');
     setAppliedPeriod('custom');
   };
-
-  // Add state for selected KPI month
-  const [kpiSelectedMonth, setKpiSelectedMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  });
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -817,6 +834,126 @@ const ProjectManagerDashboard = () => {
     };
   });
 
+  // --- KPI Filter Logic ---
+  const getKpiFilteredTickets = () => {
+    if (kpiPeriod) {
+      // Period filter takes precedence
+      const now = new Date();
+      let monthsToShow = 3;
+      if (kpiPeriod === 'last6months') monthsToShow = 6;
+      if (kpiPeriod === 'lastyear') monthsToShow = 12;
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      let monthIndices = [];
+      for (let i = monthsToShow - 1; i >= 0; i--) {
+        let month = currentMonth - i;
+        let year = currentYear;
+        if (month < 0) {
+          month += 12;
+          year--;
+        }
+        monthIndices.push({ year, month });
+      }
+      return tickets.filter(t => {
+        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+        return created && monthIndices.some(mi => created.getFullYear() === mi.year && created.getMonth() === mi.month);
+      });
+    } else if (kpiSelectedMonth) {
+      // Filter by selected month
+      const [selYear, selMonth] = kpiSelectedMonth.split('-').map(Number);
+      return tickets.filter(t => {
+        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+        return created && created.getFullYear() === selYear && created.getMonth() + 1 === selMonth;
+      });
+    } else if (kpiSelectedYear) {
+      // Filter by selected year
+      return tickets.filter(t => {
+        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+        return created && created.getFullYear() === kpiSelectedYear;
+      });
+    }
+    return tickets;
+  };
+  const kpiFilteredTickets = getKpiFilteredTickets();
+
+  // --- KPI Bar Chart Data Logic ---
+  const getKpiChartData = () => {
+    if (kpiSelectedMonth) {
+      // Group by week for the selected month
+      const [selYear, selMonth] = kpiSelectedMonth.split('-').map(Number);
+      const weeks = [
+        { label: 'Week 1', start: 1, end: 7 },
+        { label: 'Week 2', start: 8, end: 14 },
+        { label: 'Week 3', start: 15, end: 21 },
+        { label: 'Week 4', start: 22, end: 31 }
+      ];
+      return weeks.map(({ label, start, end }) => {
+        const weekTickets = kpiFilteredTickets.filter(t => {
+          const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+          return created && created.getFullYear() === selYear && (created.getMonth() + 1) === selMonth && created.getDate() >= start && created.getDate() <= end;
+        });
+        const open = weekTickets.length;
+        const closed = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
+        const breached = weekTickets.filter(t => {
+          const kpi = computeKPIsForTickets([t]);
+          return kpi.breachedCount;
+        }).length;
+        let responseSum = 0, responseCount = 0, resolutionSum = 0, resolutionCount = 0;
+        weekTickets.forEach(t => {
+          const kpi = computeKPIsForTickets([t]);
+          if (kpi.avgResponse) { responseSum += kpi.avgResponse; responseCount++; }
+          if (kpi.avgResolution) { resolutionSum += kpi.avgResolution; resolutionCount++; }
+        });
+        const response = responseCount ? Number((responseSum/responseCount/1000/60).toFixed(2)) : 0;
+        const resolution = resolutionCount ? Number((resolutionSum/resolutionCount/1000/60).toFixed(2)) : 0;
+        return { period: label, open, closed, breached, response, resolution };
+      });
+    } else {
+      // Group by month for period/year
+      let months = [];
+      if (kpiPeriod) {
+        const now = new Date();
+        let monthsToShow = 3;
+        if (kpiPeriod === 'last6months') monthsToShow = 6;
+        if (kpiPeriod === 'lastyear') monthsToShow = 12;
+        for (let i = monthsToShow - 1; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleString('default', { month: 'short', year: 'numeric' }) });
+        }
+      } else {
+        // Show all months in selected year
+        let yearNum = Number(kpiSelectedYear);
+        if (!yearNum || isNaN(yearNum)) yearNum = new Date().getFullYear();
+        for (let i = 0; i < 12; i++) {
+          const d = new Date(yearNum, i, 1);
+          months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleString('default', { month: 'short', year: 'numeric' }) });
+        }
+      }
+      return months.map(({ year, month, label }) => {
+        const monthTickets = kpiFilteredTickets.filter(t => {
+          const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
+          return created && created.getFullYear() === year && created.getMonth() === month;
+        });
+        const open = monthTickets.length;
+        const closed = monthTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
+        const breached = monthTickets.filter(t => {
+          const kpi = computeKPIsForTickets([t]);
+          return kpi.breachedCount;
+        }).length;
+        let responseSum = 0, responseCount = 0, resolutionSum = 0, resolutionCount = 0;
+        monthTickets.forEach(t => {
+          const kpi = computeKPIsForTickets([t]);
+          if (kpi.avgResponse) { responseSum += kpi.avgResponse; responseCount++; }
+          if (kpi.avgResolution) { resolutionSum += kpi.avgResolution; resolutionCount++; }
+        });
+        const response = responseCount ? Number((responseSum/responseCount/1000/60).toFixed(2)) : 0;
+        const resolution = resolutionCount ? Number((resolutionSum/resolutionCount/1000/60).toFixed(2)) : 0;
+        return { period: label, open, closed, breached, response, resolution };
+      });
+    }
+  };
+  const kpiChartData = getKpiChartData();
+
   if (!authChecked || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -1094,57 +1231,62 @@ const ProjectManagerDashboard = () => {
                     <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold" onClick={handleFilterApply}>Apply</button>
                     <button className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded font-semibold" onClick={handleFilterReset}>Reset</button>
                   </div>
-                  <div className="overflow-x-auto">
-                    <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {filteredTableTickets
-                            .filter(ticket => String(ticket.status).trim().toLowerCase() !== 'closed')
-                            .sort((a, b) => {
-                              const dateA = a.created?.toDate ? a.created.toDate() : new Date(a.created);
-                              const dateB = b.created?.toDate ? b.created.toDate() : new Date(b.created);
-                              return dateB - dateA;
-                            })
-                            .map((ticket, idx) => (
-                              <tr
-                                key={ticket.id || idx}
-                                className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
-                              >
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                    ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
-                                    ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
-                                    ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
-                                    'bg-gray-100 text-gray-800'
-                                  }`}>
-                                    {ticket.status}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.lastUpdated ? (ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate().toLocaleString() : new Date(ticket.lastUpdated).toLocaleString()) : ''}</td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
+                  {selectedTicketId ? (
+                    <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {filteredTableTickets
+                              .filter(ticket => String(ticket.status).trim().toLowerCase() !== 'closed')
+                              .sort((a, b) => {
+                                const dateA = a.created?.toDate ? a.created.toDate() : new Date(a.created);
+                                const dateB = b.created?.toDate ? b.created.toDate() : new Date(b.created);
+                                return dateB - dateA;
+                              })
+                              .map((ticket, idx) => (
+                                <tr
+                                  key={ticket.id || idx}
+                                  className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
+                                  onClick={() => setSelectedTicketId(ticket.id)}
+                                >
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                      ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                                      ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                                      ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {ticket.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.lastUpdated ? (ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate().toLocaleString() : new Date(ticket.lastUpdated).toLocaleString()) : ''}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
                 {/* Priority Distribution */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
@@ -1276,279 +1418,109 @@ const ProjectManagerDashboard = () => {
                     </tbody>
                   </table>
                 </div>
-                {/* KPI Filters */}
-                <div className="flex flex-wrap gap-4 mb-6 items-end">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
-                    <input type="date" className="border rounded px-2 py-1 text-sm" value={kpiFromDate} onChange={e => setKpiFromDate(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">To Date</label>
-                    <input type="date" className="border rounded px-2 py-1 text-sm" value={kpiToDate} onChange={e => setKpiToDate(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Period</label>
-                    <select className="border rounded px-2 py-1 text-sm" value={kpiPeriod} onChange={e => setKpiPeriod(e.target.value)}>
-                      <option value="custom">Custom</option>
-                      <option value="week">This Week</option>
-                      <option value="last2weeks">Last 2 Weeks</option>
-                      <option value="last3weeks">Last 3 Weeks</option>
-                      <option value="month">This Month</option>
-                      <option value="last2months">Last 2 Months</option>
-                      <option value="last3months">Last 3 Months</option>
-                    </select>
-                  </div>
-                  <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold" onClick={handleKpiFilterApply}>Apply</button>
-                  <button className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded font-semibold" onClick={handleKpiFilterReset}>Reset</button>
-                </div>
-                {tickets.length === 0 ? (
+                {/* KPI Filters: From Date, To Date, Period, Apply, Reset */}
+                        <div className="mb-4 flex gap-4 items-center">
+                          <span className="font-semibold text-gray-700">Year:</span>
+                          <select
+                            value={kpiSelectedYear}
+                    onChange={e => handleKpiYearChange(e.target.value)}
+                            className="border rounded px-2 py-1 text-sm"
+                          >
+                    {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                              <option key={y} value={y}>{y}</option>
+                            ))}
+                          </select>
+                          <span className="font-semibold text-gray-700">Month:</span>
+                  <input
+                    type="month"
+                    value={kpiSelectedMonth}
+                    onChange={e => handleKpiMonthChange(e.target.value)}
+                    className="border rounded px-2 py-1 text-sm"
+                    max={`${kpiSelectedYear}-${String(new Date().getMonth()+1).padStart(2,'0')}`}
+                  />
+                  <span className="font-semibold text-gray-700">Period:</span>
+                  <select
+                    className="border rounded px-2 py-1 text-sm"
+                    value={kpiPeriod}
+                    onChange={e => handleKpiPeriodChange(e.target.value)}
+                  >
+                    <option value="">-- Select --</option>
+                    <option value="last3months">Last 3 Months</option>
+                    <option value="last6months">Last 6 Months</option>
+                    <option value="lastyear">Last Year</option>
+                  </select>
+                        </div>
+                {/* KPI Chart and Table */}
+                {kpiFilteredTickets.length === 0 ? (
                   <div className="text-gray-500">No tickets found for KPI analysis.</div>
                 ) : (
-                  (() => {
-                    // Filter tickets by applied date range/period for KPI
-                    let filteredTickets = tickets;
-                    if (appliedKpiPeriod === 'week') {
-                      const now = new Date();
-                      const startOfWeek = new Date(now);
-                      startOfWeek.setDate(now.getDate() - now.getDay());
-                      startOfWeek.setHours(0,0,0,0);
-                      filteredTickets = tickets.filter(t => {
-                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                        return created && created >= startOfWeek && created <= now;
-                      });
-                    } else if (appliedKpiPeriod === 'last2weeks') {
-                      const now = new Date();
-                      const startOf2Weeks = new Date(now);
-                      startOf2Weeks.setDate(now.getDate() - now.getDay() - 7);
-                      startOf2Weeks.setHours(0,0,0,0);
-                      filteredTickets = tickets.filter(t => {
-                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                        return created && created >= startOf2Weeks && created <= now;
-                      });
-                    } else if (appliedKpiPeriod === 'last3weeks') {
-                      const now = new Date();
-                      const startOf3Weeks = new Date(now);
-                      startOf3Weeks.setDate(now.getDate() - now.getDay() - 14);
-                      startOf3Weeks.setHours(0,0,0,0);
-                      filteredTickets = tickets.filter(t => {
-                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                        return created && created >= startOf3Weeks && created <= now;
-                      });
-                    } else if (appliedKpiPeriod === 'month') {
-                      const now = new Date();
-                      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-                      filteredTickets = tickets.filter(t => {
-                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                        return created && created >= startOfMonth && created <= now;
-                      });
-                    } else if (appliedKpiPeriod === 'last2months') {
-                      const now = new Date();
-                      const startOf2Months = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-                      filteredTickets = tickets.filter(t => {
-                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                        return created && created >= startOf2Months && created <= now;
-                      });
-                    } else if (appliedKpiPeriod === 'last3months') {
-                      const now = new Date();
-                      const startOf3Months = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-                      filteredTickets = tickets.filter(t => {
-                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                        return created && created >= startOf3Months && created <= now;
-                      });
-                    } else if (appliedKpiFromDate && appliedKpiToDate) {
-                      const from = new Date(appliedKpiFromDate);
-                      const to = new Date(appliedKpiToDate);
-                      to.setHours(23,59,59,999);
-                      filteredTickets = tickets.filter(t => {
-                        const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                        return created && created >= from && created <= to;
-                      });
-                    }
-                    const kpi = computeKPIsForTickets(filteredTickets);
-                    // 1. Determine week or month grouping
-                    let groupBy = 'week';
-                    if (appliedKpiPeriod.startsWith('month')) groupBy = 'month';
-                    // 2. Get last 4 weeks or months
-                    const now = new Date();
-                    let periods = [];
-                    if (groupBy === 'week') {
-                      let temp = [];
-                      for (let i = 3; i >= 0; i--) {
-                        const d = new Date(now);
-                        d.setDate(d.getDate() - d.getDay() - (i * 7));
-                        const { week, year } = getWeekYear(d);
-                        temp.push({ label: `Week ${week} (${year})`, week, year });
-                      }
-                      periods = temp;
-                    } else {
-                      let temp = [];
-                      for (let i = 3; i >= 0; i--) {
-                        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                        temp.push({ label: d.toLocaleString('default', { month: 'long', year: 'numeric' }), month: d.getMonth(), year: d.getFullYear() });
-                      }
-                      periods = temp;
-                    }
-                    // 3. Group tickets by period
-                    let groupMap = {};
-                    periods.forEach(p => groupMap[p.label] = []);
-                    filteredTickets.forEach(ticket => {
-                      const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
-                      if (!created) return;
-                      if (groupBy === 'week') {
-                        const { week, year } = getWeekYear(created);
-                        const label = `Week ${week} (${year})`;
-                        if (groupMap[label]) groupMap[label].push(ticket);
-                      } else {
-                        const label = created.toLocaleString('default', { month: 'long', year: 'numeric' });
-                        if (groupMap[label]) groupMap[label].push(ticket);
-                      }
-                    });
-                    // 4. Aggregate KPIs for each group, always outputting all bars (zero if no data)
-                    const chartData = periods.map(p => {
-                      const groupTickets = groupMap[p.label] || [];
-                      if (groupTickets.length === 0) {
-                        return {
-                          period: p.label,
-                          open: 0,
-                          closed: 0,
-                          response: 0,
-                          resolution: 0,
-                          breached: 0
-                        };
-                      }
-                      const kpi = computeKPIsForTickets(groupTickets);
-                      return {
-                        period: p.label,
-                        open: kpi.openCount,
-                        closed: kpi.closedCount,
-                        response: kpi.avgResponse ? Number((kpi.avgResponse/1000/60).toFixed(2)) : 0,
-                        resolution: kpi.avgResolution ? Number((kpi.avgResolution/1000/60).toFixed(2)) : 0,
-                        breached: kpi.breachedCount
-                      };
-                    });
-                    // Place this before the return statement, after filteredTickets and kpi are defined:
-                    const [selYear, selMonth] = kpiSelectedMonth.split('-').map(Number);
-                    const monthTickets = filteredTickets.filter(t => {
-                      const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                      return created && created.getFullYear() === selYear && created.getMonth() + 1 === selMonth;
-                    });
-                    const monthKpiDetails = computeKPIsForTickets(monthTickets).details;
-                    return (
-                      <>
-                        <div className="mb-4">
-                          <div><b>Total Tickets Assigned:</b> {kpi.count}</div>
-                          <div><b>Avg. Response Time:</b> {kpi.avgResponse ? (kpi.avgResponse/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
-                          <div><b>Avg. Resolution Time:</b> {kpi.avgResolution ? (kpi.avgResolution/1000/60).toFixed(2) + ' min' : 'N/A'}</div>
-                        </div>
-                        {/* KPI Bar Chart */}
-                        <div className="mb-4 flex gap-4 items-center">
-                          <span className="font-semibold text-gray-700">Month:</span>
-                          <input type="month" value={kpiSelectedMonth} onChange={e => setKpiSelectedMonth(e.target.value)} className="border rounded px-2 py-1 text-sm" />
-                        </div>
-                        {(() => {
-                          // Parse selected month
-                          const [selYear, selMonth] = kpiSelectedMonth.split('-').map(Number);
-                          // 1. Filter tickets for selected month
-                          const monthTickets = filteredTickets.filter(t => {
-                            const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-                            return created && created.getFullYear() === selYear && created.getMonth() + 1 === selMonth;
-                          });
-                          // 2. Group by week-of-month
-                          const weekLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-                          let weekMap = { 'Week 1': [], 'Week 2': [], 'Week 3': [], 'Week 4': [] };
-                          monthTickets.forEach(ticket => {
-                            const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
-                            if (!created) return;
-                            const day = created.getDate();
-                            let week = '';
-                            if (day <= 7) week = 'Week 1';
-                            else if (day <= 14) week = 'Week 2';
-                            else if (day <= 21) week = 'Week 3';
-                            else week = 'Week 4';
-                            weekMap[week].push(ticket);
-                          });
-                          // 3. Aggregate KPIs for each week
-                          const chartData = weekLabels.map(label => {
-                            const groupTickets = weekMap[label];
-                            if (!groupTickets || groupTickets.length === 0) {
-                              return { period: label, open: 0, closed: 0, response: 0, resolution: 0, breached: 0 };
-                            }
-                            const kpi = computeKPIsForTickets(groupTickets);
-                            return {
-                              period: label,
-                              open: kpi.openCount,
-                              closed: kpi.closedCount,
-                              response: kpi.avgResponse ? Number((kpi.avgResponse/1000/60).toFixed(2)) : 0,
-                              resolution: kpi.avgResolution ? Number((kpi.avgResolution/1000/60).toFixed(2)) : 0,
-                              breached: kpi.breachedCount
-                            };
-                          });
-                          // 4. Render grouped bar chart
-                          return (
-                            <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart">
-                              <h3 className="text-lg font-semibold mb-2">KPI Bar Chart ({kpiSelectedMonth})</h3>
-                              <ResponsiveContainer width="100%" height={250}>
-                                <BarChart data={chartData}>
-                                  <CartesianGrid strokeDasharray="3 3" />
-                                  <XAxis dataKey="period" />
-                                  <YAxis />
-                                  <Tooltip />
-                                  <Legend />
-                                  <Bar dataKey="open" name="open" fill="#F2994A" label={props => <VerticalBarLabel {...props} name="open" />} />
-                                  <Bar dataKey="closed" name="close" fill="#34495E" label={props => <VerticalBarLabel {...props} name="close" />} />
-                                  <Bar dataKey="response" name="response time" fill="#56CCF2" label={props => <VerticalBarLabel {...props} name="response time" />} />
-                                  <Bar dataKey="resolution" name="resolution time" fill="#BB6BD9" label={props => <VerticalBarLabel {...props} name="resolution time" />} />
-                                  <Bar dataKey="breached" name="breached" fill="#EB5757" label={props => <VerticalBarLabel {...props} name="breached" />} />
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
-                          );
-                        })()}
-                        <div className="flex gap-4 mb-4">
-                          <button
-                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
-                            onClick={() => exportKpiToExcelWithChartImage(kpi, 'kpi-bar-chart', projects.find(p => p.id === selectedProjectId)?.name || '')}
-                          >
-                            Export to Excel
-                          </button>
-                        </div>
-                        <div className="overflow-x-auto">
-                          {monthTickets.length === 0 ? (
-                            <div className="text-gray-500">No tickets found for the selected month.</div>
-                          ) : (
-                            <table className="min-w-full text-xs text-left text-gray-700 border">
-                              <thead>
-                                <tr>
-                                  <th className="py-1 px-2">Ticket #</th>
-                                  <th className="py-1 px-2">Subject</th>
-                                  <th className="py-1 px-2">Assignee</th>
-                                  <th className="py-1 px-2">Priority</th>
-                                  <th className="py-1 px-2">Response Time</th>
-                                  <th className="py-1 px-2">Resolution Time</th>
-                                  <th className="py-1 px-2">Breached</th>
-                                  <th className="py-1 px-2">Status</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {monthKpiDetails.map((row, idx) => (
-                                  <tr key={idx} className="border-t">
-                                    <td className="py-1 px-2">{row.ticketNumber}</td>
-                                    <td className="py-1 px-2">{row.subject}</td>
-                                    <td className="py-1 px-2">{row.assignee || '-'}</td>
-                                    <td className="py-1 px-2">{row.priority}</td>
-                                    <td className="py-1 px-2">{row.responseTime ? (row.responseTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                                    <td className="py-1 px-2">{row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) + ' min' : 'N/A'}</td>
-                                    <td className="py-1 px-2">{row.breached ? <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Breached</span> : <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">OK</span>}</td>
-                                    <td className="py-1 px-2">{row.status}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-                        </div>
-                      </>
-                    );
-                  })()
+                  <>
+                    {/* KPI Bar Chart (Created/Closed/Breached) - already present */}
+                              <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart">
+                      <h3 className="text-lg font-semibold mb-2">KPI Bar Chart (Created Tickets/Closed/Breached)</h3>
+                                <ResponsiveContainer width="100%" height={250}>
+                        <BarChart data={kpiChartData}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="period" />
+                          <YAxis allowDecimals={false} />
+                                    <Tooltip />
+                                    <Legend />
+                          <Bar dataKey="open" name="Created Tickets" fill="#F2994A" />
+                          <Bar dataKey="closed" name="Closed" fill="#34495E" />
+                          <Bar dataKey="breached" name="Breached" fill="#EB5757" />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
+                    {/* KPI Bar Chart (Response/Resolution Time) */}
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={kpiChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="period" />
+                        <YAxis label={{ value: 'Minutes', angle: -90, position: 'insideLeft' }} />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="response" name="Avg Response Time" fill="#56CCF2" />
+                        <Bar dataKey="resolution" name="Avg Resolution Time" fill="#BB6BD9" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    {/* KPI Table */}
+                              <div className="overflow-x-auto">
+                                  <table className="min-w-full text-xs text-left text-gray-700 border">
+                                    <thead>
+                                      <tr>
+                                        <th className="py-1 px-2">Ticket #</th>
+                                        <th className="py-1 px-2">Subject</th>
+                                        <th className="py-1 px-2">Assignee</th>
+                                        <th className="py-1 px-2">Priority</th>
+                                        <th className="py-1 px-2">Status</th>
+                                        <th className="py-1 px-2">Created</th>
+                                        <th className="py-1 px-2">Response Time (min)</th>
+                                        <th className="py-1 px-2">Resolution Time (min)</th>
+                                        <th className="py-1 px-2">Breached</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                          {kpiFilteredTickets.map((ticket, idx) => {
+                            const kpi = computeKPIsForTickets([ticket]);
+                            const detail = kpi.details[0] || {};
+                            return (
+                              <tr key={ticket.id || idx} className="border-t">
+                                <td className="py-1 px-2">{ticket.ticketNumber}</td>
+                                <td className="py-1 px-2">{ticket.subject}</td>
+                                <td className="py-1 px-2">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
+                                <td className="py-1 px-2">{ticket.priority}</td>
+                                <td className="py-1 px-2">{ticket.status}</td>
+                                <td className="py-1 px-2">{ticket.created ? (ticket.created.toDate ? ticket.created.toDate().toLocaleString() : new Date(ticket.created).toLocaleString()) : ''}</td>
+                                <td className="py-1 px-2">{detail.responseTime ? (detail.responseTime/1000/60).toFixed(2) : '-'}</td>
+                                <td className="py-1 px-2">{detail.resolutionTime ? (detail.resolutionTime/1000/60).toFixed(2) : '-'}</td>
+                                <td className="py-1 px-2">{detail.breached ? <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Yes</span> : <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">No</span>}</td>
+                                        </tr>
+                            );
+                          })}
+                                    </tbody>
+                                  </table>
+                              </div>
+                            </>
                 )}
               </div>
             )}

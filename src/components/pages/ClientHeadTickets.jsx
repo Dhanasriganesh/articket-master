@@ -130,8 +130,9 @@ const ClientHeadTickets = ({ setActiveTab }) => {
           const filterData = sessionStorage.getItem('ticketFilter');
           if (filterData) {
             const parsedFilter = JSON.parse(filterData);
-            setFilterStatus(parsedFilter.status);
-            setFilterPriority(parsedFilter.priority);
+            // Ensure status and priority are always arrays
+            setFilterStatus(Array.isArray(parsedFilter.status) ? parsedFilter.status : [parsedFilter.status]);
+            setFilterPriority(Array.isArray(parsedFilter.priority) ? parsedFilter.priority : [parsedFilter.priority]);
             sessionStorage.removeItem('ticketFilter');
           }
         } catch (err) {
@@ -450,7 +451,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
             <BsTicketFill className="mr-3 text-blue-600" />Tickets
           </h1>
           {/* Ticket Stats Cards */}
-          <div className="flex gap-2">
+          {/* <div className="flex gap-2">
             <div className="bg-white rounded-lg shadow border border-gray-100 px-3 py-2 flex flex-col items-center min-w-[70px]">
               <span className="text-xs text-gray-500">Total</span>
               <span className="text-lg font-bold text-gray-900">{totalTickets}</span>
@@ -471,20 +472,20 @@ const ClientHeadTickets = ({ setActiveTab }) => {
               <span className="text-xs text-gray-600">Closed</span>
               <span className="text-lg font-bold text-gray-700">{closedTickets}</span>
             </div>
-          </div>
+          </div> */}
         </div>
         
       </div>
 
       <div className="flex justify-between items-center mb-8">
         <div>
-          <button
+          {/* <button
             onClick={() => navigate('/client-head-dashboard?tab=create')}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center"
           >
             <BsFolderFill className="mr-2" />
             Create New Ticket
-          </button>
+          </button> */}
         </div>
       </div>
 
