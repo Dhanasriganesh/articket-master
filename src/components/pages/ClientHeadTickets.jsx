@@ -261,6 +261,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
       await updateDoc(ticketRef, {
         assignedTo: newAssignee,
         assignedBy: assignerUsername,
+        status: 'In Progress',
         lastUpdated: serverTimestamp()
       });
       // Log the assignment as a comment for history, but do NOT send a comment email

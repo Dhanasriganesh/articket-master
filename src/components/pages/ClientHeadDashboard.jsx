@@ -116,11 +116,6 @@ const ClientHeadDashboard = () => {
   const [error, setError] = useState(null);
   const [selectedTicketId, setSelectedTicketId] = useState(null);
 
-  // Animated counts for priorities
-  const highCount = useCountUp(tickets.filter(t => t.priority === 'High').length);
-  const mediumCount = useCountUp(tickets.filter(t => t.priority === 'Medium').length);
-  const lowCount = useCountUp(tickets.filter(t => t.priority === 'Low').length);
-
   // KPI filter state
   const [kpiFromDate, setKpiFromDate] = useState('');
   const [kpiToDate, setKpiToDate] = useState('');
@@ -148,6 +143,9 @@ const ClientHeadDashboard = () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   });
+
+  // Add state for year filter
+  const [statsYearFilter, setStatsYearFilter] = useState('current');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -412,6 +410,30 @@ const ClientHeadDashboard = () => {
     XLSX.writeFile(wb, 'tickets_export.xlsx');
   }
 
+  // Helper to get year from ticket
+  function getTicketYear(ticket) {
+    const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+    return created ? created.getFullYear() : null;
+  }
+
+  // Compute year for filtering
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const lastYear = currentYear - 1;
+  let yearToFilter = currentYear;
+  if (statsYearFilter === 'last') yearToFilter = lastYear;
+
+  // Filter tickets by year
+  const ticketsForStats = tickets.filter(t => getTicketYear(t) === yearToFilter);
+  const unclosedTicketsCount = ticketsForStats.filter(t => String(t.status).trim().toLowerCase() !== 'closed').length;
+  const closedTicketsCount = ticketsForStats.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
+
+  // Compute counts for each priority for the selected year
+  const criticalCount = ticketsForStats.filter(t => String(t.priority).trim().toLowerCase() === 'critical').length;
+  const highCount = ticketsForStats.filter(t => String(t.priority).trim().toLowerCase() === 'high').length;
+  const mediumCount = ticketsForStats.filter(t => String(t.priority).trim().toLowerCase() === 'medium').length;
+  const lowCount = ticketsForStats.filter(t => String(t.priority).trim().toLowerCase() === 'low').length;
+
   if (!authChecked || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -435,8 +457,8 @@ const ClientHeadDashboard = () => {
     (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
     (t.email && clientAndEmployeeEmails.includes(t.email))
   );
-  // Only show unresolved tickets (case-insensitive, trim whitespace)
-  myTickets = myTickets.filter(t => String(t.status).trim().toLowerCase() !== 'resolved');
+  // Only exclude closed tickets (case-insensitive, trim whitespace)
+  myTickets = myTickets.filter(t => String(t.status).trim().toLowerCase() !== 'closed');
 
   // Filter myTickets based on appliedFromDate, appliedToDate, appliedPeriod
   let filteredMyTickets = myTickets;
@@ -601,11 +623,24 @@ const ClientHeadDashboard = () => {
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
                 {/* Stats Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                {/* Year Filter Dropdown */}
+                <div className="col-span-1 flex items-center mb-2">
+                    <label className="mr-2 font-semibold text-gray-700">Year:</label>
+                    <select
+                      className="border rounded px-2 py-1 text-sm"
+                      value={statsYearFilter}
+                      onChange={e => setStatsYearFilter(e.target.value)}
+                    >
+                      <option value="current">Current Year ({currentYear})</option>
+                      <option value="last">Last Year ({lastYear})</option>
+                    </select>
+                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+                  
+                  {/* Unclosed Tickets Stat Card */}
                   <button 
                     onClick={() => {
                       setActiveTab('tickets');
-                      // Pass filter data to ClientHeadTickets component
                       sessionStorage.setItem('ticketFilter', JSON.stringify({
                         status: 'All',
                         priority: 'All',
@@ -616,42 +651,54 @@ const ClientHeadDashboard = () => {
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-gray-600 mb-1">Total Tickets</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.length}</p>
-                        <p className="text-xs text-gray-500 mt-1">All project tickets</p>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Unclosed Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{unclosedTicketsCount}</p>
+                        <p className="text-xs text-gray-500 mt-1">All unclosed project tickets</p>
                       </div>
                       <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
                         <FileText className="w-6 h-6 text-blue-600" />
                       </div>
                     </div>
                   </button>
+                  {/* Closed Tickets Stat Card */}
                   <button 
                     onClick={() => {
                       setActiveTab('tickets');
+                      sessionStorage.setItem('ticketFilter', JSON.stringify({
+                        status: 'Closed',
+                        priority: 'All',
+                        raisedBy: 'all'
+                      }));
                     }}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-gray-600 mb-1">Tickets</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.email === user?.email).length}</p>
-                        <p className="text-xs text-gray-500 mt-1">My tickets</p>
+                        <p className="text-sm font-medium text-gray-600 mb-1">Closed Tickets</p>
+                        <p className="text-3xl font-bold text-gray-900">{closedTicketsCount}</p>
+                        <p className="text-xs text-gray-500 mt-1">All closed project tickets</p>
                       </div>
-                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                        <User className="w-6 h-6 text-blue-600" />
+                      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center group-hover:bg-gray-200 transition-colors">
+                        <XCircle className="w-6 h-6 text-gray-600" />
                       </div>
                     </div>
                   </button>
+                  {/* Open Tickets Stat Card */}
                   <button 
                     onClick={() => {
                       setActiveTab('tickets');
+                      sessionStorage.setItem('ticketFilter', JSON.stringify({
+                        status: 'Open',
+                        priority: 'All',
+                        raisedBy: 'all'
+                      }));
                     }}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
                   >
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-600 mb-1">Open Tickets</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Open').length}</p>
+                        <p className="text-3xl font-bold text-gray-900">{ticketsForStats.filter(t => String(t.status).trim().toLowerCase() === 'open').length}</p>
                         <p className="text-xs text-gray-500 mt-1">Needs attention</p>
                       </div>
                       <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
@@ -659,16 +706,22 @@ const ClientHeadDashboard = () => {
                       </div>
                     </div>
                   </button>
+                  {/* In Progress Tickets Stat Card */}
                   <button 
                     onClick={() => {
                       setActiveTab('tickets');
+                      sessionStorage.setItem('ticketFilter', JSON.stringify({
+                        status: 'In Progress',
+                        priority: 'All',
+                        raisedBy: 'all'
+                      }));
                     }}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
                   >
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-600 mb-1">In Progress</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'In Progress').length}</p>
+                        <p className="text-3xl font-bold text-gray-900">{ticketsForStats.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length}</p>
                         <p className="text-xs text-gray-500 mt-1">Being worked on</p>
                       </div>
                       <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
@@ -676,16 +729,22 @@ const ClientHeadDashboard = () => {
                       </div>
                     </div>
                   </button>
+                  {/* Resolved Tickets Stat Card */}
                   <button 
                     onClick={() => {
                       setActiveTab('tickets');
+                      sessionStorage.setItem('ticketFilter', JSON.stringify({
+                        status: 'Resolved',
+                        priority: 'All',
+                        raisedBy: 'all'
+                      }));
                     }}
                     className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-300 text-left group"
                   >
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-600 mb-1">Resolved</p>
-                        <p className="text-3xl font-bold text-gray-900">{tickets.filter(t => t.status === 'Resolved').length}</p>
+                        <p className="text-3xl font-bold text-gray-900">{ticketsForStats.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length}</p>
                         <p className="text-xs text-gray-500 mt-1">Completed</p>
                       </div>
                       <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
@@ -697,7 +756,7 @@ const ClientHeadDashboard = () => {
 
                 {/* My Project Tickets Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">My Tickets</h2>
+                  
                   <div className="flex flex-wrap gap-4 mb-4 items-end">
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
@@ -726,47 +785,76 @@ const ClientHeadDashboard = () => {
                     <div className="text-gray-500">You have no tickets assigned to you or raised by you in this project.</div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {computeKPIsForTickets(myTickets).details.map((row, idx) => (
-                            <tr
-                              key={idx}
-                              onClick={() => setSelectedTicketId(row.ticketNumber)}
-                              className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
-                            >
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{row.ticketNumber}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.subject}</td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  row.status === 'Open' ? 'bg-blue-100 text-blue-800' :
-                                  row.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
-                                  row.status === 'Resolved' ? 'bg-green-100 text-green-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {row.status}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.priority}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.customer}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.assignedTo ? (row.assignedTo.name || row.assignedTo.email) : '-'}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.assignedBy || '-'}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.lastUpdated ? (row.lastUpdated.toDate ? row.lastUpdated.toDate().toLocaleString() : new Date(row.lastUpdated).toLocaleString()) : ''}</td>
+                      <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {filteredMyTickets
+                              .filter(ticket => String(ticket.status).trim().toLowerCase() !== 'closed')
+                              .filter(ticket => {
+                                const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
+                                return created && created.getFullYear() === yearToFilter;
+                              })
+                              .sort((a, b) => {
+                                const dateA = a.created?.toDate ? a.created.toDate() : new Date(a.created);
+                                const dateB = b.created?.toDate ? b.created.toDate() : new Date(b.created);
+                                return dateB - dateA;
+                              })
+                              .map((ticket, idx) => (
+                                <tr
+                                  key={ticket.id || idx}
+                                  onClick={() => setSelectedTicketId(ticket.id)}
+                                  className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
+                                >
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                      ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                                      ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                                      ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {ticket.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {ticket.customer || ticket.createdBy || ticket.email || ''}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {ticket.assignedTo
+                                      ? (typeof ticket.assignedTo === 'object'
+                                          ? (ticket.assignedTo.name || ticket.assignedTo.email)
+                                          : ticket.assignedTo)
+                                      : '-'}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {ticket.assignedBy || '-'}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {ticket.lastUpdated
+                                      ? (ticket.lastUpdated.toDate
+                                          ? ticket.lastUpdated.toDate().toLocaleString()
+                                          : new Date(ticket.lastUpdated).toLocaleString())
+                                      : ''}
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -811,6 +899,11 @@ const ClientHeadDashboard = () => {
                       Priority Distribution
                     </h3>
                     <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
+                      <div className="flex-1 bg-pink-50 border border-pink-200 rounded-xl p-6 flex flex-col items-center">
+                        <Flag className="w-8 h-8 text-pink-600 mb-2" />
+                        <span className="text-2xl font-bold text-pink-700">{criticalCount}</span>
+                        <span className="text-sm font-medium text-pink-700 mt-1">Critical Priority</span>
+                      </div>
                       <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center">
                         <Flag className="w-8 h-8 text-red-500 mb-2" />
                         <span className="text-2xl font-bold text-red-600">{highCount}</span>
@@ -830,43 +923,7 @@ const ClientHeadDashboard = () => {
                   </div>
                 </div>
 
-                {/* Quick Actions */}
-                <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
-                  <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
-                    <Zap className="w-6 h-6 mr-3 text-blue-600" />
-                    Quick Actions
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <button
-                      onClick={() => setActiveTab('create')}
-                      className="group bg-white p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 text-left"
-                    >
-                      <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                          <Plus className="w-6 h-6 text-blue-600" />
-                        </div>
-                        <div className="text-left">
-                          <p className="font-semibold text-gray-900 text-lg">Create New Ticket</p>
-                          <p className="text-gray-600 text-sm">Submit a new support request</p>
-                        </div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('tickets')}
-                      className="group bg-white p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300 text-left"
-                    >
-                      <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                          <MessageSquare className="w-6 h-6 text-blue-600" />
-                        </div>
-                        <div className="text-left">
-                          <p className="font-semibold text-gray-900 text-lg">View Tickets</p>
-                          <p className="text-gray-600 text-sm">Manage support tickets</p>
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
+                
               </div>
             )}
 
@@ -1089,7 +1146,4 @@ const ClientHeadDashboard = () => {
     </div>
   );
 };
-
 export default ClientHeadDashboard;
- 
- 

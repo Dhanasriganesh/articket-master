@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types';
 import { useState, useEffect, useRef } from 'react';
-import { doc, getDoc, updateDoc, arrayUnion, serverTimestamp, collection, query, where, getDocs, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, serverTimestamp, collection, query, where, getDocs, runTransaction, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../../firebase/config';
 import {
   ArrowLeft,
@@ -173,17 +173,15 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
   };
 
   useEffect(() => {
-    const fetchTicketAndUsers = async () => {
       if (!ticketId) {
         setError('No ticket ID provided.');
         setLoading(false);
         return;
       }
       setLoading(true);
-      try {
-        // Fetch ticket details
+    // Set up real-time listener for ticket
         const ticketRef = doc(db, 'tickets', ticketId);
-        const ticketSnap = await getDoc(ticketRef);
+    const unsubscribe = onSnapshot(ticketRef, (ticketSnap) => {
         if (!ticketSnap.exists()) {
           setError('Ticket not found.');
           setLoading(false);
@@ -210,33 +208,12 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           return ta - tb;
         });
         setTicket({ ...ticketData, comments });
-        // Fetch current user name
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          const userDocRef = doc(db, 'users', currentUser.uid);
-          const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            const data = userDocSnap.data();
-            let name = '';
-            if (data.firstName || data.lastName) {
-              name = `${data.firstName || ''} ${data.lastName || ''}`.trim();
-            }
-            if (!name) {
-              name = (data.email || currentUser.email || '').split('@')[0];
-            }
-            setCurrentUserName(name);
-          } else {
-            setCurrentUserName(currentUser.displayName || (currentUser.email?.split('@')[0] || ''));
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching data:', err);
+      setLoading(false);
+    }, (err) => {
         setError('Failed to load ticket details or users.');
-      } finally {
         setLoading(false);
-      }
-    };
-    fetchTicketAndUsers();
+    });
+    return () => unsubscribe();
   }, [ticketId]);
 
   // Scroll to bottom when comments change
@@ -560,7 +537,10 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         Object.keys(updates).length === 1 && updates.assignedTo
       );
       if (onlyAssigneeChanged) {
-        // Patch: Always update the ticket document with assignedTo
+        // If ticket is Open, set status to In Progress when assigning
+        if (ticket.status === 'Open') {
+          updates.status = 'In Progress';
+        }
         updates.lastUpdated = serverTimestamp();
         await updateDoc(ticketRef, updates);
         // Add comment

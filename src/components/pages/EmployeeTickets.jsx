@@ -267,6 +267,7 @@ const EmployeeTickets = ({ selectedProjectId }) => {
     await updateDoc(ticketRef, {
       assignedTo: { name: assignee.name, email: assignee.email },
       assignedBy: assignerUsername,
+      status: 'In Progress',
       lastUpdated: serverTimestamp()
     });
 

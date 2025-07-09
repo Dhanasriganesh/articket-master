@@ -200,6 +200,9 @@ function ClientDashboard() {
                   typeOfIssue: data.typeOfIssue || '',
                   category: data.category || '',
                   subCategory: data.subCategory || '',
+                  assignedTo: data.assignedTo || null,
+                  assignedBy: data.assignedBy || '',
+                  lastUpdated: data.lastUpdated || null,
                 });
               });
               // Sort tickets by created date
@@ -582,6 +585,18 @@ function ClientDashboard() {
     XLSX.writeFile(wb, 'tickets_export.xlsx');
   }
  
+  // Helper to safely format timestamps (copied from ClientTickets.jsx)
+  function formatTimestamp(ts) {
+    if (!ts) return '';
+    if (typeof ts === 'string') {
+      return new Date(ts).toLocaleString();
+    }
+    if (typeof ts.toDate === 'function') {
+      return ts.toDate().toLocaleString();
+    }
+    return '';
+  }
+ 
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
@@ -782,7 +797,7 @@ function ClientDashboard() {
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.lastUpdated ? (ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate().toLocaleString() : new Date(ticket.lastUpdated).toLocaleString()) : ''}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatTimestamp(ticket.lastUpdated)}</td>
                             </tr>
                           ))}
                         </tbody>
