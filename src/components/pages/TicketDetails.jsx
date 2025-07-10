@@ -513,15 +513,15 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         if (assignee) {
           updates.assignedTo = {
             email: assignee.email,
-            name: assignee.name,
+            name: assignee.name || assignee.email || 'Unknown',
             role: assignee.role,
             assignedAt: new Date()
           };
-          commentMsg.push(`Assigned to ${assignee.name}`);
+          commentMsg.push(`Assigned to ${assignee.name || assignee.email || 'Unknown'}`);
           // Always add an assignment comment for KPI
           await updateDoc(ticketRef, {
             comments: arrayUnion({
-              message: `Assigned to ${assignee.name}`,
+              message: `Assigned to ${assignee.name || assignee.email || 'Unknown'}`,
               timestamp: new Date(),
               authorEmail: auth.currentUser?.email,
               authorName: currentUserName,
@@ -536,38 +536,10 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       const onlyAssigneeChanged = (
         Object.keys(updates).length === 1 && updates.assignedTo
       );
+      // Debug log for assignment
       if (onlyAssigneeChanged) {
-        // If ticket is Open, set status to In Progress when assigning
-        if (ticket.status === 'Open') {
-          updates.status = 'In Progress';
-        }
-        updates.lastUpdated = serverTimestamp();
-        await updateDoc(ticketRef, updates);
-        // Add comment
-        const currentUser = auth.currentUser;
-        let authorName = currentUserName;
-        if (!authorName) authorName = currentUser?.displayName || (currentUser?.email?.split('@')[0] || '');
-        const comment = {
-          message: commentMsg.join('; '),
-          timestamp: new Date(),
-          authorEmail: currentUser?.email,
-          authorName,
-          authorRole: 'user',
-        };
-        await updateDoc(ticketRef, { comments: arrayUnion(comment) });
-        // Refresh ticket (always after any update)
-        const updatedTicketSnap = await getDoc(ticketRef);
-        if (updatedTicketSnap.exists()) {
-          const ticketData = { id: updatedTicketSnap.id, ...updatedTicketSnap.data() };
-          let comments = ticketData.comments || [];
-          comments.sort((a, b) => {
-            const ta = a.timestamp?.seconds ? a.timestamp.seconds : (a.timestamp?._seconds || new Date(a.timestamp).getTime()/1000 || 0);
-            const tb = b.timestamp?.seconds ? b.timestamp.seconds : (b.timestamp?._seconds || new Date(b.timestamp).getTime()/1000 || 0);
-            return ta - tb;
-          });
-          setTicket({ ...ticketData, comments });
-          setSelectedAssignee(ticketData.assignedTo?.email || '');
-        }
+        console.log('[DEBUG] handleSaveDetails: onlyAssigneeChanged', { ticketId: ticket.id, updates, selectedAssignee });
+        await onAssign(ticket.id, updates.assignedTo.email);
         setIsSaving(false);
         return;
       }
@@ -600,28 +572,49 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
           // Also update selectedAssignee to match new assignment
           setSelectedAssignee(ticketData.assignedTo?.email || '');
         }
-        // Send email to the client who raised the ticket (for comment)
+        // Send email to the other party (comment)
         let notifyEmail = null;
-        if (currentUserEmail === ticket.email || (ticket.reportedBy && currentUserEmail === ticket.reportedBy)) {
-          // Client is updating, notify assigned employee
+        const isClient = currentUserEmail === ticket.reportedBy || currentUserEmail === ticket.email;
+        const isEmployee = ticket.assignedTo && currentUserEmail === ticket.assignedTo.email;
+        if (isClient) {
           notifyEmail = ticket.assignedTo?.email || null;
-        } else if (ticket.assignedTo && currentUserEmail === ticket.assignedTo.email) {
-          // Employee is updating, notify ticket raiser
+        } else {
           notifyEmail = ticket.reportedBy || ticket.email || null;
         }
-        if (notifyEmail && await isUserStillProjectMember(notifyEmail, ticket.projectId || ticket.project)) {
-          const emailParams = {
-            to_email: notifyEmail,
-            to_name: ticket.customer || ticket.name || ticket.email,
-            subject: `New update on Ticket ID: ${ticket.ticketNumber}`,
-            ticket_number: ticket.ticketNumber,
-            message: commentMsg.join('; '),
-            is_comment: true,
-            assigned_by_name: currentUserName,
-            assigned_by_email: currentUser.email,
-            ticket_link: `https://articket-master.vercel.app/login`,
-          };
-          const emailResult = await sendEmail(emailParams, 'template_igl3oxn');
+        if (notifyEmail === currentUserEmail) notifyEmail = null; // never send to self
+        if (notifyEmail) {
+          try {
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('email', '==', notifyEmail));
+            const snapshot = await getDocs(q);
+            let notifyName = notifyEmail;
+            if (!snapshot.empty) {
+              const userData = snapshot.docs[0].data();
+              notifyName = (userData.firstName && userData.lastName)
+                ? `${userData.firstName} ${userData.lastName}`.trim()
+                : (userData.firstName || userData.lastName || userData.email);
+            }
+            let messageToSend = commentMsg.join('; ');
+            if (!messageToSend && commentAttachments && commentAttachments.length > 0) {
+              messageToSend = '[Attachment sent]';
+            }
+            const emailParams = {
+              to_email: notifyEmail,
+              to_name: notifyName,
+              subject: ticket.subject,
+              ticket_number: ticket.ticketNumber,
+              message: messageToSend,
+              is_comment: true,
+              ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+            };
+            console.log('[DEBUG] About to send comment email:', emailParams);
+            try {
+              await sendEmail(emailParams, 'template_igl3oxn');
+            } catch (e) {
+              console.error('Failed to send comment email:', e);
+              showToast('Failed to send notification email', 'error');
+            }
+          } catch (e) { /* fallback to email */ }
         }
       }
       if (editReportedBy !== ticket.reportedBy) {
@@ -672,28 +665,49 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
       });
       setNewResponse('');
       setCommentAttachments([]);
-      // Send email to the client who raised the ticket (for comment)
+      // Send email to the other party (comment)
       let notifyEmail = null;
-      if (currentUserEmail === ticket.email || (ticket.reportedBy && currentUserEmail === ticket.reportedBy)) {
-        // Client is updating, notify assigned employee
+      const isClient = currentUserEmail === ticket.reportedBy || currentUserEmail === ticket.email;
+      const isEmployee = ticket.assignedTo && currentUserEmail === ticket.assignedTo.email;
+      if (isClient) {
         notifyEmail = ticket.assignedTo?.email || null;
-      } else if (ticket.assignedTo && currentUserEmail === ticket.assignedTo.email) {
-        // Employee is updating, notify ticket raiser
+      } else {
         notifyEmail = ticket.reportedBy || ticket.email || null;
       }
-      if (notifyEmail && await isUserStillProjectMember(notifyEmail, ticket.projectId || ticket.project)) {
-        const emailParams = {
-          to_email: notifyEmail,
-          to_name: ticket.customer || ticket.name || ticket.email,
-          subject: `New update on Ticket ID: ${ticket.ticketNumber}`,
-          ticket_number: ticket.ticketNumber,
-          message: cleanedMessage,
-          is_comment: true,
-          assigned_by_name: currentUserName,
-          assigned_by_email: currentUser.email,
-          ticket_link: `https://articket-master.vercel.app/login`,
-        };
-        await sendEmail(emailParams, 'template_igl3oxn');
+      if (notifyEmail === currentUserEmail) notifyEmail = null; // never send to self
+      if (notifyEmail) {
+        try {
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('email', '==', notifyEmail));
+          const snapshot = await getDocs(q);
+          let notifyName = notifyEmail;
+          if (!snapshot.empty) {
+            const userData = snapshot.docs[0].data();
+            notifyName = (userData.firstName && userData.lastName)
+              ? `${userData.firstName} ${userData.lastName}`.trim()
+              : (userData.firstName || userData.lastName || userData.email);
+          }
+          let messageToSend = cleanedMessage;
+          if (!messageToSend && commentAttachments && commentAttachments.length > 0) {
+            messageToSend = '[Attachment sent]';
+          }
+          const emailParams = {
+            to_email: notifyEmail,
+            to_name: notifyName,
+            subject: ticket.subject,
+            ticket_number: ticket.ticketNumber,
+            message: messageToSend,
+            is_comment: true,
+            ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+          };
+          console.log('[DEBUG] About to send comment email:', emailParams);
+          try {
+            await sendEmail(emailParams, 'template_igl3oxn');
+          } catch (e) {
+            console.error('Failed to send comment email:', e);
+            showToast('Failed to send notification email', 'error');
+          }
+        } catch (e) { /* fallback to email */ }
       }
       // Re-fetch ticket to update UI
       const updatedTicketSnap = await getDoc(ticketRef);
@@ -771,28 +785,49 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
         setTicket({ ...ticketData, comments });
       }
       setResolutionAttachments([]);
-      // Send email to the client who raised the ticket (for resolution)
+      // Send email to the other party (resolution)
       let notifyEmail = null;
-      if (currentUserEmail === ticket.email || (ticket.reportedBy && currentUserEmail === ticket.reportedBy)) {
-        // Client is updating, notify assigned employee
+      const isClient = currentUserEmail === ticket.reportedBy || currentUserEmail === ticket.email;
+      const isEmployee = ticket.assignedTo && currentUserEmail === ticket.assignedTo.email;
+      if (isClient) {
         notifyEmail = ticket.assignedTo?.email || null;
-      } else if (ticket.assignedTo && currentUserEmail === ticket.assignedTo.email) {
-        // Employee is updating, notify ticket raiser
+      } else {
         notifyEmail = ticket.reportedBy || ticket.email || null;
       }
-      if (notifyEmail && await isUserStillProjectMember(notifyEmail, ticket.projectId || ticket.project)) {
-        const emailParams = {
-          to_email: notifyEmail,
-          to_name: ticket.customer || ticket.name || ticket.email,
-          subject: `Resolution provided for Ticket ID: ${ticket.ticketNumber}`,
-          ticket_number: ticket.ticketNumber,
-          message: resolutionText,
-          is_resolution: true,
-          assigned_by_name: currentUserName,
-          assigned_by_email: currentUser.email,
-          ticket_link: `https://articket-master.vercel.app/login`,
-        };
-        const emailResult = await sendEmail(emailParams, 'template_igl3oxn');
+      if (notifyEmail === currentUserEmail) notifyEmail = null; // never send to self
+      if (notifyEmail) {
+        try {
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('email', '==', notifyEmail));
+          const snapshot = await getDocs(q);
+          let notifyName = notifyEmail;
+          if (!snapshot.empty) {
+            const userData = snapshot.docs[0].data();
+            notifyName = (userData.firstName && userData.lastName)
+              ? `${userData.firstName} ${userData.lastName}`.trim()
+              : (userData.firstName || userData.lastName || userData.email);
+          }
+          let messageToSend = resolutionText;
+          if (!messageToSend && resolutionAttachments && resolutionAttachments.length > 0) {
+            messageToSend = '[Attachment sent]';
+          }
+          const emailParams = {
+            to_email: notifyEmail,
+            to_name: notifyName,
+            subject: ticket.subject,
+            ticket_number: ticket.ticketNumber,
+            message: messageToSend,
+            is_resolution: true,
+            ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
+          };
+          console.log('[DEBUG] About to send resolution email:', emailParams);
+          try {
+            await sendEmail(emailParams, 'template_igl3oxn');
+          } catch (e) {
+            console.error('Failed to send resolution email:', e);
+            showToast('Failed to send notification email', 'error');
+          }
+        } catch (e) { /* fallback to email */ }
       }
     } catch (err) {
       console.error('Error saving resolution:', err);
@@ -1405,6 +1440,7 @@ const TicketDetails = ({ ticketId, onBack, onAssign }) => {
                         disabled={isSaving || employees.length === 0}
                       >
                         <option value="">Unassigned</option>
+                        {/* Always show 'Assign to Me' if current user is not in employees list */}
                         {currentUserEmail && !employees.some(emp => emp.email === currentUserEmail) && (
                           <option value={currentUserEmail}>Assign to Me</option>
                         )}

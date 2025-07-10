@@ -254,24 +254,56 @@ const EmployeeTickets = ({ selectedProjectId }) => {
   });
 
   const handleAssignTicket = async (ticketId, selectedUserEmail) => {
-    // Find the ticket
+    console.log('[DEBUG] handleAssignTicket called', { ticketId, selectedUserEmail });
     const ticket = ticketsData.find(t => t.id === ticketId);
-    if (!ticketId || !auth.currentUser || !selectedUserEmail || !ticket) return;
+    if (!ticketId || !auth.currentUser || !selectedUserEmail || !ticket) {
+      console.error('[DEBUG] handleAssignTicket: missing required data', { ticketId, selectedUserEmail, ticket });
+      return;
+    }
 
     const ticketRef = doc(db, 'tickets', ticketId);
-    // Find the assignee's full name
-    const assignee = employees.find(emp => emp.email === selectedUserEmail) || { name: selectedUserEmail.split('@')[0], email: selectedUserEmail };
+    let assignee = employees.find(emp => emp.email === selectedUserEmail);
+    if (!assignee && selectedUserEmail === currentUserEmail) {
+      // Assign to self if not in employees list
+      const userDocRef = doc(db, 'users', auth.currentUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+      if (userDocSnap.exists()) {
+        const data = userDocSnap.data();
+        let name = '';
+        if (data.firstName && data.lastName) {
+          name = `${data.firstName} ${data.lastName}`.trim();
+        } else if (data.firstName) {
+          name = data.firstName;
+        } else if (data.lastName) {
+          name = data.lastName;
+        } else {
+          name = data.email.split('@')[0];
+        }
+        assignee = {
+          name,
+          email: data.email
+        };
+      } else {
+        assignee = {
+          name: currentUserEmail.split('@')[0],
+          email: currentUserEmail
+        };
+      }
+    }
+    if (!assignee) {
+      console.error('[DEBUG] handleAssignTicket: no assignee found', { selectedUserEmail, employees });
+      return;
+    }
+    console.log('[DEBUG] handleAssignTicket: resolved assignee', assignee);
     const assignerUsername = currentUserEmail.split('@')[0];
 
-    // Update the ticket assignment in Firestore
     await updateDoc(ticketRef, {
-      assignedTo: { name: assignee.name, email: assignee.email },
+      assignedTo: { name: assignee.name || assignee.email || 'Unknown', email: assignee.email },
       assignedBy: assignerUsername,
       status: 'In Progress',
       lastUpdated: serverTimestamp()
     });
 
-    // Log the assignment as a comment (optional)
     const response = {
       message: `Ticket assigned to ${assignee.name} by ${assignerUsername}.`,
       timestamp: new Date().toISOString(),
@@ -282,21 +314,32 @@ const EmployeeTickets = ({ selectedProjectId }) => {
       customerResponses: arrayUnion(response)
     });
 
-    // Send the assignment email to the client
+    // Fetch the user object for reportedBy or ticket.email to get the correct recipient name
+    let recipientEmail = ticket.reportedBy || ticket.email;
+    let recipientName = recipientEmail;
+    try {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('email', '==', recipientEmail));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const userData = snapshot.docs[0].data();
+        recipientName = (userData.firstName && userData.lastName)
+          ? `${userData.firstName} ${userData.lastName}`.trim()
+          : (userData.firstName || userData.lastName || userData.email);
+      }
+    } catch (e) { /* fallback to email */ }
+
     const emailParams = {
-      to_email: ticket.email,
-      to_name: ticket.customer || ticket.name || ticket.email,
-      subject: `Your ticket has been assigned (ID: ${ticket.ticketNumber})`,
+      to_email: recipientEmail,
+      to_name: recipientName,
+      subject: ticket.subject,
       ticket_number: ticket.ticketNumber,
-      assigned_to: assignee.name,
-      assigned_by_name: assignerUsername,
-      assigned_by_email: currentUserEmail,
+      assigned_to: assignee.name || assignee.email || 'Unknown',
       project: ticket.project,
       category: ticket.category,
       priority: ticket.priority,
-      ticket_link: `https://articket-master.vercel.app/login`,
+      ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
     };
-    console.log('Assignment emailParams:', emailParams);
     await sendEmail(emailParams, 'template_igl3oxn');
   };
 

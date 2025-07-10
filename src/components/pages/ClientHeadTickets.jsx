@@ -246,7 +246,7 @@ const ClientHeadTickets = ({ setActiveTab }) => {
 
     const ticketRef = doc(db, 'tickets', ticketId);
     const newAssignee = {
-      name: selectedUser.name || selectedUser.email.split('@')[0],
+      name: selectedUser.name || selectedUser.email || 'Unknown',
       email: selectedUser.email
     };
     const assignerUsername = currentUserEmail.split('@')[0];
@@ -259,8 +259,23 @@ const ClientHeadTickets = ({ setActiveTab }) => {
     };
 
     try {
+      // Fetch the user object for reportedBy or ticket.email to get the correct recipient name
+      let recipientEmail = ticket.reportedBy || ticket.email;
+      let recipientName = recipientEmail;
+      try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('email', '==', recipientEmail));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const userData = snapshot.docs[0].data();
+          recipientName = (userData.firstName && userData.lastName)
+            ? `${userData.firstName} ${userData.lastName}`.trim()
+            : (userData.firstName || userData.lastName || userData.email);
+        }
+      } catch (e) { /* fallback to email */ }
+
       await updateDoc(ticketRef, {
-        assignedTo: newAssignee,
+        assignedTo: { name: newAssignee.name || newAssignee.email || 'Unknown', email: newAssignee.email },
         assignedBy: assignerUsername,
         status: 'In Progress',
         lastUpdated: serverTimestamp()
@@ -271,19 +286,16 @@ const ClientHeadTickets = ({ setActiveTab }) => {
       });
       // Only send the assignment email
       const emailParams = {
-        to_email: ticket.email,
-        to_name: ticket.customer || ticket.name || ticket.email,
-        subject: `Your ticket has been assigned (ID: ${ticket.ticketNumber})`,
+        to_email: recipientEmail,
+        to_name: recipientName,
+        subject: ticket.subject,
         ticket_number: ticket.ticketNumber,
-        assigned_to: newAssignee.name,
-        assigned_by_name: assignerUsername,
-        assigned_by_email: currentUserEmail,
+        assigned_to: newAssignee.name || newAssignee.email || 'Unknown',
         project: ticket.project,
         category: ticket.category,
         priority: ticket.priority,
-        ticket_link: `https://articket-master.vercel.app/login`,
+        ticket_link: `https://articket.vercel.app/tickets/${ticket.id}`,
       };
-      console.log('Assignment emailParams:', emailParams);
       await sendEmail(emailParams, 'template_igl3oxn');
     } catch (err) {
       console.error('Error assigning ticket:', err);

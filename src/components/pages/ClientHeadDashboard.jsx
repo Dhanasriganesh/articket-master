@@ -38,6 +38,8 @@ import LogoutModal from './LogoutModal';
 import TicketDetails from './TicketDetails';
 import { computeKPIsForTickets, exportKpiToExcelWithChartImage, SLA_RULES } from './ProjectManagerDashboard';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 // Animated count-up hook
 function useCountUp(target, duration = 1200) {
@@ -200,6 +202,9 @@ const ClientHeadDashboard = () => {
         });
         const open = weekTickets.length;
         const closed = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
+        const inProgress = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length;
+        const resolved = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
+        const unclosed = weekTickets.filter(t => String(t.status).trim().toLowerCase() !== 'closed').length;
         const breached = weekTickets.filter(t => {
           const kpi = computeKPIsForTickets([t]);
           return kpi.breachedCount;
@@ -212,7 +217,7 @@ const ClientHeadDashboard = () => {
         });
         const response = responseCount ? Number((responseSum/responseCount/1000/60).toFixed(2)) : 0;
         const resolution = resolutionCount ? Number((resolutionSum/resolutionCount/1000/60).toFixed(2)) : 0;
-        return { period: label, open, closed, breached, response, resolution };
+        return { period: label, open, inProgress, resolved, closed, unclosed, breached, response, resolution };
       });
     } else {
       // Group by month for period/year
@@ -242,6 +247,9 @@ const ClientHeadDashboard = () => {
         });
         const open = monthTickets.length;
         const closed = monthTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
+        const inProgress = monthTickets.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length;
+        const resolved = monthTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
+        const unclosed = monthTickets.filter(t => String(t.status).trim().toLowerCase() !== 'closed').length;
         const breached = monthTickets.filter(t => {
           const kpi = computeKPIsForTickets([t]);
           return kpi.breachedCount;
@@ -254,7 +262,7 @@ const ClientHeadDashboard = () => {
         });
         const response = responseCount ? Number((responseSum/responseCount/1000/60).toFixed(2)) : 0;
         const resolution = resolutionCount ? Number((resolutionSum/resolutionCount/1000/60).toFixed(2)) : 0;
-        return { period: label, open, closed, breached, response, resolution };
+        return { period: label, open, inProgress, resolved, closed, unclosed, breached, response, resolution };
       });
     }
   };
@@ -549,6 +557,63 @@ const ClientHeadDashboard = () => {
     return null;
   }
 
+  // Helper to get chart image as base64
+  async function getChartPngDataUrl(chartId) {
+    const chartElem = document.getElementById(chartId);
+    if (!chartElem) return null;
+    const svgElem = chartElem.querySelector('svg');
+    if (!svgElem) return null;
+    const svgString = new XMLSerializer().serializeToString(svgElem);
+    const canvas = document.createElement('canvas');
+    const bbox = svgElem.getBoundingClientRect();
+    canvas.width = bbox.width;
+    canvas.height = bbox.height;
+    const ctx = canvas.getContext('2d');
+    const img = new window.Image();
+    const svg = 'data:image/svg+xml;base64,' + window.btoa(unescape(encodeURIComponent(svgString)));
+    return new Promise(resolve => {
+      img.onload = function() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = svg;
+    });
+  }
+
+  async function exportKpiExcelWithCharts(kpiData, chartIds, projectName = '') {
+    if (!kpiData || !kpiData.details) return;
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('KPI Report');
+    // Add table data first
+    worksheet.addRow(['Ticket #','Subject','Assignee','Response Time (min)', 'Resolution Time (min)', 'Status']);
+    kpiData.details.forEach(row => {
+      worksheet.addRow([
+        row.ticketNumber,
+        row.subject,
+        row.assignee,
+        row.responseTime ? (row.responseTime/1000/60).toFixed(2) : '',
+        row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) : '',
+        row.status
+      ]);
+    });
+    // Add chart images below the table
+    let currentRow = worksheet.lastRow.number + 2;
+    if (chartIds) {
+      const ids = Array.isArray(chartIds) ? chartIds : [chartIds];
+      for (const chartId of ids) {
+        const imgDataUrl = await getChartPngDataUrl(chartId);
+        if (imgDataUrl) {
+          const imageId = workbook.addImage({ base64: imgDataUrl, extension: 'png' });
+          worksheet.addImage(imageId, { tl: { col: 0, row: currentRow }, ext: { width: 500, height: 300 } });
+          currentRow += 20;
+        }
+      }
+    }
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `KPI_Report_${projectName || 'Project'}.xlsx`);
+  }
+
   if (!authChecked || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -643,18 +708,45 @@ const ClientHeadDashboard = () => {
   const trendsChartData = weekLabels.map(label => {
     const groupTickets = weekMap[label];
     if (!groupTickets || groupTickets.length === 0) {
-      return { period: label, open: 0, closed: 0, resolved: 0 };
+      return { period: label, open: 0, closed: 0, resolved: 0, inProgress: 0 };
     }
     const kpi = computeKPIsForTickets(groupTickets);
-    // Count resolved tickets
+    // Count resolved and in progress tickets
     const resolvedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
+    const inProgressCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length;
+    const openCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'open').length;
+    const closedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
+    const unclosedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() !== 'closed').length;
     return {
       period: label,
-      open: kpi.openCount,
-      closed: kpi.closedCount,
-      resolved: resolvedCount
+      open: openCount,
+      inProgress: inProgressCount,
+      resolved: resolvedCount,
+      closed: closedCount,
+      unclosed: unclosedCount
     };
   });
+
+  // Custom Tooltip for Trends LineChart
+  const TrendsTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      // Find values by key
+      const open = payload.find(p => p.dataKey === 'open')?.value ?? 0;
+      const inProgress = payload.find(p => p.dataKey === 'inProgress')?.value ?? 0;
+      const resolved = payload.find(p => p.dataKey === 'resolved')?.value ?? 0;
+      const closed = payload.find(p => p.dataKey === 'closed')?.value ?? 0;
+      const unclosed = payload.find(p => p.dataKey === 'unclosed')?.value ?? (open + inProgress + resolved);
+      return (
+        <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155', padding: 12, minWidth: 120 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
+          <div>Open - {open} / In Progress - {inProgress}</div>
+          <div>Resolved - {resolved} / Closed - {closed}</div>
+          <div>Unclosed - {unclosed}</div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -1005,11 +1097,12 @@ const ClientHeadDashboard = () => {
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                           <XAxis dataKey="period" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
                           <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                          <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
+                          <Tooltip content={<TrendsTooltip />} />
                           <Legend />
                           <Line type="monotone" dataKey="open" name="Open" stroke="#F2994A" strokeWidth={3} dot={{ r: 6, fill: '#F2994A', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
-                          <Line type="monotone" dataKey="closed" name="Closed" stroke="#34495E" strokeWidth={3} dot={{ r: 6, fill: '#34495E', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Line type="monotone" dataKey="inProgress" name="In Progress" stroke="#1976D2" strokeWidth={3} dot={{ r: 6, fill: '#1976D2', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                           <Line type="monotone" dataKey="resolved" name="Resolved" stroke="#27AE60" strokeWidth={3} dot={{ r: 6, fill: '#27AE60', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Line type="monotone" dataKey="closed" name="Closed" stroke="#34495E" strokeWidth={3} dot={{ r: 6, fill: '#34495E', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
@@ -1139,6 +1232,18 @@ const ClientHeadDashboard = () => {
                   <div className="text-gray-500">No tickets found for KPI analysis.</div>
                 ) : (
                   <>
+                    {/* Export to Excel Button for KPI */}
+                    <div className="mb-4">
+                      <button
+                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+                        onClick={async () => {
+                          const kpiData = computeKPIsForTickets(kpiFilteredTickets);
+                          await exportKpiExcelWithCharts(kpiData, ['kpi-bar-chart-count', 'kpi-bar-chart-time'], myProject?.name || 'Project');
+                        }}
+                      >
+                        Download
+                      </button>
+                    </div>
                     {/* KPI Bar Chart (Created/Closed/Breached) */}
                               <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart-count">
                       <h3 className="text-lg font-semibold mb-2">KPI Bar Chart (Created Tickets/Closed/Breached)</h3>
@@ -1150,8 +1255,11 @@ const ClientHeadDashboard = () => {
                                       <Tooltip />
                                       <Legend />
                           <Bar dataKey="open" name="Created Tickets" fill="#F2994A" />
+                          <Bar dataKey="inProgress" name="In Progress" fill="#1976D2" />
+                          <Bar dataKey="resolved" name="Resolved" fill="#27AE60" />
                           <Bar dataKey="closed" name="Closed" fill="#34495E" />
                           <Bar dataKey="breached" name="Breached" fill="#EB5757" />
+                          <Bar dataKey="unclosed" name="Unclosed" fill="#FFC107" />
                                     </BarChart>
                                 </ResponsiveContainer>
                               </div>

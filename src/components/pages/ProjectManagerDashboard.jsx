@@ -264,14 +264,14 @@ async function getChartPngDataUrl(chartId) {
   return canvas.toDataURL('image/png');
 }
 
-export async function exportKpiToExcelWithChartImage(kpiData, chartId, projectName = '') {
+export async function exportKpiToExcelWithChartImage(kpiData, chartIds, projectName = '') {
   if (!kpiData || !kpiData.details) return;
 
   // 1. Create workbook and worksheet
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('KPI Report');
 
-  // 2. Add table data
+  // 2. Add table data FIRST
   worksheet.addRow(['Ticket #','Subject','Assignee','Response Time (min)', 'Resolution Time (min)', 'Status']);
   kpiData.details.forEach(row => {
     worksheet.addRow([
@@ -284,25 +284,31 @@ export async function exportKpiToExcelWithChartImage(kpiData, chartId, projectNa
     ]);
   });
 
-  // 3. Add chart image
-  const imgDataUrl = await getChartPngDataUrl(chartId);
-  if (imgDataUrl) {
-    const imageId = workbook.addImage({
-      base64: imgDataUrl,
-      extension: 'png',
-    });
-    // Place the image at the top of the worksheet
-    worksheet.addImage(imageId, {
-      tl: { col: 0, row: 0 },
-      ext: { width: 500, height: 300 }
-    });
+  // 3. Add chart images BELOW the table
+  let currentRow = worksheet.lastRow.number + 2; // Leave a blank row after table
+  if (chartIds) {
+    const ids = Array.isArray(chartIds) ? chartIds : [chartIds];
+    for (const chartId of ids) {
+      const imgDataUrl = await getChartPngDataUrl(chartId);
+      if (imgDataUrl) {
+        const imageId = workbook.addImage({
+          base64: imgDataUrl,
+          extension: 'png',
+        });
+        worksheet.addImage(imageId, {
+          tl: { col: 0, row: currentRow },
+          ext: { width: 500, height: 300 }
+        });
+        currentRow += 20; // Space between images (approximate)
+      }
+    }
   }
 
   // 4. Download the Excel file
   const buffer = await workbook.xlsx.writeBuffer();
   saveAs(new Blob([buffer]), `KPI_Report_${projectName || 'Project'}.xlsx`);
 
-  // 5. Save KPI report to Firestore
+  // 5. Save KPI report to Firestore (unchanged)
   try {
     const db = getFirestore();
     const auth = getAuth();
@@ -382,6 +388,41 @@ function downloadTicketsAsExcel(tickets) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
   XLSX.writeFile(wb, 'tickets_export.xlsx');
+}
+
+// Helper to get chart image as base64
+
+async function exportKpiExcelWithCharts(kpiData, chartIds, projectName = '') {
+  if (!kpiData || !kpiData.details) return;
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('KPI Report');
+  // Add table data first
+  worksheet.addRow(['Ticket #','Subject','Assignee','Response Time (min)', 'Resolution Time (min)', 'Status']);
+  kpiData.details.forEach(row => {
+    worksheet.addRow([
+      row.ticketNumber,
+      row.subject,
+      row.assignee,
+      row.responseTime ? (row.responseTime/1000/60).toFixed(2) : '',
+      row.resolutionTime ? (row.resolutionTime/1000/60).toFixed(2) : '',
+      row.status
+    ]);
+  });
+  // Add chart images below the table
+  let currentRow = worksheet.lastRow.number + 2;
+  if (chartIds) {
+    const ids = Array.isArray(chartIds) ? chartIds : [chartIds];
+    for (const chartId of ids) {
+      const imgDataUrl = await getChartPngDataUrl(chartId);
+      if (imgDataUrl) {
+        const imageId = workbook.addImage({ base64: imgDataUrl, extension: 'png' });
+        worksheet.addImage(imageId, { tl: { col: 0, row: currentRow }, ext: { width: 500, height: 300 } });
+        currentRow += 20;
+      }
+    }
+  }
+  const buffer = await workbook.xlsx.writeBuffer();
+  saveAs(new Blob([buffer]), `KPI_Report_${projectName || 'Project'}.xlsx`);
 }
 
 const ProjectManagerDashboard = () => {
@@ -821,16 +862,20 @@ const ProjectManagerDashboard = () => {
   const trendsChartData = weekLabels.map(label => {
     const groupTickets = weekMap[label];
     if (!groupTickets || groupTickets.length === 0) {
-      return { period: label, open: 0, closed: 0, resolved: 0 };
+      return { period: label, open: 0, closed: 0, resolved: 0, inProgress: 0, unclosed: 0 };
     }
     const openCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'open').length;
     const closedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
     const resolvedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
+    const inProgressCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length;
+    const unclosedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() !== 'closed').length;
     return {
       period: label,
       open: openCount,
+      inProgress: inProgressCount,
+      resolved: resolvedCount,
       closed: closedCount,
-      resolved: resolvedCount
+      unclosed: unclosedCount
     };
   });
 
@@ -894,10 +939,13 @@ const ProjectManagerDashboard = () => {
         });
         const open = weekTickets.length;
         const closed = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
+        const inProgress = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length;
         const breached = weekTickets.filter(t => {
           const kpi = computeKPIsForTickets([t]);
           return kpi.breachedCount;
         }).length;
+        const resolved = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
+        const unclosed = open + inProgress + resolved; // Not closed
         let responseSum = 0, responseCount = 0, resolutionSum = 0, resolutionCount = 0;
         weekTickets.forEach(t => {
           const kpi = computeKPIsForTickets([t]);
@@ -906,7 +954,7 @@ const ProjectManagerDashboard = () => {
         });
         const response = responseCount ? Number((responseSum/responseCount/1000/60).toFixed(2)) : 0;
         const resolution = resolutionCount ? Number((resolutionSum/resolutionCount/1000/60).toFixed(2)) : 0;
-        return { period: label, open, closed, breached, response, resolution };
+        return { period: label, open, closed, breached, resolved, inProgress, unclosed, response, resolution };
       });
     } else {
       // Group by month for period/year
@@ -936,10 +984,13 @@ const ProjectManagerDashboard = () => {
         });
         const open = monthTickets.length;
         const closed = monthTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
+        const inProgress = monthTickets.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length;
         const breached = monthTickets.filter(t => {
           const kpi = computeKPIsForTickets([t]);
           return kpi.breachedCount;
         }).length;
+        const resolved = monthTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
+        const unclosed = open + inProgress + resolved; // Not closed
         let responseSum = 0, responseCount = 0, resolutionSum = 0, resolutionCount = 0;
         monthTickets.forEach(t => {
           const kpi = computeKPIsForTickets([t]);
@@ -948,7 +999,7 @@ const ProjectManagerDashboard = () => {
         });
         const response = responseCount ? Number((responseSum/responseCount/1000/60).toFixed(2)) : 0;
         const resolution = resolutionCount ? Number((resolutionSum/resolutionCount/1000/60).toFixed(2)) : 0;
-        return { period: label, open, closed, breached, response, resolution };
+        return { period: label, open, closed, breached, resolved, inProgress, unclosed, response, resolution };
       });
     }
   };
@@ -1338,11 +1389,12 @@ const ProjectManagerDashboard = () => {
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                         <XAxis dataKey="period" tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
                         <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
-                        <Tooltip contentStyle={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155' }} />
+                        <Tooltip content={<TrendsTooltip />} />
                         <Legend />
                         <Line type="monotone" dataKey="open" name="Open" stroke="#F2994A" strokeWidth={3} dot={{ r: 6, fill: '#F2994A', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
-                        <Line type="monotone" dataKey="closed" name="Closed" stroke="#34495E" strokeWidth={3} dot={{ r: 6, fill: '#34495E', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                        <Line type="monotone" dataKey="inProgress" name="In Progress" stroke="#1976D2" strokeWidth={3} dot={{ r: 6, fill: '#1976D2', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                         <Line type="monotone" dataKey="resolved" name="Resolved" stroke="#27AE60" strokeWidth={3} dot={{ r: 6, fill: '#27AE60', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                        <Line type="monotone" dataKey="closed" name="Closed" stroke="#34495E" strokeWidth={3} dot={{ r: 6, fill: '#34495E', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -1419,18 +1471,18 @@ const ProjectManagerDashboard = () => {
                   </table>
                 </div>
                 {/* KPI Filters: From Date, To Date, Period, Apply, Reset */}
-                        <div className="mb-4 flex gap-4 items-center">
-                          <span className="font-semibold text-gray-700">Year:</span>
-                          <select
-                            value={kpiSelectedYear}
+                <div className="mb-4 flex gap-4 items-center">
+                  <span className="font-semibold text-gray-700">Year:</span>
+                  <select
+                    value={kpiSelectedYear}
                     onChange={e => handleKpiYearChange(e.target.value)}
-                            className="border rounded px-2 py-1 text-sm"
-                          >
+                    className="border rounded px-2 py-1 text-sm"
+                  >
                     {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(y => (
-                              <option key={y} value={y}>{y}</option>
-                            ))}
-                          </select>
-                          <span className="font-semibold text-gray-700">Month:</span>
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <span className="font-semibold text-gray-700">Month:</span>
                   <input
                     type="month"
                     value={kpiSelectedMonth}
@@ -1449,7 +1501,25 @@ const ProjectManagerDashboard = () => {
                     <option value="last6months">Last 6 Months</option>
                     <option value="lastyear">Last Year</option>
                   </select>
-                        </div>
+                </div>
+                {/* Download Button for KPI Excel Export */}
+                {kpiFilteredTickets.length > 0 && (
+                  <div className="mb-4">
+                    <button
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+                      onClick={async () => {
+                        const kpiData = computeKPIsForTickets(kpiFilteredTickets);
+                        await exportKpiExcelWithCharts(
+                          kpiData,
+                          ['kpi-bar-chart', 'kpi-bar-chart-time'],
+                          projects.find(p => p.id === selectedProjectId)?.name || 'Project'
+                        );
+                      }}
+                    >
+                      Download
+                    </button>
+                  </div>
+                )}
                 {/* KPI Chart and Table */}
                 {kpiFilteredTickets.length === 0 ? (
                   <div className="text-gray-500">No tickets found for KPI analysis.</div>
@@ -1463,26 +1533,31 @@ const ProjectManagerDashboard = () => {
                                     <CartesianGrid strokeDasharray="3 3" />
                                     <XAxis dataKey="period" />
                           <YAxis allowDecimals={false} />
-                                    <Tooltip />
+                                    <Tooltip content={<KpiBarTooltip />} />
                                     <Legend />
                           <Bar dataKey="open" name="Created Tickets" fill="#F2994A" />
+                          <Bar dataKey="inProgress" name="In Progress" fill="#1976D2" />
+                          <Bar dataKey="resolved" name="Resolved" fill="#27AE60" />
                           <Bar dataKey="closed" name="Closed" fill="#34495E" />
                           <Bar dataKey="breached" name="Breached" fill="#EB5757" />
+                          <Bar dataKey="unclosed" name="Unclosed" fill="#FFC107" />
                                   </BarChart>
                                 </ResponsiveContainer>
                               </div>
                     {/* KPI Bar Chart (Response/Resolution Time) */}
-                    <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={kpiChartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="period" />
-                        <YAxis label={{ value: 'Minutes', angle: -90, position: 'insideLeft' }} />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="response" name="Avg Response Time" fill="#56CCF2" />
-                        <Bar dataKey="resolution" name="Avg Resolution Time" fill="#BB6BD9" />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <div id="kpi-bar-chart-time" className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm">
+                      <ResponsiveContainer width="100%" height={250}>
+                        <BarChart data={kpiChartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="period" />
+                          <YAxis label={{ value: 'Minutes', angle: -90, position: 'insideLeft' }} />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="response" name="Avg Response Time" fill="#56CCF2" />
+                          <Bar dataKey="resolution" name="Avg Resolution Time" fill="#BB6BD9" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
                     {/* KPI Table */}
                               <div className="overflow-x-auto">
                                   <table className="min-w-full text-xs text-left text-gray-700 border">
@@ -1561,6 +1636,50 @@ const ProjectManagerDashboard = () => {
       </div>
     </div>
   );
+};
+
+// Custom Tooltip for Trends LineChart
+const TrendsTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    // Find values by key
+    const open = payload.find(p => p.dataKey === 'open')?.value ?? 0;
+    const inProgress = payload.find(p => p.dataKey === 'inProgress')?.value ?? 0;
+    const resolved = payload.find(p => p.dataKey === 'resolved')?.value ?? 0;
+    const closed = payload.find(p => p.dataKey === 'closed')?.value ?? 0;
+    const unclosed = payload.find(p => p.dataKey === 'unclosed')?.value ?? (open + inProgress + resolved);
+    return (
+      <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155', padding: 12, minWidth: 120 }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
+        <div>Open - {open} / In Progress - {inProgress}</div>
+        <div>Resolved - {resolved} / Closed - {closed}</div>
+        <div>Unclosed - {unclosed}</div>
+      </div>
+    );
+  }
+  return null;
+};
+
+// Custom Tooltip for KPI Bar Chart
+const KpiBarTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    // Find values by key
+    const open = payload.find(p => p.dataKey === 'open')?.value ?? 0;
+    const inProgress = payload.find(p => p.dataKey === 'inProgress')?.value ?? 0;
+    const resolved = payload.find(p => p.dataKey === 'resolved')?.value ?? 0;
+    const closed = payload.find(p => p.dataKey === 'closed')?.value ?? 0;
+    const breached = payload.find(p => p.dataKey === 'breached')?.value ?? 0;
+    const unclosed = payload.find(p => p.dataKey === 'unclosed')?.value ?? (open + inProgress + resolved);
+    return (
+      <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155', padding: 12, minWidth: 120 }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
+        <div>Open - {open} / In Progress - {inProgress}</div>
+        <div>Resolved - {resolved} / Closed - {closed}</div>
+        <div>Breached - {breached}</div>
+        <div>Unclosed - {unclosed}</div>
+      </div>
+    );
+  }
+  return null;
 };
 
 export default ProjectManagerDashboard; 
