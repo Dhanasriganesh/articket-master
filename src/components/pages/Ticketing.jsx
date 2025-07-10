@@ -94,6 +94,49 @@ PriorityDropdown.propTypes = {
   options: PropTypes.array.isRequired
 };
 
+// Custom dropdown for Reported by (not mandatory, opens on click)
+function ReportedByDropdown({ value, onChange, options }) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find(opt => opt.email === value);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className="w-full px-4 py-3 border-2 rounded-xl bg-white text-gray-700 flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-200 hover:border-gray-300"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span>{selected ? (selected.name || selected.email) : 'Select member '}</span>
+        <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+      </button>
+      {open && (
+        <ul
+          tabIndex={-1}
+          className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-auto focus:outline-none"
+          role="listbox"
+        >
+          {options.length === 0 ? (
+            <li className="px-4 py-2 text-gray-400">No client members available</li>
+          ) : options.map(opt => (
+            <li
+              key={opt.email}
+              role="option"
+              aria-selected={value === opt.email}
+              className={`px-4 py-2 cursor-pointer hover:bg-blue-50 ${value === opt.email ? 'bg-blue-100' : ''}`}
+              onClick={() => { onChange(opt.email); setOpen(false); }}
+              onKeyDown={e => { if (e.key === 'Enter') { onChange(opt.email); setOpen(false); } }}
+              tabIndex={0}
+            >
+              {opt.name ? opt.name : opt.email}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function Client({ selectedProjectId, selectedProjectName }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -199,63 +242,44 @@ function Client({ selectedProjectId, selectedProjectName }) {
     setReportedBy('');
   }, [selectedProjectName]);
  
-  // Fetch client members when project changes
+  // Fetch client-side members from the selected project's members array
   useEffect(() => {
-    if (isLoading || !formData.project) {
+    console.log('Ticketing: useEffect ran');
+    console.log('Ticketing: formData =', formData);
+    if (!formData.project) {
       setClientMembers([]);
       return;
     }
-    const fetchClientMembers = async () => {
-      const usersRef = collection(db, 'users');
-      // Query for clients (project as string)
-      const qString = query(usersRef, where('project', '==', formData.project), where('role', 'in', ['client', 'client_head', 'employee']));
-      // Query for employees (project as array)
-      const qArray = query(usersRef, where('project', 'array-contains', formData.project), where('role', 'in', ['client', 'client_head', 'employee']));
-      const [snapshotString, snapshotArray] = await Promise.all([
-        getDocs(qString),
-        getDocs(qArray)
-      ]);
-      // Merge and deduplicate by email
-      const allDocs = [...snapshotString.docs, ...snapshotArray.docs];
-      const seenEmails = new Set();
-      const clients = allDocs.filter(doc => {
-        const data = doc.data();
-        if (seenEmails.has(data.email)) return false;
-        seenEmails.add(data.email);
-        return true;
-      }).map(doc => {
-        const data = doc.data();
-        let name = '';
-        if (data.firstName && data.lastName) {
-          name = `${data.firstName} ${data.lastName}`.trim();
-        } else if (data.firstName) {
-          name = data.firstName;
-        } else if (data.lastName) {
-          name = data.lastName;
+    console.log('Ticketing: formData.project =', formData.project);
+    const fetchProjectMembers = async () => {
+      try {
+        const projectsRef = collection(db, 'projects');
+        const projectName = Array.isArray(formData.project) ? formData.project[0] : formData.project;
+        const q = query(projectsRef, where('name', '==', projectName));
+        const projectSnapshot = await getDocs(q);
+        console.log('Ticketing: projectSnapshot.empty =', projectSnapshot.empty);
+        if (!projectSnapshot.empty) {
+          const projectDoc = projectSnapshot.docs[0];
+          console.log('Ticketing: projectDoc =', projectDoc.data());
+          const members = projectDoc.data().members || [];
+          console.log('Ticketing: members array =', members);
+          // Only client-side roles
+          const clientSideMembers = members.filter(m => m.role === 'client' || m.role === 'client_head');
+          setClientMembers(clientSideMembers);
         } else {
-          name = data.email.split('@')[0];
+          setClientMembers([]);
         }
-        if (data.role === 'client_head') {
-          name += ' (Client Head)';
-        } else if (data.role === 'employee') {
-          name += ' (Employee)';
-        }
-        return {
-          id: doc.id,
-          email: data.email,
-          name,
-        };
-      });
-      console.log('Fetched client and employee users for project', formData.project, ':', clients);
-      setClientMembers(clients);
+      } catch (err) {
+        console.error('Failed to fetch project members from projects collection', err);
+        setClientMembers([]);
+      }
     };
-    fetchClientMembers();
-  }, [formData.project, isLoading]);
+    fetchProjectMembers();
+  }, [formData.project]);
 
+  // Remove auto-select for reportedBy when clientMembers are loaded
   useEffect(() => {
-    if (clientMembers.length > 0 && !reportedBy) {
-      setReportedBy(clientMembers[0].email);
-    }
+    // Do not set reportedBy automatically
   }, [clientMembers, reportedBy]);
 
   const validateForm = async () => {
@@ -692,18 +716,15 @@ function Client({ selectedProjectId, selectedProjectName }) {
            
               {/* Debug log for clientMembers at render time */}
               {console.log('Dropdown clientMembers:', clientMembers)}
-              {/* Reported by dropdown (unstyled for debugging) */}
+              {console.log('clientMembers for dropdown:', clientMembers)}
+              {/* Reported by dropdown (custom, not mandatory) */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Reported by</label>
-                <select
-                  style={{ all: 'unset', display: 'block', border: '1px solid #000', padding: '8px', width: '100%' }}
-                  onChange={e => setReportedBy(e.target.value)}
-                >
-                  <option value="">Select member</option>
-                  {clientMembers.map(member => (
-                    <option key={member.email} value={member.email}>{member.name || member.email}</option>
-                  ))}
-                </select>
+                <ReportedByDropdown
+                  value={reportedBy}
+                  onChange={setReportedBy}
+                  options={clientMembers.filter(m => m.role === 'client' || m.role === 'client_head')}
+                />
               </div>
               {/* Rest of the form fields */}
               {formConfig?.fields?.filter(f => !['module','category','subCategory','priority'].includes(f.id)).map(field => {
