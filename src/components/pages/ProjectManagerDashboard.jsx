@@ -1234,58 +1234,58 @@ const ProjectManagerDashboard = () => {
                   {selectedTicketId ? (
                     <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
                   ) : (
-                    <div className="overflow-x-auto">
-                      <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {filteredTableTickets
-                              .filter(ticket => String(ticket.status).trim().toLowerCase() !== 'closed')
-                              .sort((a, b) => {
-                                const dateA = a.created?.toDate ? a.created.toDate() : new Date(a.created);
-                                const dateB = b.created?.toDate ? b.created.toDate() : new Date(b.created);
-                                return dateB - dateA;
-                              })
-                              .map((ticket, idx) => (
-                                <tr
-                                  key={ticket.id || idx}
-                                  className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
+                  <div className="overflow-x-auto">
+                    <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {filteredTableTickets
+                            .filter(ticket => String(ticket.status).trim().toLowerCase() !== 'closed')
+                            .sort((a, b) => {
+                              const dateA = a.created?.toDate ? a.created.toDate() : new Date(a.created);
+                              const dateB = b.created?.toDate ? b.created.toDate() : new Date(b.created);
+                              return dateB - dateA;
+                            })
+                            .map((ticket, idx) => (
+                              <tr
+                                key={ticket.id || idx}
+                                className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                                   onClick={() => setSelectedTicketId(ticket.id)}
-                                >
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                      ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
-                                      ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
-                                      ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
-                                      'bg-gray-100 text-gray-800'
-                                    }`}>
-                                      {ticket.status}
-                                    </span>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.lastUpdated ? (ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate().toLocaleString() : new Date(ticket.lastUpdated).toLocaleString()) : ''}</td>
-                                </tr>
-                              ))}
-                          </tbody>
-                        </table>
-                      </div>
+                              >
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                    ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                                    ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                                    ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {ticket.status}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.lastUpdated ? (ticket.lastUpdated.toDate ? ticket.lastUpdated.toDate().toLocaleString() : new Date(ticket.lastUpdated).toLocaleString()) : ''}</td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
                     </div>
+                  </div>
                   )}
                 </div>
                 {/* Priority Distribution */}

@@ -144,7 +144,7 @@ const ClientHeadDashboard = () => {
   const getKpiFilteredTickets = () => {
     if (kpiPeriod) {
       // Period filter takes precedence
-      const now = new Date();
+    const now = new Date();
       let monthsToShow = 3;
       if (kpiPeriod === 'last6months') monthsToShow = 6;
       if (kpiPeriod === 'lastyear') monthsToShow = 12;
@@ -218,7 +218,7 @@ const ClientHeadDashboard = () => {
       // Group by month for period/year
       let months = [];
       if (kpiPeriod) {
-        const now = new Date();
+    const now = new Date();
         let monthsToShow = 3;
         if (kpiPeriod === 'last6months') monthsToShow = 6;
         if (kpiPeriod === 'lastyear') monthsToShow = 12;
@@ -1105,18 +1105,18 @@ const ClientHeadDashboard = () => {
                   </table>
                 </div>
                 {/* KPI Filters: Month, Year, and Period */}
-                <div className="mb-4 flex gap-4 items-center">
-                  <span className="font-semibold text-gray-700">Year:</span>
-                  <select
-                    value={kpiSelectedYear}
+                        <div className="mb-4 flex gap-4 items-center">
+                          <span className="font-semibold text-gray-700">Year:</span>
+                          <select
+                            value={kpiSelectedYear}
                     onChange={e => handleKpiYearChange(e.target.value)}
-                    className="border rounded px-2 py-1 text-sm"
-                  >
+                            className="border rounded px-2 py-1 text-sm"
+                          >
                     {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(y => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                  <span className="font-semibold text-gray-700">Month:</span>
+                              <option key={y} value={y}>{y}</option>
+                            ))}
+                          </select>
+                          <span className="font-semibold text-gray-700">Month:</span>
                   <input
                     type="month"
                     value={kpiSelectedMonth}
@@ -1134,63 +1134,63 @@ const ClientHeadDashboard = () => {
                     <option value="last6months">Last 6 Months</option>
                     <option value="lastyear">Last Year</option>
                   </select>
-                </div>
+                        </div>
                 {kpiFilteredTickets.length === 0 ? (
                   <div className="text-gray-500">No tickets found for KPI analysis.</div>
                 ) : (
                   <>
                     {/* KPI Bar Chart (Created/Closed/Breached) */}
-                    <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart-count">
+                              <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart-count">
                       <h3 className="text-lg font-semibold mb-2">KPI Bar Chart (Created Tickets/Closed/Breached)</h3>
-                      <ResponsiveContainer width="100%" height={250}>
+                          <ResponsiveContainer width="100%" height={250}>
                         <BarChart data={kpiChartData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="period" />
-                          <YAxis allowDecimals={false} />
-                          <Tooltip />
-                          <Legend />
+                                      <CartesianGrid strokeDasharray="3 3" />
+                                      <XAxis dataKey="period" />
+                                      <YAxis allowDecimals={false} />
+                                      <Tooltip />
+                                      <Legend />
                           <Bar dataKey="open" name="Created Tickets" fill="#F2994A" />
                           <Bar dataKey="closed" name="Closed" fill="#34495E" />
                           <Bar dataKey="breached" name="Breached" fill="#EB5757" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                              </div>
                     {/* KPI Bar Chart (Response/Resolution Time) */}
-                    <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart-time">
+                              <div className="bg-white rounded-lg p-4 mb-6 border border-gray-100 shadow-sm" id="kpi-bar-chart-time">
                       <h3 className="text-lg font-semibold mb-2">KPI Bar Chart (Avg Response/Avg Resolution Time in min)</h3>
-                      <ResponsiveContainer width="100%" height={250}>
+                                <ResponsiveContainer width="100%" height={250}>
                         <BarChart data={kpiChartData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="period" />
-                          <YAxis label={{ value: 'Minutes', angle: -90, position: 'insideLeft' }} />
-                          <Tooltip />
-                          <Legend />
+                                      <CartesianGrid strokeDasharray="3 3" />
+                                      <XAxis dataKey="period" />
+                                      <YAxis label={{ value: 'Minutes', angle: -90, position: 'insideLeft' }} />
+                                      <Tooltip />
+                                      <Legend />
                           <Bar dataKey="response" name="Avg Response Time" fill="#56CCF2" />
                           <Bar dataKey="resolution" name="Avg Resolution Time" fill="#BB6BD9" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                              </div>
                     {/* KPI Table */}
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-xs text-left text-gray-700 border">
-                        <thead>
-                          <tr>
-                            <th className="py-1 px-2">Ticket #</th>
-                            <th className="py-1 px-2">Subject</th>
-                            <th className="py-1 px-2">Assignee</th>
-                            <th className="py-1 px-2">Priority</th>
-                            <th className="py-1 px-2">Status</th>
-                            <th className="py-1 px-2">Created</th>
-                            <th className="py-1 px-2">Response Time (min)</th>
-                            <th className="py-1 px-2">Resolution Time (min)</th>
-                            <th className="py-1 px-2">Breached</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-xs text-left text-gray-700 border">
+                              <thead>
+                                <tr>
+                                  <th className="py-1 px-2">Ticket #</th>
+                                  <th className="py-1 px-2">Subject</th>
+                                  <th className="py-1 px-2">Assignee</th>
+                                  <th className="py-1 px-2">Priority</th>
+                                  <th className="py-1 px-2">Status</th>
+                                  <th className="py-1 px-2">Created</th>
+                                  <th className="py-1 px-2">Response Time (min)</th>
+                                  <th className="py-1 px-2">Resolution Time (min)</th>
+                                  <th className="py-1 px-2">Breached</th>
+                                </tr>
+                              </thead>
+                              <tbody>
                           {kpiFilteredTickets.map((ticket, idx) => {
                             const kpi = computeKPIsForTickets([ticket]);
-                            const detail = kpi.details[0] || {};
-                            return (
+                                    const detail = kpi.details[0] || {};
+                                    return (
                               <tr key={ticket.id || idx} className="border-t">
                                 <td className="py-1 px-2">{ticket.ticketNumber}</td>
                                 <td className="py-1 px-2">{ticket.subject}</td>
@@ -1198,16 +1198,16 @@ const ClientHeadDashboard = () => {
                                 <td className="py-1 px-2">{ticket.priority}</td>
                                 <td className="py-1 px-2">{ticket.status}</td>
                                 <td className="py-1 px-2">{ticket.created ? (ticket.created.toDate ? ticket.created.toDate().toLocaleString() : new Date(ticket.created).toLocaleString()) : ''}</td>
-                                <td className="py-1 px-2">{detail.responseTime ? (detail.responseTime/1000/60).toFixed(2) : '-'}</td>
-                                <td className="py-1 px-2">{detail.resolutionTime ? (detail.resolutionTime/1000/60).toFixed(2) : '-'}</td>
-                                <td className="py-1 px-2">{detail.breached ? <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Yes</span> : <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">No</span>}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
+                                    <td className="py-1 px-2">{detail.responseTime ? (detail.responseTime/1000/60).toFixed(2) : '-'}</td>
+                                    <td className="py-1 px-2">{detail.resolutionTime ? (detail.resolutionTime/1000/60).toFixed(2) : '-'}</td>
+                                    <td className="py-1 px-2">{detail.breached ? <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Yes</span> : <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">No</span>}</td>
+                                  </tr>
+                                );
+                              })}
+                              </tbody>
+                            </table>
+                        </div>
+                      </>
                 )}
               </div>
             )}

@@ -161,6 +161,8 @@ function EmployeeDashboard() {
               return dateB - dateA;
             });
             setTickets(ticketsData);
+            // Debug: log all tickets and their assignedTo field
+            console.log('All tickets:', ticketsData.map(t => ({ id: t.id, assignedTo: t.assignedTo })));
             setError(null);
             setIsLoading(false);
           } catch (err) {
@@ -357,12 +359,53 @@ function EmployeeDashboard() {
     setAppliedPeriod('custom');
   };
  
-  // Only show tickets assigned to the current user (employee) or raised by them
-  const currentUserEmail = user?.email;
-  let myTickets = tickets.filter(t =>
-    (t.assignedTo && t.assignedTo.email === currentUserEmail) ||
-    t.email === currentUserEmail
-  );
+  // My Tickets: Tickets assigned to the current user (employee), raised by them, or assigned by them
+  const currentUserEmail = user?.email ? user.email.trim().toLowerCase() : '';
+  // Debug: print all assignedTo emails and current user email
+  console.log('Current user email:', currentUserEmail);
+  // Debug: print all tickets with their id, assignedTo, assignedBy, and email fields
+  console.log('All tickets:', tickets.map(t => ({
+    id: t.id,
+    assignedTo: t.assignedTo,
+    assignedBy: t.assignedBy,
+    email: t.email
+  })));
+
+  const userEmailPrefix = currentUserEmail.split('@')[0];
+  const myTickets = tickets.filter(t => {
+    // assignedTo can be object with email, or string, or null
+    let assignedToValue = null;
+    if (t.assignedTo) {
+      if (typeof t.assignedTo === 'object' && t.assignedTo.email) {
+        assignedToValue = t.assignedTo.email.trim().toLowerCase();
+      } else if (typeof t.assignedTo === 'string') {
+        assignedToValue = t.assignedTo.trim().toLowerCase();
+      }
+    }
+    // assignedBy can be object with email, or string, or null
+    let assignedByEmail = null;
+    if (t.assignedBy) {
+      if (typeof t.assignedBy === 'object' && t.assignedBy.email) {
+        assignedByEmail = t.assignedBy.email.trim().toLowerCase();
+      } else if (typeof t.assignedBy === 'string') {
+        assignedByEmail = t.assignedBy.trim().toLowerCase();
+      }
+    }
+    const isAssignedToMe =
+      assignedToValue === currentUserEmail ||
+      assignedToValue === userEmailPrefix;
+    const isCreator = t.email && t.email.trim().toLowerCase() === currentUserEmail;
+    const isAssignedByMe = assignedByEmail === currentUserEmail;
+    return isAssignedToMe || isCreator || isAssignedByMe;
+  });
+  // Debug: log which tickets are included
+  console.log('myTickets:', myTickets.map(t => ({ 
+    id: t.id, 
+    assignedTo: t.assignedTo, 
+    assignedBy: t.assignedBy,
+    email: t.email 
+  })));
+ 
   // Filter myTickets based on appliedFromDate, appliedToDate, appliedPeriod
   let filteredMyTickets = myTickets;
   if (appliedPeriod === 'week') {
