@@ -359,11 +359,11 @@ function EmployeeDashboard() {
     setAppliedPeriod('custom');
   };
  
-  // My Tickets: Tickets assigned to the current user (employee), raised by them, or assigned by them
+  // My Tickets: Simple logic - if the logged-in user's email matches assignedTo.email, include the ticket
   const currentUserEmail = user?.email ? user.email.trim().toLowerCase() : '';
-  // Debug: print all assignedTo emails and current user email
+  
+  // Debug: print current user email and all tickets
   console.log('Current user email:', currentUserEmail);
-  // Debug: print all tickets with their id, assignedTo, assignedBy, and email fields
   console.log('All tickets:', tickets.map(t => ({
     id: t.id,
     assignedTo: t.assignedTo,
@@ -371,40 +371,77 @@ function EmployeeDashboard() {
     email: t.email
   })));
 
-  const userEmailPrefix = currentUserEmail.split('@')[0];
   const myTickets = tickets.filter(t => {
-    // assignedTo can be object with email, or string, or null
-    let assignedToValue = null;
-    if (t.assignedTo) {
-      if (typeof t.assignedTo === 'object' && t.assignedTo.email) {
-        assignedToValue = t.assignedTo.email.trim().toLowerCase();
-      } else if (typeof t.assignedTo === 'string') {
-        assignedToValue = t.assignedTo.trim().toLowerCase();
+    // Simple check: if assignedTo.email matches current user's email
+    let isAssignedToMe = false;
+    
+    if (t.assignedTo && typeof t.assignedTo === 'object' && t.assignedTo.email) {
+      const assignedEmail = t.assignedTo.email.toLowerCase().trim();
+      if (assignedEmail === currentUserEmail) {
+        isAssignedToMe = true;
       }
     }
-    // assignedBy can be object with email, or string, or null
-    let assignedByEmail = null;
+    
+    // Also include tickets created by the current user
+    const isCreator = t.email && t.email.toLowerCase().trim() === currentUserEmail;
+    
+    // Also include tickets assigned by the current user
+    let isAssignedByMe = false;
     if (t.assignedBy) {
       if (typeof t.assignedBy === 'object' && t.assignedBy.email) {
-        assignedByEmail = t.assignedBy.email.trim().toLowerCase();
+        const assignedByEmail = t.assignedBy.email.toLowerCase().trim();
+        if (assignedByEmail === currentUserEmail) {
+          isAssignedByMe = true;
+        }
       } else if (typeof t.assignedBy === 'string') {
-        assignedByEmail = t.assignedBy.trim().toLowerCase();
+        const assignedByStr = t.assignedBy.toLowerCase().trim();
+        if (assignedByStr === currentUserEmail) {
+          isAssignedByMe = true;
+        }
       }
     }
-    const isAssignedToMe =
-      assignedToValue === currentUserEmail ||
-      assignedToValue === userEmailPrefix;
-    const isCreator = t.email && t.email.trim().toLowerCase() === currentUserEmail;
-    const isAssignedByMe = assignedByEmail === currentUserEmail;
+    
     return isAssignedToMe || isCreator || isAssignedByMe;
   });
-  // Debug: log which tickets are included
-  console.log('myTickets:', myTickets.map(t => ({ 
-    id: t.id, 
-    assignedTo: t.assignedTo, 
-    assignedBy: t.assignedBy,
-    email: t.email 
-  })));
+  // Debug: log which tickets are included with reason
+  console.log('myTickets:', myTickets.map(t => {
+    let isAssignedToMe = false;
+    if (t.assignedTo && typeof t.assignedTo === 'object' && t.assignedTo.email) {
+      const assignedEmail = t.assignedTo.email.toLowerCase().trim();
+      if (assignedEmail === currentUserEmail) {
+        isAssignedToMe = true;
+      }
+    }
+    
+    const isCreator = t.email && t.email.toLowerCase().trim() === currentUserEmail;
+    
+    let isAssignedByMe = false;
+    if (t.assignedBy) {
+      if (typeof t.assignedBy === 'object' && t.assignedBy.email) {
+        const assignedByEmail = t.assignedBy.email.toLowerCase().trim();
+        if (assignedByEmail === currentUserEmail) {
+          isAssignedByMe = true;
+        }
+      } else if (typeof t.assignedBy === 'string') {
+        const assignedByStr = t.assignedBy.toLowerCase().trim();
+        if (assignedByStr === currentUserEmail) {
+          isAssignedByMe = true;
+        }
+      }
+    }
+    
+    return { 
+      id: t.id, 
+      assignedTo: t.assignedTo, 
+      assignedBy: t.assignedBy,
+      email: t.email,
+      reason: {
+        isAssignedToMe,
+        isCreator,
+        isAssignedByMe
+      }
+    };
+  }));
  
   // Filter myTickets based on appliedFromDate, appliedToDate, appliedPeriod
   let filteredMyTickets = myTickets;

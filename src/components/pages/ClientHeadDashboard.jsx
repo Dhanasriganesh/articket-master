@@ -708,22 +708,21 @@ const ClientHeadDashboard = () => {
   const trendsChartData = weekLabels.map(label => {
     const groupTickets = weekMap[label];
     if (!groupTickets || groupTickets.length === 0) {
-      return { period: label, open: 0, closed: 0, resolved: 0, inProgress: 0 };
+      return { period: label, created: 0, closed: 0, resolved: 0, inProgress: 0, unclosed: 0 };
     }
-    const kpi = computeKPIsForTickets(groupTickets);
     // Count resolved and in progress tickets
     const resolvedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
     const inProgressCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length;
-    const openCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'open').length;
     const closedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
     const unclosedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() !== 'closed').length;
+    const createdCount = groupTickets.length;
     return {
       period: label,
-      open: openCount,
+      created: createdCount, // total tickets raised in this period
       inProgress: inProgressCount,
       resolved: resolvedCount,
       closed: closedCount,
-      unclosed: unclosedCount
+      unclosed: unclosedCount // tickets not closed
     };
   });
 
@@ -731,18 +730,20 @@ const ClientHeadDashboard = () => {
   const TrendsTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       // Find values by key
-      const open = payload.find(p => p.dataKey === 'open')?.value ?? 0;
+      const created = payload.find(p => p.dataKey === 'created')?.value ?? 0;
       const inProgress = payload.find(p => p.dataKey === 'inProgress')?.value ?? 0;
       const resolved = payload.find(p => p.dataKey === 'resolved')?.value ?? 0;
       const closed = payload.find(p => p.dataKey === 'closed')?.value ?? 0;
-      const unclosed = payload.find(p => p.dataKey === 'unclosed')?.value ?? (open + inProgress + resolved);
+      const unclosed = payload.find(p => p.dataKey === 'unclosed')?.value ?? 0;
       return (
         <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155', padding: 12, minWidth: 120 }}>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
-          <div>Open - {open} / In Progress - {inProgress}</div>
-          <div>Resolved - {resolved} / Closed - {closed}</div>
+          <div>Created - {created}</div>
+          <div>In Progress - {inProgress}</div>
+          <div>Resolved - {resolved}</div>
+          <div>Closed - {closed}</div>
           <div>Unclosed - {unclosed}</div>
-        </div>
+        </div> 
       );
     }
     return null;
@@ -1099,10 +1100,11 @@ const ClientHeadDashboard = () => {
                           <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
                           <Tooltip content={<TrendsTooltip />} />
                           <Legend />
-                          <Line type="monotone" dataKey="open" name="Open" stroke="#F2994A" strokeWidth={3} dot={{ r: 6, fill: '#F2994A', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Line type="monotone" dataKey="created" name="Created" stroke="#F2994A" strokeWidth={3} dot={{ r: 6, fill: '#F2994A', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                           <Line type="monotone" dataKey="inProgress" name="In Progress" stroke="#1976D2" strokeWidth={3} dot={{ r: 6, fill: '#1976D2', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                           <Line type="monotone" dataKey="resolved" name="Resolved" stroke="#27AE60" strokeWidth={3} dot={{ r: 6, fill: '#27AE60', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                           <Line type="monotone" dataKey="closed" name="Closed" stroke="#34495E" strokeWidth={3} dot={{ r: 6, fill: '#34495E', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Line type="monotone" dataKey="unclosed" name="Unclosed" stroke="#FFC107" strokeWidth={3} dot={{ r: 6, fill: '#FFC107', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
