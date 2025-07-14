@@ -184,21 +184,38 @@ const ClientHeadDashboard = () => {
   };
   const kpiFilteredTickets = getKpiFilteredTickets();
 
+  // Helper: Get week of month (1-based, calendar week)
+  function getWeekOfMonth(date) {
+    const d = new Date(date);
+    const firstDay = new Date(d.getFullYear(), d.getMonth(), 1);
+    const dayOfWeek = firstDay.getDay(); // 0 (Sun) - 6 (Sat)
+    // Calculate offset: if first day is not Sunday, week 1 is shorter
+    const offset = (dayOfWeek === 0 ? 0 : 7 - dayOfWeek + 1);
+    const day = d.getDate();
+    if (day <= (7 - dayOfWeek)) return 1;
+    return Math.ceil((day - (7 - dayOfWeek)) / 7) + 1;
+  }
+
+  // Helper: Get month label (e.g., 'Jan 2024')
+  function getMonthLabel(year, month) {
+    return new Date(year, month, 1).toLocaleString('default', { month: 'short', year: 'numeric' });
+  }
+
   // --- KPI Bar Chart Data Logic ---
   const getKpiChartData = () => {
     if (kpiSelectedMonth) {
       // Group by week for the selected month
       const [selYear, selMonth] = kpiSelectedMonth.split('-').map(Number);
-      const weeks = [
-        { label: 'Week 1', start: 1, end: 7 },
-        { label: 'Week 2', start: 8, end: 14 },
-        { label: 'Week 3', start: 15, end: 21 },
-        { label: 'Week 4', start: 22, end: 31 }
-      ];
-      return weeks.map(({ label, start, end }) => {
+      // Find how many weeks in this month
+      const firstDay = new Date(selYear, selMonth - 1, 1);
+      const lastDay = new Date(selYear, selMonth, 0);
+      const weeksInMonth = getWeekOfMonth(lastDay);
+      const weekLabels = Array.from({ length: weeksInMonth }, (_, i) => `Week ${i + 1}`);
+      return weekLabels.map((label, i) => {
+        const weekNum = i + 1;
         const weekTickets = kpiFilteredTickets.filter(t => {
           const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-          return created && created.getFullYear() === selYear && (created.getMonth() + 1) === selMonth && created.getDate() >= start && created.getDate() <= end;
+          return created && created.getFullYear() === selYear && (created.getMonth() + 1) === selMonth && getWeekOfMonth(created) === weekNum;
         });
         const open = weekTickets.length;
         const closed = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
@@ -229,7 +246,7 @@ const ClientHeadDashboard = () => {
         if (kpiPeriod === 'lastyear') monthsToShow = 12;
         for (let i = monthsToShow - 1; i >= 0; i--) {
           const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-          months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleString('default', { month: 'short', year: 'numeric' }) });
+          months.push({ year: d.getFullYear(), month: d.getMonth(), label: getMonthLabel(d.getFullYear(), d.getMonth()) });
         }
       } else {
         // Show all months in selected year
@@ -237,7 +254,7 @@ const ClientHeadDashboard = () => {
         if (!yearNum || isNaN(yearNum)) yearNum = new Date().getFullYear();
         for (let i = 0; i < 12; i++) {
           const d = new Date(yearNum, i, 1);
-          months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleString('default', { month: 'short', year: 'numeric' }) });
+          months.push({ year: d.getFullYear(), month: d.getMonth(), label: getMonthLabel(d.getFullYear(), d.getMonth()) });
         }
       }
       return months.map(({ year, month, label }) => {
@@ -406,7 +423,6 @@ const ClientHeadDashboard = () => {
       fetchDashboardData();
     }
   }, [authChecked, user, db]);
-
   const handleLogout = async () => {
     setSigningOut(true);
     try {
@@ -522,7 +538,7 @@ const ClientHeadDashboard = () => {
     return created ? created.getFullYear() : null;
   }
 
-  // Compute year for filtering
+  // For year filtering, always use created.getFullYear() for all year-based filters and stats.
   const now = new Date();
   const currentYear = now.getFullYear();
   const lastYear = currentYear - 1;
@@ -692,17 +708,17 @@ const ClientHeadDashboard = () => {
     const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
     return created && created.getFullYear() === trendsYear && created.getMonth() + 1 === trendsMonth;
   });
-  const weekLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-  let weekMap = { 'Week 1': [], 'Week 2': [], 'Week 3': [], 'Week 4': [] };
+  const firstDay = new Date(trendsYear, trendsMonth - 1, 1);
+  const lastDay = new Date(trendsYear, trendsMonth, 0);
+  const weeksInMonth = getWeekOfMonth(lastDay);
+  const weekLabels = Array.from({ length: weeksInMonth }, (_, i) => `Week ${i + 1}`);
+  let weekMap = {};
+  weekLabels.forEach(label => { weekMap[label] = []; });
   trendsMonthTickets.forEach(ticket => {
     const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
     if (!created) return;
-    const day = created.getDate();
-    let week = '';
-    if (day <= 7) week = 'Week 1';
-    else if (day <= 14) week = 'Week 2';
-    else if (day <= 21) week = 'Week 3';
-    else week = 'Week 4';
+    const week = `Week ${getWeekOfMonth(created)}`;
+    if (!weekMap[week]) weekMap[week] = [];
     weekMap[week].push(ticket);
   });
   const trendsChartData = weekLabels.map(label => {
@@ -1100,11 +1116,11 @@ const ClientHeadDashboard = () => {
                           <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
                           <Tooltip content={<TrendsTooltip />} />
                           <Legend />
-                          <Line type="monotone" dataKey="created" name="Created" stroke="#F2994A" strokeWidth={3} dot={{ r: 6, fill: '#F2994A', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
-                          <Line type="monotone" dataKey="inProgress" name="In Progress" stroke="#1976D2" strokeWidth={3} dot={{ r: 6, fill: '#1976D2', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
-                          <Line type="monotone" dataKey="resolved" name="Resolved" stroke="#27AE60" strokeWidth={3} dot={{ r: 6, fill: '#27AE60', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
-                          <Line type="monotone" dataKey="closed" name="Closed" stroke="#34495E" strokeWidth={3} dot={{ r: 6, fill: '#34495E', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
-                          <Line type="monotone" dataKey="unclosed" name="Unclosed" stroke="#FFC107" strokeWidth={3} dot={{ r: 6, fill: '#FFC107', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Line type="monotone" dataKey="unclosed" name="Unclosed" stroke="#F2994A" strokeWidth={3} dot={{ r: 6, fill: '#F2994A', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Line type="monotone" dataKey="resolved" name="Resolved" stroke="#1976D2" strokeWidth={3} dot={{ r: 6, fill: '#1976D2', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Line type="monotone" dataKey="closed" name="Closed" stroke="#27AE60" strokeWidth={3} dot={{ r: 6, fill: '#27AE60', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Line type="monotone" dataKey="created" name="Created" stroke="#34495E" strokeWidth={3} dot={{ r: 6, fill: '#34495E', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                          <Line type="monotone" dataKey="inProgress" name="In Progress" stroke="#FFC107" strokeWidth={3} dot={{ r: 6, fill: '#FFC107', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
@@ -1186,19 +1202,7 @@ const ClientHeadDashboard = () => {
             {activeTab === 'kpi' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center"><BarChart3 className="w-6 h-6 mr-2 text-blue-600" />KPI Reports</h2>
-                {/* SLA Table */}
-                <div className="mb-6">
-                  <h3 className="text-md font-semibold mb-2">SLA Table</h3>
-                  <table className="min-w-full text-xs text-left text-gray-700 border mb-4">
-                    <thead><tr><th className="py-1 px-2">Priority</th><th className="py-1 px-2">Initial Response Time</th><th className="py-1 px-2">Resolution Time</th></tr></thead>
-                    <tbody>
-                      <tr><td className="py-1 px-2">Critical</td><td className="py-1 px-2">10 min</td><td className="py-1 px-2">1 hour</td></tr>
-                      <tr><td className="py-1 px-2">High</td><td className="py-1 px-2">1 hour</td><td className="py-1 px-2">2 hours</td></tr>
-                      <tr><td className="py-1 px-2">Medium</td><td className="py-1 px-2">2 hours</td><td className="py-1 px-2">6 hours</td></tr>
-                      <tr><td className="py-1 px-2">Low</td><td className="py-1 px-2">6 hours</td><td className="py-1 px-2">1 day</td></tr>
-                    </tbody>
-                  </table>
-                </div>
+               
                 {/* KPI Filters: Month, Year, and Period */}
                         <div className="mb-4 flex gap-4 items-center">
                           <span className="font-semibold text-gray-700">Year:</span>
@@ -1256,12 +1260,12 @@ const ClientHeadDashboard = () => {
                                       <YAxis allowDecimals={false} />
                                       <Tooltip />
                                       <Legend />
-                          <Bar dataKey="open" name="Created Tickets" fill="#F2994A" />
-                          <Bar dataKey="inProgress" name="In Progress" fill="#1976D2" />
-                          <Bar dataKey="resolved" name="Resolved" fill="#27AE60" />
-                          <Bar dataKey="closed" name="Closed" fill="#34495E" />
+                          <Bar dataKey="open" name="Created Tickets" fill="#F2994" />
+                          <Bar dataKey="inProgress" name="In Progress" fill="#FFC107" />
+                          <Bar dataKey="resolved" name="Resolved" fill="#1976D2" />
+                          <Bar dataKey="closed" name="Closed" fill="#27AE60" />
                           <Bar dataKey="breached" name="Breached" fill="#EB5757" />
-                          <Bar dataKey="unclosed" name="Unclosed" fill="#FFC107" />
+                          <Bar dataKey="unclosed" name="Unclosed" fill="#F2994A" />
                                     </BarChart>
                                 </ResponsiveContainer>
                               </div>
@@ -1317,6 +1321,19 @@ const ClientHeadDashboard = () => {
                               </tbody>
                             </table>
                         </div>
+                         {/* SLA Table */}
+                <div className="mb-6 mt-8">
+                  <h3 className="text-md font-semibold mb-2">SLA Table</h3>
+                  <table className="min-w-full text-xs text-left text-gray-700 border mb-4">
+                    <thead><tr><th className="py-1 px-2">Priority</th><th className="py-1 px-2">Initial Response Time</th><th className="py-1 px-2">Resolution Time</th></tr></thead>
+                    <tbody>
+                      <tr><td className="py-1 px-2">Critical</td><td className="py-1 px-2">10 min</td><td className="py-1 px-2">1 hour</td></tr>
+                      <tr><td className="py-1 px-2">High</td><td className="py-1 px-2">1 hour</td><td className="py-1 px-2">2 hours</td></tr>
+                      <tr><td className="py-1 px-2">Medium</td><td className="py-1 px-2">2 hours</td><td className="py-1 px-2">6 hours</td></tr>
+                      <tr><td className="py-1 px-2">Low</td><td className="py-1 px-2">6 hours</td><td className="py-1 px-2">1 day</td></tr>
+                    </tbody>
+                  </table>
+                </div>
                       </>
                 )}
               </div>

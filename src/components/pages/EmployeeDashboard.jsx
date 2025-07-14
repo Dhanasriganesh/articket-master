@@ -431,9 +431,9 @@ function EmployeeDashboard() {
     }
     
     return { 
-      id: t.id, 
-      assignedTo: t.assignedTo, 
-      assignedBy: t.assignedBy,
+    id: t.id, 
+    assignedTo: t.assignedTo, 
+    assignedBy: t.assignedBy,
       email: t.email,
       reason: {
         isAssignedToMe,
@@ -723,83 +723,90 @@ function EmployeeDashboard() {
                     </div>
                   </div>
                 </div> */}
- 
+
                 {/* My Tickets Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-4">My Tickets</h2>
-                  <div className="flex flex-wrap gap-4 mb-4 items-end">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
-                      <input type="date" className="border rounded px-2 py-1 text-sm" value={fromDate} onChange={e => setFromDate(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">To Date</label>
-                      <input type="date" className="border rounded px-2 py-1 text-sm" value={toDate} onChange={e => setToDate(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">Period</label>
-                      <select className="border rounded px-2 py-1 text-sm" value={period} onChange={e => setPeriod(e.target.value)}>
-                        <option value="custom">Custom</option>
-                        <option value="week">This Week</option>
-                        <option value="month">This Month</option>
-                        <option value="last2days">Last 2 Days</option>
-                      </select>
-                    </div>
-                    <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold" onClick={handleFilterApply}>Apply</button>
-                    <button className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded font-semibold" onClick={handleFilterReset}>Reset</button>
-                    <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold" onClick={() => downloadTicketsAsExcel(filteredMyTickets)}>Download</button>
-                  </div>
-                  {selectedTicketId ? (
-                    <TicketDetails ticketId={selectedTicketId} onBack={() => setSelectedTicketId(null)} />
-                  ) : filteredMyTickets.length === 0 ? (
-                    <div className="text-gray-500">No tickets found for selected filters.</div>
-                  ) : (
+                  {(() => {
+                    const currentUserEmail = user?.email ? user.email.trim().toLowerCase() : '';
+                    // Show tickets assigned to the user or raised by the user (no duplicates)
+                    const myTickets = tickets.filter(t => {
+                      let assignedEmail = '';
+                      if (t.assignedTo) {
+                        if (typeof t.assignedTo === 'object' && t.assignedTo.email) {
+                          assignedEmail = t.assignedTo.email;
+                        } else if (typeof t.assignedTo === 'string') {
+                          assignedEmail = t.assignedTo;
+                        }
+                      }
+                      const isAssignedToMe = assignedEmail.trim().toLowerCase() === currentUserEmail;
+                      const isRaisedByMe = t.email && t.email.trim().toLowerCase() === currentUserEmail;
+                      return isAssignedToMe || isRaisedByMe;
+                    });
+                    // Remove duplicates by ticket id
+                    const uniqueMyTickets = Array.from(new Map(myTickets.map(t => [t.id, t])).values());
+                    if (uniqueMyTickets.length === 0) {
+                      return <div className="text-gray-500">No tickets assigned to you or raised by you.</div>;
+                    }
+                    return (
                       <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
                             <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised By</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
                             </tr>
                           </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {filteredMyTickets.map((ticket) => (
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {uniqueMyTickets.map((ticket) => (
                               <tr
-                              key={ticket.id}
-                                onClick={() => setSelectedTicketId(ticket.id)}
-                              className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
+                                key={ticket.id}
+                                className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                               >
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
-                                  ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
-                                  ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {ticket.status}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedTo ? (ticket.assignedTo.name || ticket.assignedTo.email) : '-'}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.assignedBy || '-'}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{ticket.ticketNumber}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.subject}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                    ticket.status === 'Open' ? 'bg-blue-100 text-blue-800' :
+                                    ticket.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                                    ticket.status === 'Resolved' ? 'bg-green-100 text-green-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {ticket.status}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.priority}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.customer}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{
+                                  ticket.assignedTo
+                                    ? (typeof ticket.assignedTo === 'object'
+                                        ? (ticket.assignedTo.name || ticket.assignedTo.email)
+                                        : ticket.assignedTo)
+                                    : '-'
+                                }</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{
+                                  ticket.assignedBy
+                                    ? (typeof ticket.assignedBy === 'object'
+                                        ? (ticket.assignedBy.name || ticket.assignedBy.email)
+                                        : ticket.assignedBy)
+                                    : '-'
+                                }</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{ticket.created?.toDate ? ticket.created.toDate().toLocaleString() : (ticket.created ? new Date(ticket.created).toLocaleString() : '')}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
-                  )}
+                    );
+                  })()}
                 </div>
- 
+
                 {/* Quick Actions */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
                   <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>

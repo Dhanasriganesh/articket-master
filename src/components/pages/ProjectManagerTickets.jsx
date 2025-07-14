@@ -345,35 +345,29 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
     const matchesSearch =
       ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase());
-   
-    // Check both employee and client filters
+
+    // Raised By filters (match ClientTickets/ClientHeadTickets logic)
     let matchesRaisedBy = true;
-    const ticketUser = employees.find(emp => emp.email === ticket.email)
-      ? 'employee'
-      : clients.find(client => client.email === ticket.email)
-        ? 'client'
-        : null;
- 
-    if (ticketUser === 'employee') {
-      if (filterRaisedByEmployee === 'all') {
-        matchesRaisedBy = true;
-      } else if (filterRaisedByEmployee === 'me') {
+    if (filterRaisedByEmployee === 'all' && filterRaisedByClient === 'all') {
+      matchesRaisedBy = true;
+    } else if (filterRaisedByEmployee !== 'all') {
+      if (filterRaisedByEmployee === 'me') {
         matchesRaisedBy = ticket.email === currentUserEmail;
+      } else if (filterRaisedByEmployee === 'any') {
+        matchesRaisedBy = employees.some(emp => emp.email === ticket.email);
       } else {
-        const selectedEmployee = employees.find(emp => emp.id === filterRaisedByEmployee);
-        matchesRaisedBy = selectedEmployee ? ticket.email === selectedEmployee.email : false;
+        matchesRaisedBy = ticket.email === filterRaisedByEmployee;
       }
-    } else if (ticketUser === 'client') {
-      if (filterRaisedByClient === 'all') {
-        matchesRaisedBy = true;
-      } else if (filterRaisedByClient === 'me') {
+    } else if (filterRaisedByClient !== 'all') {
+      if (filterRaisedByClient === 'me') {
         matchesRaisedBy = ticket.email === currentUserEmail;
+      } else if (filterRaisedByClient === 'any') {
+        matchesRaisedBy = clients.some(client => client.email === ticket.email);
       } else {
-        const selectedClient = clients.find(client => client.id === filterRaisedByClient);
-        matchesRaisedBy = selectedClient ? ticket.email === selectedClient.email : false;
+        matchesRaisedBy = ticket.email === filterRaisedByClient;
       }
     }
-   
+
     // Date filter
     let matchesDate = true;
     if (dateFrom) {
@@ -384,7 +378,7 @@ const ProjectManagerTickets = ({ setActiveTab, selectedProjectId, selectedProjec
       const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
       if (!created || dayjs(created).isAfter(dayjs(dateTo), 'day')) matchesDate = false;
     }
-   
+
     return matchesStatus && matchesPriority && matchesSearch && matchesRaisedBy && matchesDate;
   });
  

@@ -840,42 +840,42 @@ const ProjectManagerDashboard = () => {
     });
   }
 
-  // Trends chart data grouping (similar to ClientHeadDashboard)
-  const [trendsYear, trendsMonth] = trendsSelectedMonth.split('-').map(Number);
-  const trendsMonthTickets = ticketsForStats.filter(t => {
+  // Trends chart data grouping (calendar-based week-of-month, like ClientHeadDashboard)
+  const [trendsYear, trendsMonth] = kpiSelectedMonth.split('-').map(Number);
+  const trendsMonthTickets = tickets.filter(t => {
     const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
     return created && created.getFullYear() === trendsYear && created.getMonth() + 1 === trendsMonth;
   });
-  const weekLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-  let weekMap = { 'Week 1': [], 'Week 2': [], 'Week 3': [], 'Week 4': [] };
+  const firstDay = new Date(trendsYear, trendsMonth - 1, 1);
+  const lastDay = new Date(trendsYear, trendsMonth, 0);
+  const weeksInMonth = getWeekOfMonth(lastDay);
+  const weekLabels = Array.from({ length: weeksInMonth }, (_, i) => `Week ${i + 1}`);
+  let weekMap = {};
+  weekLabels.forEach(label => { weekMap[label] = []; });
   trendsMonthTickets.forEach(ticket => {
     const created = ticket.created?.toDate ? ticket.created.toDate() : (ticket.created ? new Date(ticket.created) : null);
     if (!created) return;
-    const day = created.getDate();
-    let week = '';
-    if (day <= 7) week = 'Week 1';
-    else if (day <= 14) week = 'Week 2';
-    else if (day <= 21) week = 'Week 3';
-    else week = 'Week 4';
+    const week = `Week ${getWeekOfMonth(created)}`;
+    if (!weekMap[week]) weekMap[week] = [];
     weekMap[week].push(ticket);
   });
   const trendsChartData = weekLabels.map(label => {
     const groupTickets = weekMap[label];
     if (!groupTickets || groupTickets.length === 0) {
-      return { period: label, open: 0, closed: 0, resolved: 0, inProgress: 0, unclosed: 0 };
+      return { period: label, created: 0, closed: 0, resolved: 0, inProgress: 0, unclosed: 0 };
     }
-    const openCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'open').length;
     const closedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
     const resolvedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
     const inProgressCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length;
     const unclosedCount = groupTickets.filter(t => String(t.status).trim().toLowerCase() !== 'closed').length;
+    const createdCount = groupTickets.length;
     return {
       period: label,
-      open: openCount,
+      created: createdCount, // total tickets raised in this period
       inProgress: inProgressCount,
       resolved: resolvedCount,
       closed: closedCount,
-      unclosed: unclosedCount
+      unclosed: unclosedCount // tickets not closed
     };
   });
 
@@ -926,26 +926,26 @@ const ProjectManagerDashboard = () => {
     if (kpiSelectedMonth) {
       // Group by week for the selected month
       const [selYear, selMonth] = kpiSelectedMonth.split('-').map(Number);
-      const weeks = [
-        { label: 'Week 1', start: 1, end: 7 },
-        { label: 'Week 2', start: 8, end: 14 },
-        { label: 'Week 3', start: 15, end: 21 },
-        { label: 'Week 4', start: 22, end: 31 }
-      ];
-      return weeks.map(({ label, start, end }) => {
+      // Find how many weeks in this month
+      const firstDay = new Date(selYear, selMonth - 1, 1);
+      const lastDay = new Date(selYear, selMonth, 0);
+      const weeksInMonth = getWeekOfMonth(lastDay);
+      const weekLabels = Array.from({ length: weeksInMonth }, (_, i) => `Week ${i + 1}`);
+      return weekLabels.map((label, i) => {
+        const weekNum = i + 1;
         const weekTickets = kpiFilteredTickets.filter(t => {
           const created = t.created?.toDate ? t.created.toDate() : (t.created ? new Date(t.created) : null);
-          return created && created.getFullYear() === selYear && (created.getMonth() + 1) === selMonth && created.getDate() >= start && created.getDate() <= end;
+          return created && created.getFullYear() === selYear && (created.getMonth() + 1) === selMonth && getWeekOfMonth(created) === weekNum;
         });
         const open = weekTickets.length;
         const closed = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
         const inProgress = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length;
+        const resolved = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
+        const unclosed = weekTickets.filter(t => String(t.status).trim().toLowerCase() !== 'closed').length;
         const breached = weekTickets.filter(t => {
           const kpi = computeKPIsForTickets([t]);
           return kpi.breachedCount;
         }).length;
-        const resolved = weekTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
-        const unclosed = open + inProgress + resolved; // Not closed
         let responseSum = 0, responseCount = 0, resolutionSum = 0, resolutionCount = 0;
         weekTickets.forEach(t => {
           const kpi = computeKPIsForTickets([t]);
@@ -954,7 +954,7 @@ const ProjectManagerDashboard = () => {
         });
         const response = responseCount ? Number((responseSum/responseCount/1000/60).toFixed(2)) : 0;
         const resolution = resolutionCount ? Number((resolutionSum/resolutionCount/1000/60).toFixed(2)) : 0;
-        return { period: label, open, closed, breached, resolved, inProgress, unclosed, response, resolution };
+        return { period: label, open, inProgress, resolved, closed, unclosed, breached, response, resolution };
       });
     } else {
       // Group by month for period/year
@@ -966,15 +966,14 @@ const ProjectManagerDashboard = () => {
         if (kpiPeriod === 'lastyear') monthsToShow = 12;
         for (let i = monthsToShow - 1; i >= 0; i--) {
           const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-          months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleString('default', { month: 'short', year: 'numeric' }) });
+          months.push({ year: d.getFullYear(), month: d.getMonth(), label: getMonthLabel(d.getFullYear(), d.getMonth()) });
         }
       } else {
         // Show all months in selected year
         let yearNum = Number(kpiSelectedYear);
         if (!yearNum || isNaN(yearNum)) yearNum = new Date().getFullYear();
         for (let i = 0; i < 12; i++) {
-          const d = new Date(yearNum, i, 1);
-          months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleString('default', { month: 'short', year: 'numeric' }) });
+          months.push({ year: yearNum, month: i, label: getMonthLabel(yearNum, i) });
         }
       }
       return months.map(({ year, month, label }) => {
@@ -985,12 +984,12 @@ const ProjectManagerDashboard = () => {
         const open = monthTickets.length;
         const closed = monthTickets.filter(t => String(t.status).trim().toLowerCase() === 'closed').length;
         const inProgress = monthTickets.filter(t => String(t.status).trim().toLowerCase() === 'in progress').length;
+        const resolved = monthTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
+        const unclosed = monthTickets.filter(t => String(t.status).trim().toLowerCase() !== 'closed').length;
         const breached = monthTickets.filter(t => {
           const kpi = computeKPIsForTickets([t]);
           return kpi.breachedCount;
         }).length;
-        const resolved = monthTickets.filter(t => String(t.status).trim().toLowerCase() === 'resolved').length;
-        const unclosed = open + inProgress + resolved; // Not closed
         let responseSum = 0, responseCount = 0, resolutionSum = 0, resolutionCount = 0;
         monthTickets.forEach(t => {
           const kpi = computeKPIsForTickets([t]);
@@ -999,7 +998,7 @@ const ProjectManagerDashboard = () => {
         });
         const response = responseCount ? Number((responseSum/responseCount/1000/60).toFixed(2)) : 0;
         const resolution = resolutionCount ? Number((resolutionSum/resolutionCount/1000/60).toFixed(2)) : 0;
-        return { period: label, open, closed, breached, resolved, inProgress, unclosed, response, resolution };
+        return { period: label, open, inProgress, resolved, closed, unclosed, breached, response, resolution };
       });
     }
   };
@@ -1391,10 +1390,11 @@ const ProjectManagerDashboard = () => {
                         <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 14 }} axisLine={false} tickLine={false} />
                         <Tooltip content={<TrendsTooltip />} />
                         <Legend />
-                        <Line type="monotone" dataKey="open" name="Open" stroke="#F2994A" strokeWidth={3} dot={{ r: 6, fill: '#F2994A', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                        <Line type="monotone" dataKey="created" name="Created" stroke="#F2994A" strokeWidth={3} dot={{ r: 6, fill: '#F2994A', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                         <Line type="monotone" dataKey="inProgress" name="In Progress" stroke="#1976D2" strokeWidth={3} dot={{ r: 6, fill: '#1976D2', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                         <Line type="monotone" dataKey="resolved" name="Resolved" stroke="#27AE60" strokeWidth={3} dot={{ r: 6, fill: '#27AE60', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                         <Line type="monotone" dataKey="closed" name="Closed" stroke="#34495E" strokeWidth={3} dot={{ r: 6, fill: '#34495E', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                        <Line type="monotone" dataKey="unclosed" name="Unclosed" stroke="#FFC107" strokeWidth={3} dot={{ r: 6, fill: '#FFC107', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 8 }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -1642,18 +1642,20 @@ const ProjectManagerDashboard = () => {
 const TrendsTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     // Find values by key
-    const open = payload.find(p => p.dataKey === 'open')?.value ?? 0;
+    const created = payload.find(p => p.dataKey === 'created')?.value ?? 0;
     const inProgress = payload.find(p => p.dataKey === 'inProgress')?.value ?? 0;
     const resolved = payload.find(p => p.dataKey === 'resolved')?.value ?? 0;
     const closed = payload.find(p => p.dataKey === 'closed')?.value ?? 0;
-    const unclosed = payload.find(p => p.dataKey === 'unclosed')?.value ?? (open + inProgress + resolved);
+    const unclosed = payload.find(p => p.dataKey === 'unclosed')?.value ?? 0;
     return (
       <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', color: '#334155', padding: 12, minWidth: 120 }}>
         <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
-        <div>Open - {open} / In Progress - {inProgress}</div>
-        <div>Resolved - {resolved} / Closed - {closed}</div>
+        <div>Created - {created}</div>
+        <div>In Progress - {inProgress}</div>
+        <div>Resolved - {resolved}</div>
+        <div>Closed - {closed}</div>
         <div>Unclosed - {unclosed}</div>
-      </div>
+      </div> 
     );
   }
   return null;
@@ -1681,5 +1683,22 @@ const KpiBarTooltip = ({ active, payload, label }) => {
   }
   return null;
 };
+
+// Helper: Get week of month (1-based, calendar week)
+function getWeekOfMonth(date) {
+  const d = new Date(date);
+  const firstDay = new Date(d.getFullYear(), d.getMonth(), 1);
+  const dayOfWeek = firstDay.getDay(); // 0 (Sun) - 6 (Sat)
+  // Calculate offset: if first day is not Sunday, week 1 is shorter
+  const offset = (dayOfWeek === 0 ? 0 : 7 - dayOfWeek + 1);
+  const day = d.getDate();
+  if (day <= (7 - dayOfWeek)) return 1;
+  return Math.ceil((day - (7 - dayOfWeek)) / 7) + 1;
+}
+
+// Helper: Get month label (e.g., 'Jan 2024')
+function getMonthLabel(year, month) {
+  return new Date(year, month, 1).toLocaleString('default', { month: 'short', year: 'numeric' });
+}
 
 export default ProjectManagerDashboard; 
